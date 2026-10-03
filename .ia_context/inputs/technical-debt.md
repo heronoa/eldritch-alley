@@ -119,6 +119,37 @@ Status values: **Open**, **Closed**.
 - **Trigger:** before the merge of m2a-integration.
 - **Evidence:** `.ia_context/plans/m2a-integration.plan.md`, section 5 (manual items); no record in the PR.
 
+### DT-27 · The legend calls team A "Azul claro", but its colour is beige
+- **Category:** Documentation
+- **Risk if untreated:** the player reads "Azul claro" for a beige piece. The plan wrote the wording and the colour, and they disagree.
+- **Effort:** P
+- **Trigger:** before the merge of the HUD view, together with the owner's visual check.
+- **Evidence:** `frontend/src/scenes/MatchScene.ts:70` (LEGEND) and `TEAM_COLOR.A` in `frontend/src/view/theme.ts:7` (0xd9d4c7, beige).
+
+### DT-28 · Manual acceptance of the HUD: approved by the owner, not yet recorded in the PR
+- **Category:** Testing
+- **Status:** the owner played the match in the browser and approved it, with one reservation (DT-30). The result still has to be written in the PR, and the reconnection and end-of-match items of the checklist have to be marked there.
+- **Risk if untreated:** the HUD's playability is proved by one person's check, with no record and no automated test.
+- **Effort:** P
+- **Trigger:** when the PR of m2a-hud-view is opened.
+- **Evidence:** `.ia_context/plans/m2a-hud-view.plan.md`, section 5 (manual checklist).
+
+### DT-29 · The HUD view plan disagrees with the code on two numbers
+- **Category:** Documentation
+- **Risk if untreated:** the plan says 14 log lines and five panel rows; the code has 12 and six. Whoever reads the plan later will misjudge the layout.
+- **Effort:** P
+- **Trigger:** together with the next edit of the HUD plans.
+- **Evidence:** `.ia_context/plans/m2a-hud-view.plan.md` section 4.1 versus `frontend/src/view/layout.ts:84` (`LOG_LINES = 12`) and the six rows of `frontend/src/game/panel.ts`.
+
+### DT-30 · Clicks on the action buttons land offset from where they are drawn
+- **Category:** Usability (defect)
+- **Observed:** the owner reports that every button only responds when the click is further left and further up than the button's drawn area. The grid does not show the problem.
+- **Probable cause (not reproduced):** each `Button` is a Container with its own hit area (`frontend/src/scenes/widgets.ts:57-60`). The grid uses the scene's `pointer.x/y` through `pixelToCell` (`frontend/src/scenes/MatchScene.ts:181`) and works. The two paths do not share coordinates, and the Container's local hit area is the suspect. The Phaser source read so far did not show the exact mechanism.
+- **Recommended fix:** do not click the Container. In the scene's global `pointerdown`, test `pointer.x/y` against `buttonRect(i)` (the same geometry that draws the button) before `pixelToCell`, and call the same action. Remove the per-button `pointerdown` so the click does not fire twice. The geometry then lives in one place and is covered by `layout.test.ts`.
+- **Effort:** P
+- **Trigger:** before the merge of the HUD view, and before the M2-b deploy.
+- **Evidence:** `frontend/src/scenes/widgets.ts:57-60,63-65`; `frontend/src/scenes/MatchScene.ts:178-182`; `frontend/src/view/layout.ts:98` (`buttonRect`).
+
 ---
 
 ## Closed
