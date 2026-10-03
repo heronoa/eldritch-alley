@@ -1,4 +1,4 @@
-// Bootstrap da plataforma. Os módulos (contas, elencos, rating, replays) entram depois.
+// Bootstrap for the platform. Modules (accounts, rosters, rating, replays) come later.
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 

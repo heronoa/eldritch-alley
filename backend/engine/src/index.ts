@@ -1,4 +1,4 @@
-// Ponto de entrada público do motor de batalha.
-// Regras, altura, linha de visão e iniciativa entram aqui conforme forem implementadas.
+// Public entry point of the battle engine.
+// Rules, height, line of sight and initiative are exported from here as they are implemented.
 
 export const ENGINE_VERSION = '0.0.0';

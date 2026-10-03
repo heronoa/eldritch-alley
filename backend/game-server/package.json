@@ -1,8 +1,8 @@
 {
-  "name": "@mystic-alley/game-server",
+  "name": "@eldritch-alley/game-server",
   "version": "0.0.0",
   "private": true,
-  "description": "Servidor das partidas (Colyseus)",
+  "description": "Match server (Colyseus)",
   "main": "dist/main.js",
   "scripts": {
     "build": "tsc -b",

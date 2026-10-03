@@ -1,7 +1,7 @@
-# Imagem única para os serviços do backend.
+# Single image for the backend services.
 # Build: docker build -f backend/Dockerfile --build-arg SERVICE=game-server .
-# SERVICE é o nome da pasta em backend/ (game-server ou platform-api).
-# O contexto é a raiz do repositório, porque o engine é compartilhado.
+# SERVICE is the folder name under backend/ (game-server or platform-api).
+# The context is the repository root, because the engine is shared.
 
 ARG NODE_VERSION=22-alpine
 

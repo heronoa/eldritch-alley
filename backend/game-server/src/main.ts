@@ -1,8 +1,8 @@
-// Bootstrap do servidor de partidas.
-// As salas (BattleRoom), a sincronização e o bot entram nos próximos passos.
+// Bootstrap for the match server.
+// Rooms (BattleRoom), state sync and the bot come in the next milestones.
 import { Server } from 'colyseus';
 import { WebSocketTransport } from '@colyseus/ws-transport';
-import { ENGINE_VERSION } from '@mystic-alley/engine';
+import { ENGINE_VERSION } from '@eldritch-alley/engine';
 
 const port = Number(process.env.GAME_SERVER_PORT ?? 2567);
 

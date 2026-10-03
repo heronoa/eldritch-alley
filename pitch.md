@@ -1,133 +1,133 @@
 # Eldritch Alley: Tactics
 
-> Título provisório. Conceito para um MVP de RPG tático por turnos no navegador.
+> Provisional title. Concept for an MVP of a turn-based tactical RPG for the browser.
 
 ## Pitch
 
-Esquadrões de soldados, iniciados e adeptos disputam a cidade quadra a quadra. Cada partida é um combate tático por turnos num mapa urbano com altura: telhados, escadas de incêndio, becos, viadutos. O jogador monta um time com classes de armas e de magia e enfrenta um bot ou outro jogador.
+Squads of soldiers, initiates and adepts fight for the city, block by block. Each match is a turn-based tactical battle on an urban map with height: rooftops, fire escapes, alleys, overpasses. The player builds a team from weapon and magic classes and faces a bot or another player.
 
-## Pilares
+## Pillars
 
-1. **Altura é tática.** Subir um prédio muda o alcance, a linha de visão e o dano. O mapa não é cenário: é a decisão.
-2. **Armas e magia jogam diferente.** Classes de armas dependem de munição, cobertura e linha de visão. Classes de magia dependem de mana, área e posicionamento.
-3. **Toda partida é verificável.** O servidor decide tudo, e qualquer partida pode ser revista ação por ação.
+1. **Height is tactics.** Climbing a building changes range, line of sight and damage. The map is not scenery: it is the decision.
+2. **Weapons and magic play differently.** Weapon classes depend on ammunition, cover and line of sight. Magic classes depend on mana, area and positioning.
+3. **Every match is verifiable.** The server decides everything, and any match can be reviewed action by action.
 
-## Universo
+## Setting
 
-Ambientado numa cidade contemporânea onde a magia é real e disputada. Pode compartilhar o universo do projeto Magia Urbana (sociedade secreta de caçadores, magia como parte da realidade), como um jogo paralelo nesse mundo. É uma decisão em aberto.
+A contemporary city where magic is real and contested. It may share the universe of the Magia Urbana project (a secret society of hunters, with magic as part of reality), as a parallel game in that world. This is an open decision.
 
 ## Loop
 
-1. Montar o esquadrão (no MVP, três unidades escolhidas entre as classes disponíveis).
-2. Entrar na fila: contra bot ou PvP ranqueado.
-3. Jogar a partida até um esquadrão ser eliminado.
-4. Ganhar experiência de classe e ajuste de rating (fora do MVP: desbloquear classes avançadas).
+1. Build a squad (in the MVP, three units chosen from the available classes).
+2. Join the queue: against a bot or in ranked PvP.
+3. Play the match until one squad is eliminated.
+4. Earn class experience and a rating change (outside the MVP: unlock advanced classes).
 
-## Combate
+## Combat
 
-- **Grid com altura:** cada célula tem um nível (térreo, primeiro andar, telhado...). Subir custa movimento; cada classe tem um limite de quantos níveis vence por passo.
-- **Turno por iniciativa:** a ordem é definida pela velocidade de cada unidade, numa fila visível para os dois lados. Na sua vez, a unidade pode mover e agir, em qualquer ordem.
-- **Direção conta:** atacar pelas costas ou pelo flanco dá bônus de acerto e de dano.
-- **Linha de visão e cobertura:** armas precisam de linha de visão; muros, carros e caixas dão cobertura e reduzem a chance de acerto. Magia de área ignora cobertura, mas exige posicionamento.
-- **Recursos:**
-  - Classes de armas: munição, com ação de recarregar.
-  - Classes de magia: mana, que regenera um pouco a cada turno.
-- **Vantagem de altura:** quem ataca de cima ganha alcance e acerto; quem ataca de baixo perde.
+- **Grid with height:** each cell has a level (ground, first floor, rooftop...). Climbing costs movement; each class has a limit on how many levels it can climb per step.
+- **Initiative turns:** order is set by each unit's speed, in a queue visible to both sides. On its turn, a unit can move and act, in any order.
+- **Direction matters:** attacking from behind or from the flank gives a bonus to hit and to damage.
+- **Line of sight and cover:** weapons need line of sight; walls, cars and crates give cover and reduce the chance to hit. Area magic ignores cover but requires positioning.
+- **Resources:**
+  - Weapon classes: ammunition, with a reload action.
+  - Magic classes: mana, which regenerates a little each turn.
+- **Height advantage:** a unit attacking from above gains range and accuracy; a unit attacking from below loses them.
 
 ## Classes
 
-### Progressão
+### Progression
 
-Toda unidade começa numa classe base e, ao subir de nível nela, desbloqueia as avançadas da sua linha.
+Every unit starts in a base class and, on reaching a level in it, unlocks the advanced classes of its line.
 
-| Linha | Classe base | Avançadas |
+| Line | Base class | Advanced |
 |---|---|---|
-| Armas | **Soldier** | Sniper, Assaulter |
-| Arcana | **Initiated** | Wizard, Warlock |
-| Fé | **Adept** | Priest, Paladin |
+| Weapons | **Soldier** | Sniper, Assaulter |
+| Arcane | **Initiated** | Wizard, Warlock |
+| Faith | **Adept** | Priest, Paladin |
 
-### Classes avançadas
+### Advanced classes
 
-| Classe | Papel | Identidade |
+| Class | Role | Identity |
 |---|---|---|
-| **Sniper** | Dano à distância longa | Fica no alto, enxerga longe, mata com um tiro bem posicionado. Frágil de perto |
-| **Assaulter** | Tank e dano em curta e média distância | Avança, segura a linha, aguenta dano e pune quem chega perto |
-| **Wizard** | Controle e dano em área | Muda o campo: bloqueia caminhos, empurra unidades, castiga grupos juntos |
-| **Warlock** | Dano explosivo (burst) | Concentra muito dano num alvo em um turno, com custo alto de mana ou de vida |
-| **Priest** | Cura e controle de grupo | Mantém o time vivo e trava inimigos com atordoamento ou silêncio |
-| **Paladin** | Cura e tank | Linha de frente que se sustenta e protege os aliados próximos |
+| **Sniper** | Long-range damage | Stays high, sees far, kills with one well-placed shot. Fragile up close |
+| **Assaulter** | Tank and short- and mid-range damage | Advances, holds the line, takes damage and punishes anyone who gets close |
+| **Wizard** | Control and area damage | Changes the field: blocks paths, pushes units, punishes grouped enemies |
+| **Warlock** | Burst damage | Concentrates heavy damage on one target in one turn, at a high cost in mana or life |
+| **Priest** | Healing and group control | Keeps the team alive and locks enemies down with stun or silence |
+| **Paladin** | Healing and tank | Front-line fighter who sustains itself and protects nearby allies |
 
-### Ideias de habilidades (ponto de partida para o balanceamento)
+### Ability ideas (starting point for balancing)
 
-- **Soldier:** Tiro, Recarregar, Granada de fumaça (bloqueia linha de visão).
-- **Sniper:** Tiro preciso (alcance maior quanto mais alto), Vigia (atira em quem entrar no campo de visão no turno inimigo), Disparo perfurante.
-- **Assaulter:** Rajada (cone curto), Investida (move e ataca), Provocar (inimigos próximos precisam mirar nele).
-- **Initiated:** Faísca, Escudo arcano simples.
-- **Wizard:** Bola de fogo (área), Muralha (cria cobertura temporária), Empurrão (desloca a unidade; queda de altura causa dano).
-- **Warlock:** Drenar (dano que cura o Warlock), Maldição (dano ao longo do tempo), Ruptura (dano altíssimo, custa vida).
-- **Adept:** Cura simples, Bênção (bônus de defesa).
-- **Priest:** Cura em área, Silêncio (impede magia), Ressuscitar.
-- **Paladin:** Golpe sagrado, Aura (aliados adjacentes recebem menos dano), Imposição de mãos.
+- **Soldier:** Shot, Reload, Smoke grenade (blocks line of sight).
+- **Sniper:** Precise shot (more range the higher it stands), Watch (fires at anyone who enters its field of view on the enemy turn), Piercing shot.
+- **Assaulter:** Burst (short cone), Charge (moves and attacks), Taunt (nearby enemies must target it).
+- **Initiated:** Spark, Simple arcane shield.
+- **Wizard:** Fireball (area), Wall (creates temporary cover), Push (displaces a unit; a fall in height causes damage).
+- **Warlock:** Drain (damage that heals the Warlock), Curse (damage over time), Rupture (very high damage, costs life).
+- **Adept:** Simple heal, Blessing (defense bonus).
+- **Priest:** Area heal, Silence (prevents magic), Resurrect.
+- **Paladin:** Holy strike, Aura (adjacent allies take less damage), Laying on of hands.
 
-## Mapas
+## Maps
 
-Urbanos, compactos e verticais: telhado com caixas d'água, beco com escadas de incêndio, estação de metrô com plataformas, viaduto sobre uma avenida. Cada mapa tem pontos altos disputados, cobertura e pelo menos duas rotas entre os lados.
+Urban, compact and vertical: a rooftop with water towers, an alley with fire escapes, a metro station with platforms, an overpass above an avenue. Each map has contested high points, cover, and at least two routes between the sides.
 
 ## MVP
 
-O objetivo do MVP é uma partida completa e jogável, com o backend fazendo o trabalho pesado.
+The goal of the MVP is a complete, playable match, with the backend doing the heavy work.
 
-- **Um mapa** de 8 por 8 com três níveis de altura.
-- **Três classes jogáveis,** uma por linha, para cobrir os três estilos. Sugestão: Sniper (mostra altura e linha de visão), Wizard (área e controle) e Priest (cura).
-- **Times de três unidades,** sem progressão nem gestão de elenco.
-- **Contra o bot primeiro,** depois PvP com matchmaking.
-- **Visual 2D isométrico** (Phaser), sem 3D.
+- **One map**, 8 by 8, with three height levels.
+- **Three playable classes,** one per line, to cover the three styles. Suggestion: Sniper (shows height and line of sight), Wizard (area and control) and Priest (healing).
+- **Three-unit teams,** with no progression and no roster management.
+- **Against the bot first,** then PvP with matchmaking.
+- **Isometric 2D visuals** (Phaser), no 3D.
 
-## O que o backend demonstra
+## What the backend demonstrates
 
-- **Motor de batalha determinístico** em TypeScript puro: com a mesma seed e as mesmas ações, o resultado é sempre o mesmo.
-- **Servidor autoritativo:** o cliente pede "mover para tal célula" e "usar tal habilidade em tal alvo"; o servidor valida alcance, altura, linha de visão, recurso e vez, e só então aplica.
-- **Partida como sequência de eventos:** cada ação aceita é um evento guardado. Reconectar, assistir a um replay e auditar uma partida são a mesma coisa: rodar os eventos de novo.
-- **Classes e habilidades como dados:** uma classe nova é configuração, não código novo no motor.
-- **Bot no servidor,** com uma heurística simples de utilidade (atacar o alvo mais fraco ao alcance, buscar altura, recuar com pouca vida).
-- **Matchmaking por rating** com fila no Redis, e atualização do rating de forma assíncrona depois da partida.
-- **WebSockets** para o estado da partida, com PostgreSQL para jogadores, partidas e eventos.
+- **Deterministic battle engine** in pure TypeScript: with the same seed and the same actions, the result is always the same.
+- **Authoritative server:** the client asks to "move to this cell" and "use this ability on this target"; the server checks range, height, line of sight, resources and turn, and only then applies it.
+- **Match as a sequence of events:** every accepted action is stored as an event. Reconnecting, watching a replay and auditing a match are the same thing: running the events again.
+- **Classes and abilities as data:** a new class is configuration, not new code in the engine.
+- **Bot on the server,** with a simple utility heuristic (attack the weakest target in range, seek height, retreat when health is low).
+- **Rating-based matchmaking** with a queue in Redis, and asynchronous rating updates after the match.
+- **WebSockets** for match state, with PostgreSQL for players, matches and events.
 
-## Stack recomendada
+## Recommended stack
 
-**Princípio:** o motor de batalha fica em TypeScript puro, determinístico e sem depender de framework. O Colyseus e o NestJS são camadas em volta dele; qualquer um dos dois pode ser trocado sem reescrever as regras.
+**Principle:** the battle engine stays in pure TypeScript, deterministic and free of framework dependencies. Colyseus and NestJS are layers around it; either one can be replaced without rewriting the rules.
 
-| Camada | Tecnologia | Por quê |
+| Layer | Technology | Why |
 |---|---|---|
-| Motor de batalha | TypeScript puro (pacote compartilhado) | Regras, altura, linha de visão e iniciativa testáveis sem servidor; seed de aleatoriedade torna cada partida reproduzível |
-| Servidor das partidas | Colyseus | Salas, sincronização do estado com envio só das diferenças, reconexão no meio da partida e espectadores; é onde um jogo de partidas longas e estado grande mais ganha com um framework próprio |
-| Plataforma | NestJS | Contas, elencos, classes, rating, histórico e replays; é o stack da vaga e organiza bem o que não é a partida em si |
-| Autenticação na sala | JWT emitido pelo NestJS, validado pelo Colyseus ao entrar na sala | Um único login para os dois serviços |
-| Integração entre serviços | Fila (SQS com LocalStack, ou BullMQ) | A sala publica "partida encerrada" com os eventos da partida; o NestJS consome, grava o replay e atualiza o rating |
-| Banco | PostgreSQL com MikroORM | Jogadores, elencos, partidas e eventos de cada partida; MikroORM é o ORM citado na vaga |
-| Redis | Presença e driver do Colyseus, fila de matchmaking | Permite rodar várias instâncias do servidor de partidas e parear por rating |
-| Cliente | Phaser e o cliente do Colyseus | Isométrico 2D com um motor que você já conhece |
-| Ambiente local | Docker Compose (PostgreSQL, Redis, LocalStack) | Os dois serviços e as dependências com um comando |
+| Battle engine | Pure TypeScript (shared package) | Rules, height, line of sight and initiative are testable without a server; a seeded random source makes every match reproducible |
+| Match server | Colyseus | Rooms, state sync sending only the differences, reconnection mid-match and spectators; this is where a game with long matches and large state gains the most from a dedicated framework |
+| Platform | NestJS | Accounts, rosters, rating, history and replays; it is the stack of the target role and organizes everything outside the match itself well |
+| Room authentication | JWT issued by NestJS, validated by Colyseus when joining a room | A single login for both services |
+| Service integration | Queue (SQS with LocalStack, or BullMQ) | The room publishes "match ended" with the match events; NestJS consumes it, stores the replay and updates the rating |
+| Database | PostgreSQL with MikroORM | Players, rosters, matches and each match's events; MikroORM is the ORM named in the target role |
+| Redis | Presence and Colyseus driver, matchmaking queue | Allows running several match-server instances and matching by rating |
+| Client | Phaser and the Colyseus client | Isometric 2D with an engine the author already knows |
+| Local environment | Docker Compose (PostgreSQL, Redis, LocalStack) | Both services and their dependencies with one command |
 
-**Estrutura sugerida**
+**Suggested structure**
 
 ```
-engine/        motor de batalha determinístico (TypeScript puro)
-game-server/   Colyseus: salas, sincronização, bot
-platform-api/  NestJS: contas, elencos, rating, replays, matchmaking
-client/        Phaser + cliente do Colyseus
+engine/        deterministic battle engine (pure TypeScript)
+game-server/   Colyseus: rooms, sync, bot
+platform-api/  NestJS: accounts, rosters, rating, replays, matchmaking
+frontend/      Phaser + Colyseus client
 ```
 
-Dois serviços que conversam por fila também contam uma história de microsserviços, que a vaga cita.
+Two services that talk through a queue also tell a microservices story, which the target role asks for.
 
-## Fora do MVP
+## Out of the MVP
 
-Progressão de classes e desbloqueio das avançadas, gestão de elenco, habilidade secundária de outra classe, campanha PvE, mais mapas, equipamentos, visual 3D.
+Class progression and unlocking advanced classes, roster management, a secondary ability from another class, a PvE campaign, more maps, equipment, 3D visuals.
 
-## Perguntas em aberto
+## Open questions
 
-- Universo compartilhado com o Magia Urbana ou próprio?
-- Munição e mana como recursos separados, ou um recurso único por classe?
-- Turno por iniciativa individual (cada unidade na sua vez) ou por time (o time inteiro age e passa a vez)? O individual é mais fiel à inspiração; o por time é mais simples para PvP.
-- Partidas PvP com tempo por turno? Quanto?
-- Morte permanente da unidade dentro da partida, ou contagem regressiva para ressuscitar?
+- Shared universe with Magia Urbana, or its own?
+- Ammunition and mana as separate resources, or one resource per class?
+- Initiative per unit (each unit takes its own turn) or per team (the whole team acts and then passes)? Per unit is more faithful to the inspiration; per team is simpler for PvP.
+- Turn timer in PvP matches? How long?
+- Permanent death of a unit within a match, or a countdown to return?
