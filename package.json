@@ -1,0 +1,27 @@
+{
+  "name": "mystic-alley",
+  "private": true,
+  "description": "Eldritch Alley: Tactics — RPG tático por turnos no navegador",
+  "workspaces": [
+    "backend/engine",
+    "backend/game-server",
+    "backend/platform-api",
+    "frontend"
+  ],
+  "scripts": {
+    "build": "npm run build -w @mystic-alley/engine && npm run build -w @mystic-alley/game-server && npm run build -w @mystic-alley/platform-api && npm run build -w @mystic-alley/frontend",
+    "test": "npm test -w @mystic-alley/engine",
+    "typecheck": "tsc -b backend/engine backend/game-server backend/platform-api",
+    "dev:frontend": "npm run dev -w @mystic-alley/frontend",
+    "dev:game-server": "npm run dev -w @mystic-alley/game-server",
+    "dev:platform-api": "npm run dev -w @mystic-alley/platform-api",
+    "infra:up": "docker compose up -d postgres redis localstack",
+    "infra:down": "docker compose down"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}
