@@ -90,13 +90,15 @@ Infrastructure is a proposal and needs approval before any resource is created.
   - Public access to the match server through a Cloudflare Tunnel at `eldritch-game.heronoa.com.br`. The client connects with `wss://eldritch-game.heronoa.com.br`. The instance has no inbound ports open to the internet.
   - TLS: both names are first-level subdomains of `heronoa.com.br`. Cloudflare's documentation says Universal SSL covers the root domain and one level of subdomains on a full setup, so no extra certificate is needed. This holds only if the zone uses a full setup, which must be confirmed in the dashboard.
   - Verification required before M2 is closed:
-    - A real WebSocket connection through the tunnel.
-    - An idle test: keep a connection open through a long turn with no player actions, and confirm that Colyseus heartbeats keep it alive past Cloudflare's idle timeout. The timeout value is not stated in the docs and must be measured.
+    - Done: a real WebSocket connection through the tunnel, and the idle test. Result below. The idle timeout value is not stated in the Cloudflare docs; it was measured at ~125 s.
+    - Pending: the reconnection test, in the acceptance test below.
     - Result:
 
       **Cloudflare Tunnel WebSocket test (2026-10-03):** WebSocket traffic reaches the local origin through the tunnel at `eldritch-game.heronoa.com.br`. An idle connection with no traffic was closed after ~125 s (close code 1006). With a ping every 25 s, the connection stayed open for the full 10-minute test. The test ended by timeout (exit code 124), not by a drop: 23 pongs were received, from 26 s to 576 s. Requirement: game-server heartbeat must stay well below ~100 s, and clients must reconnect.
 
-      Confirmed in the installed packages: `@colyseus/ws-transport` 0.16.5 defaults `pingInterval` to 3000 ms (`WebSocketTransport.mjs`, line 22). That is well below the ~100 s limit. It is a WebSocket-level ping sent by the server. The 10-minute test used a 25 s ping, so the default 3 s ping through the tunnel is still to be confirmed. Clients must also be tested for reconnection after a drop.
+      Confirmed in the installed packages: `@colyseus/ws-transport` 0.16.5 defaults `pingInterval` to 3000 ms (`WebSocketTransport.mjs`, line 22). That is well below the ~100 s limit. It is a WebSocket-level ping sent by the server.
+
+      **Pending, part of the M2 acceptance test:** with a real Colyseus room through the tunnel, keep one turn idle for more than 2 minutes (server-initiated pings at the 3 s default) and confirm the client reconnects after a forced drop.
 
 **Done when:** a complete match is played in the browser until one side is eliminated, on the published version. The comparison with Wizard Battle is decided here.
 
