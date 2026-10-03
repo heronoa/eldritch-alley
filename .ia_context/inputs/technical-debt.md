@@ -96,6 +96,20 @@ Status values: **Open**, **Closed**.
 - **Trigger:** the next change to the message handlers.
 - **Evidence:** `backend/game-server/src/battle-room.test.ts:52`.
 
+### DT-24 · The client's occupant lookup does not ignore permanently dead units
+- **Category:** Aderência (correção)
+- **Risk if untreated:** after a body is removed, the server accepts a move onto its tile, but the client treats the dead unit as an occupant and does not send the move. The player sees a legal move refused.
+- **Effort:** P
+- **Trigger:** before M3 (resurrection and bodies last longer), or together with the integration plan, whichever comes first.
+- **Evidence:** `frontend/src/game/selection.ts:21` versus `backend/engine/src/actions.ts:50`. No frontend test covers `permanentlyDead: true`.
+
+### DT-25 · The move-preview intent is declared but never returned
+- **Category:** Documentação (código morto)
+- **Risk if untreated:** the type suggests a behaviour that does not exist.
+- **Effort:** P
+- **Trigger:** when the match scene draws the move preview (m2a-integration), or remove the variant before then.
+- **Evidence:** `frontend/src/game/selection.ts:10`.
+
 ---
 
 ## Closed

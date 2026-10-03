@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 
-// Entry scene. Match and menu screens are added as their own scenes.
+// Entry scene. It holds the title just long enough to be read, then hands over to the lobby.
 export class BootScene extends Phaser.Scene {
   constructor() {
     super('boot');
@@ -14,5 +14,7 @@ export class BootScene extends Phaser.Scene {
         color: '#e8e2d0',
       })
       .setOrigin(0.5);
+
+    this.time.delayedCall(1000, () => this.scene.start('lobby'));
   }
 }
