@@ -68,6 +68,34 @@ Status values: **Open**, **Closed**.
 - **Trigger:** owner decision, before M2-a combat is tested by players.
 - **Evidence:** `docs/adr/0002-one-resource-per-class.md` addendum; `backend/engine/src/actions.ts` (`validateMove`); `backend/engine/src/ammo.test.ts`.
 
+### DT-20 · Validate the shape of client messages in the match server
+- **Category:** Security
+- **Risk if untreated:** a malformed `action` payload (for example, a move without `to`) throws inside the room handler, because the payload is cast and handed to the engine without a shape check or a try/catch. The damage is limited to that one match, but a client can break its own room.
+- **Effort:** P
+- **Trigger:** before the M2-b public deploy.
+- **Evidence:** `backend/game-server/src/battle-room.ts:80,117`.
+
+### DT-21 · The bot only starts playing after a human action
+- **Category:** Architecture (design)
+- **Risk if untreated:** if the initiative ever starts with a bot unit, nothing triggers the bot, the human gets `not-your-turn` on every action, and the match stalls. It does not happen today, because the sniper of team A has the highest speed.
+- **Effort:** P
+- **Trigger:** any change to the roster or the speeds, or the start of M3.
+- **Evidence:** `backend/game-server/src/battle-room.ts:124,128`.
+
+### DT-22 · ADR 0008 contradicts itself about setMetadata
+- **Category:** Documentation
+- **Risk if untreated:** the decision says `setMetadata` replaces the object, and the sentence after it says it merges. Whoever uses `setMetadata` later may follow the wrong one. No code uses it today.
+- **Effort:** P
+- **Trigger:** the first use of room metadata (matchmaking, M5).
+- **Evidence:** `docs/adr/0008-colyseus-0.18.md`, section Decision.
+
+### DT-23 · The "not-your-turn" refusal is tested only as a pure function
+- **Category:** Testing
+- **Risk if untreated:** the message path that sends `rejected` for a bot-turn action is not covered by a socket test; only `resolveHumanAction` is.
+- **Effort:** P
+- **Trigger:** the next change to the message handlers.
+- **Evidence:** `backend/game-server/src/battle-room.test.ts:52`.
+
 ---
 
 ## Closed
