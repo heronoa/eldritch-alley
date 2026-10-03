@@ -53,13 +53,13 @@ Open, with no ADR yet: whether the setting shares the Magia Urbana universe. It 
 
 Sizes are relative (P, M, G) and have no dates, because they depend on team availability.
 
-### M0. Foundation (P, nearly done)
+### M0. Foundation (P, done)
 
 - [x] Monorepo with workspaces, scaffolds and Docker Compose.
 - [x] Project renamed to `eldritch-alley`, documentation and comments in English.
 - [x] Architecture decisions recorded in `docs/adr/`.
 - [x] `CLAUDE.md` with the project rules.
-- [ ] CI with typecheck, test and build on every pull request.
+- [x] CI with typecheck, test and build on every pull request (green on develop, run 37134898835).
 
 **Done when:** CI is green on every pull request, and the ADRs are merged.
 
@@ -150,7 +150,7 @@ Infrastructure is a proposal and needs approval before any resource is created.
 
 ## Out of the MVP
 
-Class progression and unlocking advanced classes, roster management, secondary abilities, PvE campaign, more maps, equipment and 3D visuals. These go into a later roadmap, after feedback from M6.
+Everything in the MVP's out-of-scope list in [pitch.md](pitch.md), including progression, equipment and item drops, is described in the "Post-MVP: progression" section of the pitch. That section is direction, not scope: nothing in it enters milestones M0 to M6. Those items go into a later roadmap, after feedback from M6.
 
 ## Risks
 

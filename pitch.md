@@ -124,6 +124,87 @@ Two services that talk through a queue also tell a microservices story, which th
 
 Class progression and unlocking advanced classes, roster management, a secondary ability from another class, a PvE campaign, more maps, equipment, 3D visuals.
 
+## Post-MVP: progression
+
+Direction only. Nothing in this section enters the MVP (milestones M0 to M6 in the roadmap). It records design decided in conversation, to be detailed when the progression and economy milestones are planned.
+
+### Characters and classes
+
+- Every character starts in one of three base classes: Soldier, Initiated or Adept.
+- Characters earn class points per class in battle and spend them to buy that class's abilities. The name of these points is not decided yet; "Mastery" is the current candidate.
+- Build: one primary class with its full ability set, plus one secondary set taken from another class the character has practiced, limited to the abilities bought in that class.
+
+### Attributes: Nerve and Attunement
+
+- **Nerve** is the character's alignment with the physical world. **Attunement** is the alignment with the spiritual and esoteric world.
+- The two are independent attributes, each from 0 to 100, with a cap on their sum (tentative value: 120). Nobody maxes both.
+- Lore reading: the difference between them is the character's alignment (physical or esoteric); the sum is how intensely present the character is in both worlds.
+- Both are double-edged:
+
+| Attribute | Increases | Costs |
+|---|---|---|
+| Nerve | Weapon accuracy and critical chance, reaction chance (counter, overwatch), resistance to fear and stun | Esoteric effects received are weaker, both enemy spells and ally heals |
+| Attunement | Power of spells and heals the character casts | Esoteric effects received are stronger, both enemy spells and ally heals |
+
+- Four profiles, each meant to have a distinct role:
+
+| Profile | Nerve | Attunement | Plays as |
+|---|---|---|---|
+| Anchored | High | Low | Precise weapons and strong reactions; nearly immune to magic, but barely healed |
+| Medium | Low | High | Powerful spells and heals; takes heavy damage from enemy magic |
+| Volatile | Mid-high | Mid-high | Good with weapons and magic, vulnerable to everything |
+| Stoic | Low | Low | Average offense, resists almost every effect, good or bad; holds positions |
+
+- Formula structure: the strength of an esoteric effect depends on the caster's Attunement and the target's Attunement, in integer math (ADR 0005). Exact numbers come from balancing.
+- Validation rule: the system has two real dimensions only if at least three of the four profiles are good choices in different situations. If playtests converge on one profile, rebalance the costs. Use the bot to simulate matches between teams of different profiles.
+- In the MVP, each class uses fixed attribute values; players do not change them.
+
+### Permanent death and equipment
+
+- A character who dies in battle is lost for good, together with their equipment.
+- On death, one piece of the character's equipment drops on the map as an unknown item. Either team can pick it up, and its identity is only revealed to the player who picks it up.
+- **Technical requirement:** the item's identity must never be sent to clients before pickup. The server filters state per client; check the filtering features of Colyseus 0.16 when this is built.
+
+### Economy
+
+- No real money. New characters are bought with in-game currency earned in every match: more for the winner, some for the loser.
+- Anti-farming measures, to design when the economy exists: lower rewards against the bot, a daily cap on rewarded matches, no reward for matches that end too quickly.
+
+### Equipment and build
+
+**Equipment slots (6):** armor, helmet, main hand, off hand, and two accessories.
+
+**Hand rules.** Proposed default, to be confirmed in balancing:
+
+| Setup | Without proficiency | With proficiency |
+|---|---|---|
+| One large weapon | Uses both hands | Uses one hand |
+| Large weapon + off hand | Not allowed | Up to two large weapons |
+| Small weapon + off hand | Shield or another small weapon | Shield, small or large weapon |
+
+The proficiency that allows two large weapons is a support ability. Which class teaches it is not decided yet.
+
+Open questions for weapons that use ammunition when dual wielding:
+- Does each weapon have its own ammunition?
+- Does an attack with both weapons spend ammunition from both?
+- Does reloading reload both at once?
+
+**Ability types.** Each class provides four kinds of abilities:
+- an **active** ability set (its spells or techniques);
+- a **reaction** ability (triggers on its own, such as counter or overwatch);
+- a **movement** ability;
+- a **support** ability (passive). "Support" is the single name for passive abilities; "passive" is not a separate category.
+
+**Character build.** A character equips:
+- two active ability sets (for example, all bought Wizard spells and all bought Soldier techniques);
+- one reaction ability, from any class the character has had;
+- one movement ability, from any class the character has had;
+- one support ability, from any class the character has had.
+
+Only abilities the character has bought can be equipped.
+
+**MVP.** Each class uses a fixed loadout: fixed equipment and fixed abilities. Players do not change equipment or abilities in the MVP.
+
 ## Open questions
 
 - Shared universe with Magia Urbana, or its own? *Still open.*
