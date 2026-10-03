@@ -2,6 +2,7 @@
 // match scene, which owns it from then on.
 import Phaser from 'phaser';
 import { Session } from '../net/session';
+import { FONT, FONT_SIZE, TEXT_COLOR } from '../view/theme';
 
 /** Where the game server listens when the build declares no other endpoint. */
 const DEFAULT_ENDPOINT = 'ws://localhost:2567';
@@ -22,18 +23,18 @@ export class LobbyScene extends Phaser.Scene {
 
     this.add
       .text(width / 2, 180, 'Eldritch Alley: Tactics', {
-        fontFamily: 'sans-serif',
-        fontSize: '32px',
-        color: '#e8e2d0',
+        fontFamily: FONT,
+        fontSize: FONT_SIZE.title,
+        color: TEXT_COLOR,
       })
       .setOrigin(0.5);
 
     this.add
       .text(width / 2, 300, 'Jogar contra o bot', {
-        fontFamily: 'sans-serif',
+        fontFamily: FONT,
         fontSize: '20px',
         color: '#1b1a24',
-        backgroundColor: '#e8e2d0',
+        backgroundColor: TEXT_COLOR,
         padding: { x: 16, y: 8 },
       })
       .setOrigin(0.5)
@@ -44,7 +45,7 @@ export class LobbyScene extends Phaser.Scene {
 
     this.status = this.add
       .text(width / 2, 380, '', {
-        fontFamily: 'sans-serif',
+        fontFamily: FONT,
         fontSize: '16px',
         color: '#e0b050',
       })

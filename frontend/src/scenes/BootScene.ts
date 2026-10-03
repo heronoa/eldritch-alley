@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { FONT, FONT_SIZE, TEXT_COLOR } from '../view/theme';
 
 // Entry scene. It holds the title just long enough to be read, then hands over to the lobby.
 export class BootScene extends Phaser.Scene {
@@ -9,9 +10,9 @@ export class BootScene extends Phaser.Scene {
   create() {
     this.add
       .text(this.scale.width / 2, this.scale.height / 2, 'Eldritch Alley: Tactics', {
-        fontFamily: 'sans-serif',
-        fontSize: '32px',
-        color: '#e8e2d0',
+        fontFamily: FONT,
+        fontSize: FONT_SIZE.title,
+        color: TEXT_COLOR,
       })
       .setOrigin(0.5);
 

@@ -21,6 +21,7 @@ import {
   heightColor,
   pixelToCell,
 } from '../view/grid';
+import { FONT, FONT_SIZE, TEAM_COLOR, TEXT_COLOR } from '../view/theme';
 
 /** The side the person at the keyboard plays. */
 const HUMAN_TEAM: Team = 'A';
@@ -28,17 +29,20 @@ const HUMAN_TEAM: Team = 'A';
 /** Side of the unit rectangle drawn inside a tile. */
 const UNIT_SIZE = 36;
 
-const TEAM_COLOR: Record<Team, number> = { A: 0x7f9bc4, B: 0x2f2a3d };
 /** A unit that fell keeps its tile, greyed out, until the body is removed. */
 const CORPSE_COLOR = 0x4a4a4a;
 const SELECTED_COLOR = 0xffd166;
 const GRID_STROKE_COLOR = 0x000000;
 
-/** The log panel sits to the right of the board, the status line under it. */
+/** The log panel sits to the right of the board; the legend and the status line go under it. */
 const LOG_X = ORIGIN.x + BOARD_WIDTH * TILE_SIZE + 16;
 const LOG_Y = ORIGIN.y;
 const LOG_LINES = 8;
-const STATUS_Y = ORIGIN.y + BOARD_HEIGHT * TILE_SIZE + 16;
+const LEGEND_Y = ORIGIN.y + BOARD_HEIGHT * TILE_SIZE + 16;
+const STATUS_Y = LEGEND_Y + 24;
+
+/** What the colours on the board mean, for a player who has not been told. */
+const LEGEND = 'Azul claro: você · Escuro: bot · Amarelo: selecionado';
 
 /** The state carries no display name for a unit, so the log falls back to the id. */
 const UNIT_NAMES: UnitNames = {};
@@ -87,23 +91,29 @@ export class MatchScene extends Phaser.Scene {
     this.units = this.add.container(0, 0);
 
     this.logText = this.add.text(LOG_X, LOG_Y, '', {
-      fontFamily: 'monospace',
-      fontSize: '14px',
-      color: '#e8e2d0',
+      fontFamily: FONT,
+      fontSize: FONT_SIZE.log,
+      color: TEXT_COLOR,
       lineSpacing: 4,
     });
 
+    this.add.text(ORIGIN.x, LEGEND_Y, LEGEND, {
+      fontFamily: FONT,
+      fontSize: FONT_SIZE.log,
+      color: TEXT_COLOR,
+    });
+
     this.status = this.add.text(ORIGIN.x, STATUS_Y, '', {
-      fontFamily: 'sans-serif',
+      fontFamily: FONT,
       fontSize: '16px',
       color: '#e0b050',
     });
 
     this.result = this.add
       .text(this.scale.width / 2, this.scale.height / 2, '', {
-        fontFamily: 'sans-serif',
+        fontFamily: FONT,
         fontSize: '48px',
-        color: '#e8e2d0',
+        color: TEXT_COLOR,
       })
       .setOrigin(0.5);
 
@@ -220,9 +230,9 @@ export class MatchScene extends Phaser.Scene {
 
       const initial = this.add
         .text(centreX, centreY, initialOf(unit), {
-          fontFamily: 'sans-serif',
-          fontSize: '18px',
-          color: '#ffffff',
+          fontFamily: FONT,
+          fontSize: FONT_SIZE.unit,
+          color: TEXT_COLOR,
         })
         .setOrigin(0.5);
 

@@ -101,7 +101,9 @@ Status values: **Open**, **Closed**.
 - **Risk if untreated:** after a body is removed, the server accepts a move onto its tile, but the client treats the dead unit as an occupant and does not send the move. The player sees a legal move refused.
 - **Effort:** P
 - **Trigger:** before M3 (resurrection and bodies last longer), or together with the integration plan, whichever comes first.
-- **Evidence:** `frontend/src/game/selection.ts:21` versus `backend/engine/src/actions.ts:50`. No frontend test covers `permanentlyDead: true`.
+- **Visual side (same root):** `redrawUnits` in `frontend/src/scenes/MatchScene.ts:213` draws every unit in `state.units`, including a removed body, which stays in the list in its last cell. The client shows a grey ghost on a tile the server considers free. Fix it together with the lookup: skip `permanentlyDead` units when drawing.
+- **Race (suspected):** if the room is disposed at the end and the drop fires before `ended` is processed, `handleDrop` may try a reconnection to a finished match and show "Partida perdida" instead of the result. `handleDrop` returns early when `finished` is set, but the order of SDK messages is not confirmed. To confirm: observe the end of a real match in the browser (item in DT-26).
+- **Evidence:** `frontend/src/game/selection.ts:21` versus `backend/engine/src/actions.ts:50`; `frontend/src/scenes/MatchScene.ts:213` and `:177`. No frontend test covers `permanentlyDead: true`.
 
 ### DT-25 · The move-preview intent is declared but never returned
 - **Category:** Documentação (código morto)
@@ -109,6 +111,13 @@ Status values: **Open**, **Closed**.
 - **Effort:** P
 - **Trigger:** when the match scene draws the move preview (m2a-integration), or remove the variant before then.
 - **Evidence:** `frontend/src/game/selection.ts:10`.
+
+### DT-26 · Manual acceptance of the M2-a scenes is not recorded
+- **Category:** Testing
+- **Risk if untreated:** reconnection, "Versão incompatível", and the victory and defeat screens have no automated test and no recorded manual check. Their behaviour is unproven.
+- **Effort:** P
+- **Trigger:** before the merge of m2a-integration.
+- **Evidence:** `.ia_context/plans/m2a-integration.plan.md`, section 5 (manual items); no record in the PR.
 
 ---
 
