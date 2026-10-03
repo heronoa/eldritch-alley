@@ -85,10 +85,18 @@ Infrastructure is a proposal and needs approval before any resource is created.
 - Bot with a utility heuristic: attack the weakest target in range, seek height, retreat when health is low.
 - No login and no persistence. Anonymous session identity.
 - Published version:
-  - Frontend on Cloudflare Workers with Static Assets.
+  - Frontend on Cloudflare Workers with Static Assets, at `eldritch.heronoa.com.br`.
   - One match-server instance on AWS, proposed as a small EC2 instance running Docker Compose.
-  - Public access through a Cloudflare Tunnel at a subdomain such as `game.<domain>`, with TLS handled by Cloudflare. The client connects with `wss://`. The instance has no inbound ports open to the internet.
-  - Verification before the milestone is considered done: test a real WebSocket connection through the tunnel, including the idle timeout, which Cloudflare closes after a period without traffic. Colyseus heartbeats must keep the connection alive.
+  - Public access to the match server through a Cloudflare Tunnel at `eldritch-game.heronoa.com.br`. The client connects with `wss://eldritch-game.heronoa.com.br`. The instance has no inbound ports open to the internet.
+  - TLS: both names are first-level subdomains of `heronoa.com.br`. Cloudflare's documentation says Universal SSL covers the root domain and one level of subdomains on a full setup, so no extra certificate is needed. This holds only if the zone uses a full setup, which must be confirmed in the dashboard.
+  - Verification required before M2 is closed:
+    - A real WebSocket connection through the tunnel.
+    - An idle test: keep a connection open through a long turn with no player actions, and confirm that Colyseus heartbeats keep it alive past Cloudflare's idle timeout. The timeout value is not stated in the docs and must be measured.
+    - Result:
+
+      **Cloudflare Tunnel WebSocket test (2026-10-03):** WebSocket traffic reaches the local origin through the tunnel at `eldritch-game.heronoa.com.br`. An idle connection with no traffic was closed after ~125 s (close code 1006). With a ping every 25 s, the connection stayed open for the full 10-minute test. The test ended by timeout (exit code 124), not by a drop: 23 pongs were received, from 26 s to 576 s. Requirement: game-server heartbeat must stay well below ~100 s, and clients must reconnect.
+
+      Confirmed in the installed packages: `@colyseus/ws-transport` 0.16.5 defaults `pingInterval` to 3000 ms (`WebSocketTransport.mjs`, line 22). That is well below the ~100 s limit. It is a WebSocket-level ping sent by the server. The 10-minute test used a 25 s ping, so the default 3 s ping through the tunnel is still to be confirmed. Clients must also be tested for reconnection after a drop.
 
 **Done when:** a complete match is played in the browser until one side is eliminated, on the published version. The comparison with Wizard Battle is decided here.
 
