@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 
-// Cena de entrada. As telas de partida e de menu entram como cenas próprias.
+// Entry scene. Match and menu screens are added as their own scenes.
 export class BootScene extends Phaser.Scene {
   constructor() {
     super('boot');
