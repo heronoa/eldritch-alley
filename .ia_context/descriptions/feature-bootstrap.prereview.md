@@ -33,3 +33,4 @@
 - [ ] The Mermaid diagram in `ROADMAP.md` renders as a graph on GitHub
 - [ ] The "Open questions" links in `pitch.md` point to ADRs 0001, 0002, 0003 and 0004
 - [ ] The Git section of `CLAUDE.md` is present
+- [ ] The M2 section of `ROADMAP.md` matches the Cloudflare Tunnel test record: idle connection closed at ~125 s (1006), connection with a 25 s ping open for 10 minutes and ended by timeout. The reconnection test and the 3 s ping check are listed as pending M2 acceptance criteria
