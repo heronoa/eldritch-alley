@@ -190,6 +190,18 @@ describe('actions: attack', () => {
     expect(result.state.hasActed).toBe(true);
   });
 
+  it('lowers the health of the target and leaves its maximum health alone', () => {
+    const state = newMatch(twoUnitSetup({ attack: 4 }, { position: { x: 0, y: 1 }, health: 10 }));
+    const before = unitAt(state, 'b1');
+
+    const result = accepted(applyAction(state, { type: 'attack', actor: 'a1', target: 'b1' }));
+
+    const after = unitAt(result.state, 'b1');
+    expect(after.health).toBe(before.health - 4);
+    expect(after.maxHealth).toBe(before.maxHealth);
+    expect(after.maxHealth).toBe(10);
+  });
+
   it('marks a unit at zero health as defeated, keeps it in the state and drops it from the queue', () => {
     const state = newMatch(twoUnitSetup({ attack: 5 }, { position: { x: 0, y: 1 }, health: 5 }));
     const result = accepted(applyAction(state, { type: 'attack', actor: 'a1', target: 'b1' }));

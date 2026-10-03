@@ -1,5 +1,8 @@
-// Plain data of the battle engine. No behaviour lives here, so the whole match state stays
-// serializable, hashable and replayable.
+// Keep in sync with backend/game-server/src/protocol.ts.
+//
+// The engine's data types are copied here as plain types instead of imported, so the browser bundle
+// carries no dependency on the engine package. Only the shapes a client has to read are copied: the
+// engine's rng and its rules stay on the server.
 
 /** Identifies a unit inside one match. */
 export type UnitId = string;
@@ -20,7 +23,7 @@ export interface Board {
   levels: readonly number[];
 }
 
-/** The six equipment slots. An empty slot is null. Nothing reads these in M1. */
+/** The six equipment slots. An empty slot is null. */
 export interface Equipment {
   armor: string | null;
   helmet: string | null;
@@ -30,7 +33,7 @@ export interface Equipment {
   accessory2: string | null;
 }
 
-/** The ability slots. `activeSets` always holds two entries; an empty slot is null. Nothing reads these in M1. */
+/** The ability slots. `activeSets` always holds two entries; an empty slot is null. */
 export interface Abilities {
   activeSets: [string | null, string | null];
   reaction: string | null;
@@ -38,18 +41,14 @@ export interface Abilities {
   support: string | null;
 }
 
-/**
- * A unit as the setup describes it. The progression fields (nerve, attunement, class, equipment,
- * abilities) are carried from M1 on so the type does not have to be redesigned later, but no M1 rule
- * reads them.
- */
+/** A unit as the setup describes it. */
 export interface Unit {
   id: UnitId;
   team: Team;
   position: Position;
   speed: number;
   health: number;
-  /** Fixed damage per hit, in M1. */
+  /** Fixed damage per hit. */
   attack: number;
   /** Integer percentage, 0..100. */
   hitChance: number;
@@ -67,12 +66,11 @@ export interface Unit {
 }
 
 /**
- * A unit inside a match: setup data plus the state the match writes.
- * `defeated` is true from the death until the end of the match or the revival; while the body lasts
- * (`permanentlyDead` false) it occupies its tile and cannot be targeted.
+ * A unit inside a match. `defeated` is true from the death until the end of the match or the
+ * revival; while the body lasts (`permanentlyDead` false) it occupies its tile.
  */
 export interface UnitState extends Unit {
-  /** HP the unit entered the match with. The ceiling for `health`; no M2-a rule raises it. */
+  /** HP the unit entered the match with. The ceiling for `health`. */
   maxHealth: number;
   defeated: boolean;
   /** Rounds left in the magazine. Zero for classes without one. */
@@ -82,20 +80,8 @@ export interface UnitState extends Unit {
   corpseExpiresAtRound: number | null;
 }
 
-/** The seed, the map and the two squads. Both positions and unit ids must be unique inside a match. */
-export interface MatchSetup {
-  seed: number;
-  map: Board;
-  teams: [readonly Unit[], readonly Unit[]];
-}
-
-/** The mulberry32 state. Plain data, so it can be copied along with the rest of the match state. */
-export interface Rng {
-  state: number;
-}
-
-/** The whole match. `units` keeps setup order, because that order breaks speed ties. */
-export interface MatchState {
+/** The state a client may see: the whole match except the random source. */
+export interface PublicState {
   seed: number;
   board: Board;
   units: UnitState[];
@@ -108,12 +94,8 @@ export interface MatchState {
   round: number;
   /** Whether the current unit has spent its action on this turn. */
   hasActed: boolean;
-  rng: Rng;
   eventCount: number;
 }
-
-/** The state a client may see: everything except the random source. */
-export type PublicState = Omit<MatchState, 'rng'>;
 
 export type Action =
   | { type: 'move'; actor: UnitId; to: Position }
@@ -123,10 +105,6 @@ export type Action =
 
 export type Event =
   | { type: 'moved'; actor: UnitId; from: Position; to: Position }
-  /**
-   * `rngState` is the random source after the hit roll. Replay applies it instead of rolling again, so
-   * a rebuilt match draws the same numbers as the live one, even when a roll takes several draws.
-   */
   | {
       type: 'attacked';
       actor: UnitId;
@@ -157,6 +135,49 @@ export type RejectReason =
   | 'not-adjacent'
   | 'game-over';
 
-export type ActionResult =
-  | { ok: true; state: MatchState; events: Event[] }
-  | { ok: false; reason: RejectReason };
+/**
+ * Bumped whenever a payload changes shape. The client compares it with its own and refuses to play
+ * a match it cannot draw.
+ */
+export const PROTOCOL_VERSION = 2;
+
+/** The single room type of M2-a. One room is one match. */
+export const ROOM_NAME = 'battle';
+
+export const MESSAGE = {
+  /** Client to server: an action without its actor. The server fills the actor in from the turn. */
+  action: 'action',
+  /** Server to client: the public state, on join, after every accepted action and on reconnection. */
+  state: 'state',
+  /** Server to client: the events of the last accepted action, in order. */
+  events: 'events',
+  /** Server to client: why the action the client sent was refused. Only the sender receives it. */
+  rejected: 'rejected',
+  /** Server to client: the match is over. */
+  ended: 'ended',
+} as const;
+
+/**
+ * An action as the client may send it: the engine's Action without `actor`, which the server derives
+ * from whose turn it is. A client cannot choose the unit it acts with.
+ */
+export type ClientAction =
+  | { type: 'move'; to: Position }
+  | { type: 'attack'; target: UnitId }
+  | { type: 'reload' }
+  | { type: 'endTurn' };
+
+export interface StateMessage {
+  version: number;
+  state: PublicState;
+}
+
+export type EventsMessage = Event[];
+
+export interface RejectedMessage {
+  reason: RejectReason;
+}
+
+export interface EndedMessage {
+  winner: Team;
+}

@@ -11,3 +11,4 @@ Short records of decisions that shape the game and the codebase. Each ADR has a 
 | [0005](0005-deterministic-integer-engine.md) | Deterministic engine with integer math | Accepted |
 | [0006](0006-nestjs-11.md) | NestJS 11 instead of 12 | Accepted |
 | [0007](0007-reaction-abilities.md) | Reaction abilities and reaction slots | Accepted |
+| [0008](0008-colyseus-0.18.md) | Colyseus 0.18 for the match server | Accepted |

@@ -154,6 +154,8 @@ function toUnitState(unit: Unit): UnitState {
     position: { x: unit.position.x, y: unit.position.y },
     equipment: { ...unit.equipment },
     abilities: { ...unit.abilities, activeSets },
+    // The setup authors the starting health, and nothing starts a unit wounded, so it is the ceiling.
+    maxHealth: unit.health,
     defeated: false,
     ammo: unit.magazine ?? 0,
     permanentlyDead: false,

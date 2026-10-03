@@ -10,7 +10,7 @@
   ],
   "scripts": {
     "build": "npm run build -w @eldritch-alley/engine && npm run build -w @eldritch-alley/game-server && npm run build -w @eldritch-alley/platform-api && npm run build -w @eldritch-alley/frontend",
-    "test": "npm test -w @eldritch-alley/engine",
+    "test": "npm test -w @eldritch-alley/engine && npm test -w @eldritch-alley/game-server && npm test -w @eldritch-alley/frontend",
     "typecheck": "tsc -b backend/engine backend/game-server backend/platform-api",
     "dev:frontend": "npm run dev -w @eldritch-alley/frontend",
     "dev:game-server": "npm run dev -w @eldritch-alley/game-server",
