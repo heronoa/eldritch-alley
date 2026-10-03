@@ -44,6 +44,11 @@ export class Session {
   private readonly client: Client;
   private room: Room | null = null;
   private readonly subscriptions = new Set<Attach>();
+  /**
+   * The last state the server sent. A room sends it once, on join, and that often happens while the
+   * scene that draws it is still being created — so it is kept for whoever subscribes late.
+   */
+  private lastState: StateMessage | null = null;
 
   constructor(endpoint: string) {
     this.client = new Client(endpoint);
@@ -51,6 +56,8 @@ export class Session {
 
   /** Joins a match. The reconnection token is stored when the browser lets it be. */
   async connect(): Promise<void> {
+    // A new match brings a new board: the previous room's state must not be handed to anyone.
+    this.lastState = null;
     this.attachRoom(await this.client.joinOrCreate(ROOM_NAME));
   }
 
@@ -59,8 +66,14 @@ export class Session {
     this.room?.send(MESSAGE.action, action);
   }
 
+  /**
+   * The state of the match: the one already in hand right away, then every new one. Subscribing is
+   * therefore enough to draw the board, whenever the subscription happens to be made.
+   */
   onState(handler: (message: StateMessage) => void): () => void {
-    return this.subscribe((room) => room.onMessage(MESSAGE.state, handler));
+    const unsubscribe = this.subscribe((room) => room.onMessage(MESSAGE.state, handler));
+    if (this.lastState !== null) handler(this.lastState);
+    return unsubscribe;
   }
 
   onEvents(handler: (events: Event[]) => void): () => void {
@@ -102,6 +115,10 @@ export class Session {
     room.reconnection.enabled = false;
     this.room = room;
     writeToken(room.reconnectionToken);
+    // Registered first, so the cache is already up to date by the time the subscribers run.
+    room.onMessage(MESSAGE.state, (message: StateMessage) => {
+      this.lastState = message;
+    });
     for (const subscription of this.subscriptions) subscription(room);
   }
 

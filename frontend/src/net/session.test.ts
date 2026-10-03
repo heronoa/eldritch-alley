@@ -151,6 +151,43 @@ describe('Session against a room', () => {
     expect(states).toBe(0);
   });
 
+  it('hands the state of the room to a subscriber that arrives late', async () => {
+    const session = new Session('ws://localhost:2567');
+    await session.connect();
+    // The room sends the state on join, before the scene that draws it exists.
+    fake.rooms[0].emit(MESSAGE.state, { version: PROTOCOL_VERSION, state: null });
+
+    const states: unknown[] = [];
+    session.onState((message) => states.push(message));
+
+    expect(states).toEqual([{ version: PROTOCOL_VERSION, state: null }]);
+  });
+
+  it('hands over the last state, not the first', async () => {
+    const session = new Session('ws://localhost:2567');
+    await session.connect();
+    fake.rooms[0].emit(MESSAGE.state, { version: PROTOCOL_VERSION, state: 'primeiro' });
+    fake.rooms[0].emit(MESSAGE.state, { version: PROTOCOL_VERSION, state: 'segundo' });
+
+    const states: unknown[] = [];
+    session.onState((message) => states.push(message));
+
+    expect(states).toEqual([{ version: PROTOCOL_VERSION, state: 'segundo' }]);
+  });
+
+  it('forgets the state of the room it leaves, so a new match is not drawn with the old board', async () => {
+    const session = new Session('ws://localhost:2567');
+    await session.connect();
+    fake.rooms[0].emit(MESSAGE.state, { version: PROTOCOL_VERSION, state: null });
+
+    await session.connect();
+
+    const states: unknown[] = [];
+    session.onState((message) => states.push(message));
+
+    expect(states).toEqual([]);
+  });
+
   it('keeps the subscriptions when it reconnects into a new room', async () => {
     const session = new Session('ws://localhost:2567');
     await session.connect();

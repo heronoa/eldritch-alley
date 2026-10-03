@@ -3,7 +3,7 @@
 **Created on:** 2026-10-03
 **Source:** [match-server-m2.plan.md](match-server-m2.plan.md) (superseded by this index), [ROADMAP.md](../../ROADMAP.md) M2-a
 
-Order of execution: server first, then frontend logic, then integration, then design. Each plan has an acceptance list and can be reviewed alone. Frontend logic does not need the server to run; integration does.
+Order of execution: server first, then frontend logic, then integration, then design, then the HUD. Each plan has an acceptance list and can be reviewed alone. Frontend logic does not need the server to run; integration does.
 
 | # | Plan | Status | PR |
 |---|------|--------|----|
@@ -11,6 +11,7 @@ Order of execution: server first, then frontend logic, then integration, then de
 | 2 | [m2a-logic.plan.md](m2a-logic.plan.md): grid functions, protocol, net client, selection, log (no browser) | [ ] pendente | — |
 | 3 | [m2a-integration.plan.md](m2a-integration.plan.md): scenes, full match against the bot, reconnection in the browser | [ ] pendente | — |
 | 4 | [m2a-design.plan.md](m2a-design.plan.md): colours, labels and layout only | [ ] pendente | — |
+| 5 | [m2a-hud.index.md](m2a-hud.index.md): `maxHealth` and protocol v2, then the turn-order carousel, the action buttons and the unit status panel | [ ] pendente | — |
 
 ## Dependency notes
 
