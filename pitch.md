@@ -126,8 +126,8 @@ Class progression and unlocking advanced classes, roster management, a secondary
 
 ## Open questions
 
-- Shared universe with Magia Urbana, or its own?
-- Ammunition and mana as separate resources, or one resource per class?
-- Initiative per unit (each unit takes its own turn) or per team (the whole team acts and then passes)? Per unit is more faithful to the inspiration; per team is simpler for PvP.
-- Turn timer in PvP matches? How long?
-- Permanent death of a unit within a match, or a countdown to return?
+- Shared universe with Magia Urbana, or its own? *Still open.*
+- Ammunition and mana as separate resources, or one resource per class? *Resolved: one resource per class, see [ADR 0002](docs/adr/0002-one-resource-per-class.md).*
+- Initiative per unit (each unit takes its own turn) or per team (the whole team acts and then passes)? *Resolved: per unit, see [ADR 0001](docs/adr/0001-individual-initiative.md).*
+- Turn timer in PvP matches? How long? *Proposed: 30 seconds, to be revised after playtest, see [ADR 0004](docs/adr/0004-pvp-turn-timer.md).*
+- Permanent death of a unit within a match, or a countdown to return? *Resolved: permanent, see [ADR 0003](docs/adr/0003-permanent-death.md).*

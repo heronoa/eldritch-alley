@@ -30,3 +30,13 @@ docs/adr/         architecture decision records
 ## Precedence
 
 When sources disagree: accepted ADR > `CLAUDE.md` > plans.
+
+## Git
+
+- Never run `git commit`, `git push`, `git merge`, `git rebase`, `git reset`, `git tag`
+  or any command that deletes branches or changes the remote. Heron writes every commit
+  and pushes himself.
+- Read-only git commands are allowed: `git status`, `git diff`, `git log`, `git show`,
+  `git branch` (listing only).
+- When a task is done, leave the changes uncommitted and propose how to split them into
+  commits, with a suggested Conventional Commits message for each group of files.
