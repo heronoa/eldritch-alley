@@ -20,6 +20,7 @@ function makeUnit(overrides: Partial<Unit> & Pick<Unit, 'id' | 'team' | 'positio
     range: 1,
     movement: 4,
     nerve: 50,
+    magazine: null,
     attunement: 50,
     primaryClass: 'soldier',
     equipment: {
@@ -192,6 +193,21 @@ describe('publicState', () => {
       if (key === 'rng') continue;
       expect(view[key as keyof typeof view]).toEqual(state[key as keyof MatchState]);
     }
+  });
+
+  it('returns an independent copy, so changing the view cannot change the state', () => {
+    const state = newMatch(makeSetup());
+    const view = publicState(state);
+
+    view.units[0].position.x = 6;
+    view.units[0].equipment.mainHand = 'changed';
+    view.board.levels[0] = 9;
+    view.initiative.push('ghost');
+
+    expect(state.units[0].position.x).toBe(0);
+    expect(state.units[0].equipment.mainHand).toBeNull();
+    expect(state.board.levels[0]).toBe(0);
+    expect(state.initiative).toEqual(['a1', 'b1']);
   });
 
   it('is the same for two states that differ only in rng state', () => {

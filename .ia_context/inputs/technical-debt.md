@@ -15,35 +15,7 @@ Status values: **Open**, **Closed**.
 - **Trigger:** implementing equipment drops (post-MVP).
 - **Evidence:** `backend/engine/src/match.ts`, `publicState`. It filters only the rng; there is no per-viewer filter.
 
-### DT-05 · Defeated units occupy their cell
-- **Category:** Rules
-- **Risk if untreated:** a resurrected unit (ADR 0003, Priest ability) could be placed on a cell another unit now occupies.
-- **Effort:** P
-- **Trigger:** implementing resurrection (M3).
-- **Evidence:** `backend/engine/src/actions.ts`, `occupantAt` (ignores defeated units, so a cell of a defeated unit is free to enter).
 
-### DT-07 · `publicState` returns shared references
-- **Category:** Security / architecture
-- **Risk if untreated:** a server that mutates the view it sends to a client also mutates the authoritative state.
-- **Effort:** P
-- **Trigger:** integrating the engine into the match server (M2).
-- **Evidence:** `backend/engine/src/match.ts`, `publicState` (a shallow rest spread).
-
-### DT-08 · Known vulnerabilities in dependencies
-- **Category:** Security
-- **Risk if untreated:** `npm audit` reports 18 advisories: 4 high, 12 moderate, 2 low. High: `ts-node-dev`, `chokidar` and `braces` (dev tooling, no fix available) and `nanoid` (fixed only by Colyseus 0.18). Colyseus 0.16 advisories (`colyseus`, `@colyseus/ws-transport`, `@colyseus/core`, `@colyseus/redis-driver`) only have fixes in a major version (0.18). Some moderate advisories have fixes without a major bump (`@colyseus/auth`, `@colyseus/redis-presence`, `@colyseus/uwebsockets-transport`, `grant`, `request-oauth`, `uuid`, `elliptic`, `jwk-to-pem`).
-- **Effort:** M for the Colyseus migration; P for the non-major fixes.
-- **Trigger:** start of M2 (the match server depends on Colyseus). Non-major fixes can go at any time, through `npm audit fix` without `--force`, after review.
-- **Evidence:** `npm audit` output, run on 2026-10-03.
-
-
-
-### DT-11 · Reaction windows are not designed
-- **Category:** Architecture
-- **Risk if untreated:** reaction abilities (counter, overwatch) need actions taken during another unit's turn. The turn model in M1 does not allow that, and M1 does not implement it.
-- **Effort:** M
-- **Trigger:** before M3 starts abilities. Candidate for an ADR.
-- **Evidence:** `.ia_context/plans/engine-m1.plan.md`, decisions table ("Events per action").
 
 ### DT-12 · Frontend bundle size warning
 - **Category:** Performance
@@ -67,12 +39,35 @@ Status values: **Open**, **Closed**.
 - **Trigger:** M3 balancing.
 - **Evidence:** `backend/engine/src/*.test.ts` fixtures.
 
-### DT-16 · Post-MVP naming: "Initiated" vs "Initiate"
-- **Category:** Documentation
-- **Risk if untreated:** the base class is named "Initiated" in the pitch, and "Initiate" in the post-MVP spec as first written. Code and docs must use one name.
+
+### DT-05 · Resurrection needs its implementation
+- **Category:** Rules
+- **Risk if untreated:** resurrection (two steps, ADR 0003 addendum) is not implemented. Bodies occupy their tiles (implemented in M1, round counter included), so the engine is ready for it.
+- **Effort:** M
+- **Trigger:** implementing resurrection (M3).
+- **Evidence:** `docs/adr/0003-permanent-death.md` addendum; `backend/engine/src/corpses.test.ts`.
+
+### DT-08 · Known vulnerabilities in dependencies (one high left, on the server path)
+- **Category:** Security
+- **Risk if untreated:** `npm audit` reports 15 advisories: 1 high, 12 moderate, 2 low. The high is `nanoid` (<=3.3.17), used by `@colyseus/core` on the server path, and it is fixed only by Colyseus 0.18. Most moderate and low advisories are fixed only by Colyseus 0.18 or by `overrides` in transitive packages pinned by Colyseus 0.16.
+- **Done on 2026-10-03:** `ts-node-dev` (and with it the high advisories `chokidar` and `braces`, which had no fix) was replaced by `tsx` in the dev scripts of `game-server` and `platform-api`. Tests, typecheck and build pass. The `nanoid` high remains.
+- **Effort:** M (Colyseus 0.18 migration, with its own ADR).
+- **Trigger:** start of M2. **Gate:** the public deploy of M2 does not ship until the Colyseus 0.18 migration is done and `npm audit` shows no high advisory on the server path (roadmap, M2).
+- **Evidence:** `npm audit` run on 2026-10-03 after the `tsx` swap (1 high, 15 total); `backend/*/package.json` dev scripts.
+
+### DT-17 · Reaction windows, slots and counter-attacks in the engine
+- **Category:** Rules
+- **Risk if untreated:** reactions (counterspell, counter-attack) are decided (ADR 0007) but cannot be played yet. The engine has no reaction window, no reaction slots and no pending-response state.
+- **Effort:** M
+- **Trigger:** M3, before reaction skills are added.
+- **Evidence:** `docs/adr/0007-reaction-abilities.md`; the M1 engine has no reaction code.
+
+### DT-18 · Movement after reloading: rule to confirm
+- **Category:** Rules / plan alignment
+- **Risk if untreated:** the owner's answer said a unit may move "before or after" reloading. The code follows the move-then-act rule (DT-09): movement is allowed before reloading, not after.
 - **Effort:** P
-- **Trigger:** confirm with the owner, then apply everywhere.
-- **Evidence:** `pitch.md`, Post-MVP section.
+- **Trigger:** owner decision, before M2-a combat is tested by players.
+- **Evidence:** `docs/adr/0002-one-resource-per-class.md` addendum; `backend/engine/src/actions.ts` (`validateMove`); `backend/engine/src/ammo.test.ts`.
 
 ---
 
@@ -80,6 +75,10 @@ Status values: **Open**, **Closed**.
 
 | ID | Item | Resolution |
 |---|---|---|
+| DT-07 | `publicState` returned shared references | Deep copy (`cloneData` in `match.ts`). Tested by `match.test.ts`. |
+| DT-11 | Reaction windows were not designed | Decided in ADR 0007 (Accepted). Implementation tracked as DT-17. |
+| DT-16 | "Initiated" vs "Initiate" | Kept "Initiated"; the pitch and the tables use it. |
+| DT-17 | Implement reactions in the engine | Added as an open item for M3 (see below). |
 | DT-09 | Movement allowed after the action was spent | `validateMove` rejects with `already-acted` once the action is spent. Covered by `actions.test.ts`. |
 | DT-10 | `unit-defeated` used `unit` while other events use `actor` or `target` | The field is now `target`, matching `attacked`. Covered by `actions.test.ts` and `events.test.ts`. |
 | DT-14 | M1 plan checklists unmarked; red phase not recorded | All 36 items marked, each mapped to a test. A retroactive red check is recorded in plan section 9. The original red-first order cannot be shown. |

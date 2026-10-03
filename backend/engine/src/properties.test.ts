@@ -24,6 +24,7 @@ function makeUnit(overrides: Partial<Unit> & Pick<Unit, 'id' | 'team' | 'positio
     range: 1,
     movement: 4,
     nerve: 50,
+    magazine: null,
     attunement: 50,
     primaryClass: 'soldier',
     equipment: {

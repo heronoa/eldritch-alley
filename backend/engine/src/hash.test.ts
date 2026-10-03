@@ -21,6 +21,7 @@ function makeUnit(overrides: Partial<Unit> & Pick<Unit, 'id' | 'team' | 'positio
     range: 1,
     movement: 4,
     nerve: 50,
+    magazine: null,
     attunement: 50,
     primaryClass: 'soldier',
     equipment: {
@@ -87,50 +88,17 @@ describe('hashState', () => {
 
   it('does not change with object key order', () => {
     const state = newMatch(makeSetup());
-
-    const reorderedUnits = state.units.map((unit) => ({
-      defeated: unit.defeated,
-      abilities: {
-        support: unit.abilities.support,
-        movement: unit.abilities.movement,
-        reaction: unit.abilities.reaction,
-        activeSets: unit.abilities.activeSets,
-      },
-      equipment: {
-        accessory2: unit.equipment.accessory2,
-        accessory1: unit.equipment.accessory1,
-        offHand: unit.equipment.offHand,
-        mainHand: unit.equipment.mainHand,
-        helmet: unit.equipment.helmet,
-        armor: unit.equipment.armor,
-      },
-      primaryClass: unit.primaryClass,
-      attunement: unit.attunement,
-      nerve: unit.nerve,
-      movement: unit.movement,
-      range: unit.range,
-      hitChance: unit.hitChance,
-      attack: unit.attack,
-      health: unit.health,
-      speed: unit.speed,
-      position: { y: unit.position.y, x: unit.position.x },
-      team: unit.team,
-      id: unit.id,
-    }));
-
-    const reordered: MatchState = {
-      eventCount: state.eventCount,
-      rng: state.rng,
-      hasActed: state.hasActed,
-      movementLeft: state.movementLeft,
-      currentIndex: state.currentIndex,
-      initiative: state.initiative,
-      units: reorderedUnits,
-      board: state.board,
-      seed: state.seed,
+    // Same data, every object's keys written in reverse. Arrays keep their order, as they are state.
+    const reverseKeys = (value: unknown): unknown => {
+      if (Array.isArray(value)) return value.map(reverseKeys);
+      if (value !== null && typeof value === 'object') {
+        const entries = Object.entries(value).reverse();
+        return Object.fromEntries(entries.map(([key, item]) => [key, reverseKeys(item)]));
+      }
+      return value;
     };
 
-    expect(hashState(reordered)).toBe(hashState(state));
+    expect(hashState(reverseKeys(state) as MatchState)).toBe(hashState(state));
   });
 
   it('changes when the unit order changes, because that order breaks speed ties', () => {

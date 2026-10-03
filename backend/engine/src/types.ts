@@ -55,6 +55,8 @@ export interface Unit {
   hitChance: number;
   /** Reach in Chebyshev distance. */
   range: number;
+  /** Rounds in the magazine, or null for classes that use no ammunition. */
+  magazine: number | null;
   /** Movement budget for one turn. */
   movement: number;
   nerve: number;
@@ -64,9 +66,18 @@ export interface Unit {
   abilities: Abilities;
 }
 
-/** A unit inside a match: setup data plus the state the match writes. */
+/**
+ * A unit inside a match: setup data plus the state the match writes.
+ * `defeated` is true from the death until the end of the match or the revival; while the body lasts
+ * (`permanentlyDead` false) it occupies its tile and cannot be targeted.
+ */
 export interface UnitState extends Unit {
   defeated: boolean;
+  /** Rounds left in the magazine. Zero for classes without one. */
+  ammo: number;
+  permanentlyDead: boolean;
+  /** The round in which the body is removed and the death becomes permanent. Null while alive. */
+  corpseExpiresAtRound: number | null;
 }
 
 /** The seed, the map and the two squads. Both positions and unit ids must be unique inside a match. */
@@ -91,6 +102,8 @@ export interface MatchState {
   currentIndex: number;
   /** Movement left for the current unit on this turn. */
   movementLeft: number;
+  /** Starts at 1; rises by one each time the turn order wraps back to the first unit. */
+  round: number;
   /** Whether the current unit has spent its action on this turn. */
   hasActed: boolean;
   rng: Rng;
@@ -103,6 +116,7 @@ export type PublicState = Omit<MatchState, 'rng'>;
 export type Action =
   | { type: 'move'; actor: UnitId; to: Position }
   | { type: 'attack'; actor: UnitId; target: UnitId }
+  | { type: 'reload'; actor: UnitId }
   | { type: 'endTurn'; actor: UnitId };
 
 export type Event =
@@ -111,9 +125,20 @@ export type Event =
    * `rngState` is the random source after the hit roll. Replay applies it instead of rolling again, so
    * a rebuilt match draws the same numbers as the live one, even when a roll takes several draws.
    */
-  | { type: 'attacked'; actor: UnitId; target: UnitId; hit: boolean; damage: number; rngState: number }
+  | {
+      type: 'attacked';
+      actor: UnitId;
+      target: UnitId;
+      hit: boolean;
+      damage: number;
+      rngState: number;
+      /** True when the attack used a round from the magazine. */
+      ammoSpent: boolean;
+    }
+  | { type: 'reloaded'; actor: UnitId }
   | { type: 'unit-defeated'; target: UnitId }
-  | { type: 'turn-ended'; actor: UnitId; next: UnitId };
+  | { type: 'corpse-removed'; target: UnitId }
+  | { type: 'turn-ended'; actor: UnitId; next: UnitId; round: number };
 
 /** Why an action was refused. A refused action never changes the state and never produces an event. */
 export type RejectReason =
@@ -125,6 +150,8 @@ export type RejectReason =
   | 'already-acted'
   | 'target-out-of-range'
   | 'target-invalid'
+  | 'no-magazine'
+  | 'magazine-full'
   | 'not-adjacent'
   | 'game-over';
 

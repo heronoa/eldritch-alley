@@ -19,6 +19,7 @@ import type {
 
 type MoveAction = Extract<Action, { type: 'move' }>;
 type AttackAction = Extract<Action, { type: 'attack' }>;
+type ReloadAction = Extract<Action, { type: 'reload' }>;
 
 /** A step costs 1, climbing one level adds 1, descending adds nothing. */
 export function moveCost(board: Board, from: Position, to: Position): number {
@@ -43,8 +44,10 @@ export function isGameOver(state: MatchState): boolean {
 }
 
 function occupantAt(state: MatchState, position: Position): UnitState | undefined {
+  // A living unit and a body both occupy their tile; a permanently dead unit does not.
   return state.units.find(
-    (unit) => isAlive(unit) && unit.position.x === position.x && unit.position.y === position.y,
+    (unit) =>
+      !unit.permanentlyDead && unit.position.x === position.x && unit.position.y === position.y,
   );
 }
 
@@ -58,6 +61,30 @@ export function validateAction(state: MatchState, action: Action): RejectReason 
 
   if (action.type === 'move') return validateMove(state, action);
   if (action.type === 'attack') return validateAttack(state, action);
+  if (action.type === 'reload') return validateReload(state, action);
+  return null;
+}
+
+/** A unit with a magazine that is empty attacks in melee: adjacent only. */
+function isMelee(unit: UnitState): boolean {
+  return unit.magazine !== null && unit.ammo === 0;
+}
+
+/** A unit with a magazine that still has rounds spends one round on each attack. */
+function firesRound(unit: UnitState): boolean {
+  return unit.magazine !== null && unit.ammo > 0;
+}
+
+/** Melee damage: half the attack, rounded down, as a shift so no division is used. */
+function meleeDamage(attack: number): number {
+  return attack >> 1;
+}
+
+function validateReload(state: MatchState, action: ReloadAction): RejectReason | null {
+  const actor = unitById(state, action.actor);
+  if (actor.magazine === null) return 'no-magazine';
+  if (state.hasActed) return 'already-acted';
+  if (actor.ammo >= actor.magazine) return 'magazine-full';
   return null;
 }
 
@@ -85,7 +112,8 @@ function validateAttack(state: MatchState, action: AttackAction): RejectReason |
 
   if (!target || !isAlive(target)) return 'target-invalid';
   if (target.id === attacker.id || target.team === attacker.team) return 'target-invalid';
-  if (distance(attacker.position, target.position) > attacker.range) return 'target-out-of-range';
+  const reach = isMelee(attacker) ? 1 : attacker.range;
+  if (distance(attacker.position, target.position) > reach) return 'target-out-of-range';
   return null;
 }
 
@@ -100,7 +128,24 @@ function nextUnitId(state: MatchState): UnitId {
  */
 export function buildEvents(state: MatchState, action: Action, rng: Rng): Event[] {
   if (action.type === 'endTurn') {
-    return [{ type: 'turn-ended', actor: action.actor, next: nextUnitId(state) }];
+    const next = nextUnitId(state);
+    // The round rises when the order wraps back to the first unit.
+    const wraps = state.currentIndex + 1 >= state.initiative.length;
+    const round = wraps ? state.round + 1 : state.round;
+
+    const events: Event[] = [{ type: 'turn-ended', actor: action.actor, next, round }];
+    // Bodies whose time is up are removed as the new round starts, in setup order.
+    for (const unit of state.units) {
+      if (
+        unit.defeated &&
+        !unit.permanentlyDead &&
+        unit.corpseExpiresAtRound !== null &&
+        unit.corpseExpiresAtRound <= round
+      ) {
+        events.push({ type: 'corpse-removed', target: unit.id });
+      }
+    }
+    return events;
   }
 
   if (action.type === 'move') {
@@ -115,12 +160,24 @@ export function buildEvents(state: MatchState, action: Action, rng: Rng): Event[
     ];
   }
 
+  if (action.type === 'reload') {
+    return [{ type: 'reloaded', actor: action.actor }];
+  }
+
   const attacker = unitById(state, action.actor);
   const target = unitById(state, action.target);
   const hit = resolveHit(attacker, target, rng);
-  const damage = hit ? attacker.attack : 0;
+  const damage = hit ? (isMelee(attacker) ? meleeDamage(attacker.attack) : attacker.attack) : 0;
   const events: Event[] = [
-    { type: 'attacked', actor: attacker.id, target: target.id, hit, damage, rngState: rng.state },
+    {
+      type: 'attacked',
+      actor: attacker.id,
+      target: target.id,
+      hit,
+      damage,
+      rngState: rng.state,
+      ammoSpent: firesRound(attacker),
+    },
   ];
 
   if (target.health - damage <= 0) events.push({ type: 'unit-defeated', target: target.id });

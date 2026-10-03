@@ -205,6 +205,21 @@ Only abilities the character has bought can be equipped.
 
 **MVP.** Each class uses a fixed loadout: fixed equipment and fixed abilities. Players do not change equipment or abilities in the MVP.
 
+### Reactions
+
+Reactions are abilities that trigger during another unit's action, not during the unit's own turn. A counterspell interrupts an enemy spell and deals damage to the caster; a counter-attack strikes back when a unit takes a blow. Each reaction spends a reaction slot.
+
+- **Slots** depend on Nerve, with a minimum of 3 (see [ADR 0007](docs/adr/0007-reaction-abilities.md) for the bands).
+- **Slots refresh** at the start of the unit's own turn.
+- **Cost:** every reaction costs one slot for now. Later skills may spend more or fewer.
+- **Interruption:** a reactable event pauses the match in a reaction window; the target player accepts or declines before the action resolves.
+
+### Bodies and resurrection
+
+A defeated unit becomes a body on its tile. The body blocks the tile and cannot be targeted, for a number of rounds that depends on Nerve: 3 rounds (Nerve 0–49), 4 (50–99) or 5 (100). When that time is up, the body disappears, an item appears in its place, and the character is permanently dead. The death is recorded, not deleted. If the match ends first, or the unit is revived, it returns to its team as usual (see [ADR 0003](docs/adr/0003-permanent-death.md)).
+
+Resurrection has two steps: first the caster selects the defeated character, then selects an empty, unoccupied tile in range to place it on.
+
 ## Open questions
 
 - Shared universe with Magia Urbana, or its own? *Still open.*

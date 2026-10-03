@@ -103,6 +103,7 @@ function validateUnit(unit: Unit, board: Board): void {
   requireNonNegativeInteger(unit.movement, `${unit.id}.movement`);
   requireIntegerInRange(unit.hitChance, `${unit.id}.hitChance`, 0, 100);
   requireIntegerInRange(unit.nerve, `${unit.id}.nerve`, 0, 100);
+  if (unit.magazine !== null) requireIntegerInRange(unit.magazine, `${unit.id}.magazine`, 0, 999);
   requireIntegerInRange(unit.attunement, `${unit.id}.attunement`, 0, 100);
 
   if (typeof unit.primaryClass !== 'string' || unit.primaryClass.length === 0) {
@@ -154,6 +155,9 @@ function toUnitState(unit: Unit): UnitState {
     equipment: { ...unit.equipment },
     abilities: { ...unit.abilities, activeSets },
     defeated: false,
+    ammo: unit.magazine ?? 0,
+    permanentlyDead: false,
+    corpseExpiresAtRound: null,
   };
 }
 
@@ -176,6 +180,7 @@ export function newMatch(setup: MatchSetup): MatchState {
     initiative,
     currentIndex: 0,
     movementLeft: first ? first.movement : 0,
+    round: 1,
     hasActed: false,
     rng: createRng(setup.seed),
     eventCount: 0,
@@ -207,10 +212,24 @@ export function applyEvents(setup: MatchSetup, events: readonly Event[]): MatchS
   return state;
 }
 
-/** The state without the random source. This is what the server may send to a client. */
+/**
+ * Copies plain data recursively, so no array or object is shared with the state it came from.
+ * The engine's state is only plain data (see types.ts), so this covers all of it.
+ */
+function cloneData<T>(value: T): T {
+  if (Array.isArray(value)) return value.map((item) => cloneData(item)) as T;
+  if (value !== null && typeof value === 'object') {
+    const copy: Record<string, unknown> = {};
+    for (const [key, item] of Object.entries(value)) copy[key] = cloneData(item);
+    return copy as T;
+  }
+  return value;
+}
+
+/** The state without the random source, as an independent copy. This is what the server may send to a client. */
 export function publicState(state: MatchState): PublicState {
   const { rng, ...view } = state;
-  return view;
+  return cloneData(view);
 }
 
 /**

@@ -32,6 +32,7 @@ function makeUnit(overrides: Partial<Unit> & Pick<Unit, 'id' | 'team' | 'positio
     range: 1,
     movement: 4,
     nerve: 50,
+    magazine: null,
     attunement: 50,
     primaryClass: 'soldier',
     equipment: {
@@ -172,7 +173,7 @@ describe('actions: attack', () => {
     const result = accepted(applyAction(state, { type: 'attack', actor: 'a1', target: 'b1' }));
 
     expect(result.events).toEqual([
-      { type: 'attacked', actor: 'a1', target: 'b1', hit: true, damage: 3, rngState: expect.any(Number) },
+      { type: 'attacked', actor: 'a1', target: 'b1', hit: true, damage: 3, rngState: expect.any(Number), ammoSpent: false },
     ]);
     expect(unitAt(result.state, 'b1').health).toBe(7);
     expect(result.state.hasActed).toBe(true);
@@ -183,7 +184,7 @@ describe('actions: attack', () => {
     const result = accepted(applyAction(state, { type: 'attack', actor: 'a1', target: 'b1' }));
 
     expect(result.events).toEqual([
-      { type: 'attacked', actor: 'a1', target: 'b1', hit: false, damage: 0, rngState: expect.any(Number) },
+      { type: 'attacked', actor: 'a1', target: 'b1', hit: false, damage: 0, rngState: expect.any(Number), ammoSpent: false },
     ]);
     expect(unitAt(result.state, 'b1').health).toBe(10);
     expect(result.state.hasActed).toBe(true);
@@ -306,7 +307,7 @@ describe('actions: endTurn', () => {
     expect(moved.state.movementLeft).toBe(3);
 
     const ended = accepted(applyAction(moved.state, { type: 'endTurn', actor: 'a1' }));
-    expect(ended.events).toEqual([{ type: 'turn-ended', actor: 'a1', next: 'b1' }]);
+    expect(ended.events).toEqual([{ type: 'turn-ended', actor: 'a1', next: 'b1', round: 1 }]);
     expect(currentUnitId(ended.state)).toBe('b1');
     expect(ended.state.hasActed).toBe(false);
     expect(ended.state.movementLeft).toBe(3);
