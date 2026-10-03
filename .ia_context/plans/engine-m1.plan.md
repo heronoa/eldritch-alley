@@ -99,66 +99,66 @@ Test fixtures (small maps and two-unit squads) live inside the test files. No co
 Run with `npm test` in the engine workspace. The file names follow the modules.
 
 **rng**
-- [ ] Same seed produces the same first 16 values; a fixed reference sequence is asserted for seed 1.
-- [ ] Different seeds diverge within the first values.
-- [ ] `nextInt` stays inside the inclusive range and returns integers only.
+- [x] Same seed produces the same first 16 values; a fixed reference sequence is asserted for seed 1.
+- [x] Different seeds diverge within the first values.
+- [x] `nextInt` stays inside the inclusive range and returns integers only.
 
 **board**
-- [ ] `inBounds` accepts 0..7 and rejects -1 and 8.
-- [ ] Chebyshev distance: diagonal = 1, straight = 1, two cells away = 2, distance is symmetric.
+- [x] `inBounds` accepts 0..7 and rejects -1 and 8.
+- [x] Chebyshev distance: diagonal = 1, straight = 1, two cells away = 2, distance is symmetric.
 
 **initiative**
-- [ ] Higher speed acts first.
-- [ ] Equal speed: team A before team B, then list position.
-- [ ] A defeated unit leaves the queue, and the queue skips to the next unit.
+- [x] Higher speed acts first.
+- [x] Equal speed: team A before team B, then list position.
+- [x] A defeated unit leaves the queue, and the queue skips to the next unit.
 
 **actions: move**
-- [ ] Valid move on flat ground costs 1 per cell; the event and the remaining movement are correct.
-- [ ] Climbing one level costs 1 extra; descending costs no extra.
-- [ ] Climbing two levels in one step is rejected with `height-step-too-high`.
-- [ ] Moving into an occupied cell is rejected with `cell-occupied`.
-- [ ] Moving beyond the remaining movement is rejected with `not-enough-movement`.
-- [ ] Moving out of bounds is rejected with `out-of-bounds`.
-- [ ] A non-current unit cannot act: `not-your-turn`.
+- [x] Valid move on flat ground costs 1 per cell; the event and the remaining movement are correct.
+- [x] Climbing one level costs 1 extra; descending costs no extra.
+- [x] Climbing two levels in one step is rejected with `height-step-too-high`.
+- [x] Moving into an occupied cell is rejected with `cell-occupied`.
+- [x] Moving beyond the remaining movement is rejected with `not-enough-movement`.
+- [x] Moving out of bounds is rejected with `out-of-bounds`.
+- [x] A non-current unit cannot act: `not-your-turn`.
 
 **actions: attack**
-- [ ] Target at Chebyshev distance 1 is accepted; distance 2 is `target-out-of-range`.
-- [ ] A hit with a seeded roll applies `attack` damage and records `hit: true`.
-- [ ] A miss records `hit: false` and `damage: 0`.
-- [ ] A unit with zero health is marked `defeated`, stays in `state.units`, and is removed from the initiative queue (ADR 0003).
-- [ ] Attack that defeats a unit returns `attacked` followed by `unit-defeated`, in that order.
-- [ ] Hit chance is computed by `resolveHit`: with the same seed, changing only the attacker's accuracy input changes the hit result, and the state shape stays the same.
-- [ ] Attacking a dead or unknown target is rejected with `target-invalid`.
-- [ ] A second action in the same turn is rejected with `already-acted`.
+- [x] Target at Chebyshev distance 1 is accepted; distance 2 is `target-out-of-range`.
+- [x] A hit with a seeded roll applies `attack` damage and records `hit: true`.
+- [x] A miss records `hit: false` and `damage: 0`.
+- [x] A unit with zero health is marked `defeated`, stays in `state.units`, and is removed from the initiative queue (ADR 0003).
+- [x] Attack that defeats a unit returns `attacked` followed by `unit-defeated`, in that order.
+- [x] Hit chance is computed by `resolveHit`: with the same seed, changing only the attacker's accuracy input changes the hit result, and the state shape stays the same.
+- [x] Attacking a dead or unknown target is rejected with `target-invalid`.
+- [x] A second action in the same turn is rejected with `already-acted`.
 
 **actions: endTurn and game over**
-- [ ] `endTurn` produces `turn-ended` and the next unit becomes current.
-- [ ] When one team has no units left, actions return `game-over`.
+- [x] `endTurn` produces `turn-ended` and the next unit becomes current.
+- [x] When one team has no units left, actions return `game-over`.
 
 **rejections**
-- [ ] Every rejection returns `{ ok: false, reason }`, produces no event, and leaves the state object unchanged.
+- [x] Every rejection returns `{ ok: false, reason }`, produces no event, and leaves the state object unchanged.
 
 **events and replay**
-- [ ] `applyEvents(setup, events)` after a sequence of accepted actions gives the same hash as the live state.
-- [ ] A rejected action does not appear in the event list, and replay still matches.
+- [x] `applyEvents(setup, events)` after a sequence of accepted actions gives the same hash as the live state.
+- [x] A rejected action does not appear in the event list, and replay still matches.
 
 **hash**
-- [ ] FNV-1a matches reference vectors for known strings.
-- [ ] Changing one unit's health changes the hash.
-- [ ] Object key order does not change the hash (canonical serialization). Unit order in `state.units` is state, because it is the speed tie-break, so reordering units does change the hash.
+- [x] FNV-1a matches reference vectors for known strings.
+- [x] Changing one unit's health changes the hash.
+- [x] Object key order does not change the hash (canonical serialization). Unit order in `state.units` is state, because it is the speed tie-break, so reordering units does change the hash.
 
 **public view**
-- [ ] `publicState(state)` has no `rng` field, and its other fields equal the corresponding fields of `state`.
-- [ ] Two states that differ only in rng state produce the same `publicState`.
+- [x] `publicState(state)` has no `rng` field, and its other fields equal the corresponding fields of `state`.
+- [x] Two states that differ only in rng state produce the same `publicState`.
 
 **properties (fast-check is not added; a seeded generator drives the cases)**
-- [ ] For 200 seeds, a random sequence of candidate actions drawn from the same seeded generator: every accepted sequence replays to the same hash, and every rejection leaves the hash unchanged.
-- [ ] All numeric results (distance, cost, damage, hit roll) are integers across these runs.
+- [x] For 200 seeds, a random sequence of candidate actions drawn from the same seeded generator: every accepted sequence replays to the same hash, and every rejection leaves the hash unchanged.
+- [x] All numeric results (distance, cost, damage, hit roll) are integers across these runs.
 
 **guard**
-- [ ] `forbidden.test.ts` fails if any engine source contains a forbidden global or a floating-point division.
+- [x] `forbidden.test.ts` fails if any engine source contains a forbidden global or a floating-point division.
 
-Each rule above has at least one test that fails without the rule implemented. The first run must show these tests red before the implementation is written.
+Each rule above has at least one test that fails without the rule implemented. The plan asked for these tests to be red before the implementation existed. That order was not recorded, so it cannot be shown now. The retroactive check is in section 9.
 
 ### 6. Dependencies
 
@@ -178,3 +178,23 @@ Each rule above has at least one test that fails without the rule implemented. T
 1. **Movement budget per turn.** The plan uses a fixture value in tests (for example 4). The real value per class comes in M3. Confirm that the engine takes the budget from the unit's data, not a constant.
 2. **Turn model.** Move, then one action, then `endTurn`. The alternative is to end the turn automatically after the action. The plan uses the explicit `endTurn`.
 3. **`applyEvents` signature.** The roadmap wrote `applyEvents(seed, events)`. The plan takes `applyEvents(setup, events)`, because the initial map and units cannot be rebuilt from the seed alone. The setup carries the seed.
+
+### 9. Verification record
+
+**Checklist.** Every item in section 5 is marked. Each one maps to a test in `backend/engine/src`:
+
+- rng, board, initiative, move, attack, endTurn, game over, rejections, events and replay, hash, public view, properties, guard: the test files of the same names.
+- The "same hash as the live state" and "rejected actions are not in the event list" items are covered by `properties.test.ts`, which compares the full state after replay and only ever replays accepted events.
+- The "integers only" item covers distance, cost and damage in `properties.test.ts`, and the hit roll in `rng.test.ts`, because the roll is internal and is never returned as a value.
+
+**Red check, run retroactively on 2026-10-03.** The implementation files were moved out of `src` and the suite was run. All 10 test files failed with `Cannot find module` (for example `./actions`, `./board`, `./events`, `./hash`), so the tests depend on the implementation and cannot pass without it. The files were then restored, and the suite passed again.
+
+**What this does not prove.** It does not show that each test was red before its rule was written. The order of creation was not recorded, and the retroactive check cannot recover it. Future milestones should record the red run as it happens.
+
+**Changes made after the first implementation, all covered by tests:**
+- Replay applies the random source recorded in `attacked` (`rngState`). Before this, a rebuilt match rolled differently from the live match. Covered by `properties.test.ts`.
+- Rolls use rejection sampling, so they have no modulo bias. Covered by `rng.test.ts`.
+- `nextInt` rejects empty ranges and non-integer bounds. Covered by `rng.test.ts`.
+- `newMatch` rejects empty teams and duplicate unit ids. Covered by `match.test.ts`.
+- Movement after the action is spent is rejected with `already-acted`. Covered by `actions.test.ts`.
+- The `unit-defeated` event field is `target`, matching `attacked`. Covered by `actions.test.ts` and `events.test.ts`.

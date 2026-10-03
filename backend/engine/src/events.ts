@@ -35,9 +35,9 @@ export function applyEvent(state: MatchState, event: Event): MatchState {
     }
 
     case 'unit-defeated': {
-      const removedAt = next.initiative.indexOf(event.unit);
-      unitById(next, event.unit).defeated = true;
-      next.initiative = removeFromInitiative(next.initiative, event.unit);
+      const removedAt = next.initiative.indexOf(event.target);
+      unitById(next, event.target).defeated = true;
+      next.initiative = removeFromInitiative(next.initiative, event.target);
       // A unit removed before the current one shifts the turn back by one slot. A queue that shrank
       // past the pointer, including an empty one, restarts at the head.
       if (removedAt >= 0 && removedAt < next.currentIndex) next.currentIndex -= 1;

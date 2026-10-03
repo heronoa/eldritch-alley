@@ -112,7 +112,7 @@ export type Event =
    * a rebuilt match draws the same numbers as the live one, even when a roll takes several draws.
    */
   | { type: 'attacked'; actor: UnitId; target: UnitId; hit: boolean; damage: number; rngState: number }
-  | { type: 'unit-defeated'; unit: UnitId }
+  | { type: 'unit-defeated'; target: UnitId }
   | { type: 'turn-ended'; actor: UnitId; next: UnitId };
 
 /** Why an action was refused. A refused action never changes the state and never produces an event. */

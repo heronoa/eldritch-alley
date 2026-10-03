@@ -72,6 +72,8 @@ function validateMove(state: MatchState, action: MoveAction): RejectReason | nul
     return 'height-step-too-high';
   }
   if (moveCost(state.board, actor.position, to) > state.movementLeft) return 'not-enough-movement';
+  // The turn is move first, then one action (plan section 2): no movement once the action is spent.
+  if (state.hasActed) return 'already-acted';
   return null;
 }
 
@@ -121,6 +123,6 @@ export function buildEvents(state: MatchState, action: Action, rng: Rng): Event[
     { type: 'attacked', actor: attacker.id, target: target.id, hit, damage, rngState: rng.state },
   ];
 
-  if (target.health - damage <= 0) events.push({ type: 'unit-defeated', unit: target.id });
+  if (target.health - damage <= 0) events.push({ type: 'unit-defeated', target: target.id });
   return events;
 }

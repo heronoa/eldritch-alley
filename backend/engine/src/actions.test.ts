@@ -146,6 +146,16 @@ describe('actions: move', () => {
     expect(result.state.movementLeft).toBe(3);
   });
 
+  it('rejects movement after the action is spent, because the turn is move first, then act', () => {
+    const state = newMatch(twoUnitSetup({}, { position: { x: 0, y: 1 } }));
+    const attacked = accepted(applyAction(state, { type: 'attack', actor: 'a1', target: 'b1' }));
+
+    const result = rejected(
+      applyAction(attacked.state, { type: 'move', actor: 'a1', to: { x: 1, y: 0 } }),
+    );
+    expect(result.reason).toBe('already-acted');
+  });
+
   it('keeps the action available after moving', () => {
     const state = newMatch(twoUnitSetup({}, { position: { x: 1, y: 1 } }));
     const moved = accepted(applyAction(state, { type: 'move', actor: 'a1', to: { x: 0, y: 1 } }));
@@ -195,7 +205,7 @@ describe('actions: attack', () => {
     const result = accepted(applyAction(state, { type: 'attack', actor: 'a1', target: 'b1' }));
 
     expect(result.events.map((event) => event.type)).toEqual(['attacked', 'unit-defeated']);
-    expect(result.events[1]).toEqual({ type: 'unit-defeated', unit: 'b1' });
+    expect(result.events[1]).toEqual({ type: 'unit-defeated', target: 'b1' });
   });
 
   it('rejects a target at Chebyshev distance 2', () => {

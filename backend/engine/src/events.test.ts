@@ -69,7 +69,7 @@ describe('applyEvent', () => {
 
   it('marks a defeated unit and drops it from the queue', () => {
     const state = newMatch(makeSetup());
-    const next = applyEvent(state, { type: 'unit-defeated', unit: 'b1' });
+    const next = applyEvent(state, { type: 'unit-defeated', target: 'b1' });
 
     expect(next.units).toHaveLength(2);
     expect(next.units.find((unit) => unit.id === 'b1')?.defeated).toBe(true);
