@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { Event } from '../protocol';
-import { describeEvent } from './log';
+import type { Event, RejectReason } from '../protocol';
+import { describeEvent, describeRejection } from './log';
 
 const NAMES: Record<string, string> = {
   'A-sniper': 'Sniper',
@@ -71,5 +71,35 @@ describe('describeEvent', () => {
     const event = { type: 'something-else' } as unknown as Event;
 
     expect(describeEvent(event, NAMES)).toBe('evento desconhecido');
+  });
+});
+
+describe('describeRejection', () => {
+  // Every reason the engine can answer with, so a new one is a compile error here.
+  const SENTENCES: Record<RejectReason, string> = {
+    'not-your-turn': 'Não é a sua vez',
+    'out-of-bounds': 'Fora do tabuleiro',
+    'cell-occupied': 'Casa ocupada',
+    'height-step-too-high': 'Desnível alto demais',
+    'not-enough-movement': 'Movimento insuficiente',
+    'already-acted': 'Ação já usada',
+    'target-out-of-range': 'Alvo fora de alcance',
+    'target-invalid': 'Alvo inválido',
+    'no-magazine': 'Sem carregador',
+    'magazine-full': 'Carregador cheio',
+    'not-adjacent': 'Casa não adjacente',
+    'game-over': 'Partida encerrada',
+  };
+
+  it('answers a sentence in the player language for every reason', () => {
+    for (const [reason, sentence] of Object.entries(SENTENCES)) {
+      expect(describeRejection(reason as RejectReason)).toBe(sentence);
+    }
+  });
+
+  it('gives each reason a sentence of its own', () => {
+    const sentences = Object.keys(SENTENCES).map((reason) => describeRejection(reason as RejectReason));
+
+    expect(new Set(sentences).size).toBe(sentences.length);
   });
 });

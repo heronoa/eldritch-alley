@@ -193,9 +193,13 @@ describe('properties', () => {
         assertInteger(state.movementLeft, 'movementLeft');
         for (const unit of state.units) {
           assertInteger(unit.health, 'health');
+          assertInteger(unit.maxHealth, 'maxHealth');
           assertInteger(unit.position.x, 'position.x');
           assertInteger(unit.position.y, 'position.y');
           if (unit.health < 0) throw new Error(`health went below zero: ${unit.health}`);
+          if (unit.health > unit.maxHealth) {
+            throw new Error(`health rose above the maximum: ${unit.health} > ${unit.maxHealth}`);
+          }
         }
       }
 

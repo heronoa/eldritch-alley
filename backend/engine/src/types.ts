@@ -72,6 +72,8 @@ export interface Unit {
  * (`permanentlyDead` false) it occupies its tile and cannot be targeted.
  */
 export interface UnitState extends Unit {
+  /** HP the unit entered the match with. The ceiling for `health`; no M2-a rule raises it. */
+  maxHealth: number;
   defeated: boolean;
   /** Rounds left in the magazine. Zero for classes without one. */
   ammo: number;

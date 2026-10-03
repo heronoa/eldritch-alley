@@ -2,7 +2,6 @@
 // It only asks the engine which actions are legal; it never reads the match rng, so the same state
 // always produces the same action, and a match stays reproducible.
 import { applyAction, type Action, type MatchState, type Position, type Team, type UnitState } from '@eldritch-alley/engine';
-import { MAX_HEALTH_BY_UNIT_ID } from './map';
 
 const NEIGHBOUR_OFFSETS: readonly Position[] = [
   { x: -1, y: -1 },
@@ -70,7 +69,7 @@ export function chooseBotAction(state: MatchState, team: Team): Action {
   if (!actor) throw new RangeError(`no unit on turn: ${currentId}`);
 
   const currentDistance = nearestEnemyDistance(state, actor.position, team);
-  const wounded = actor.health * 2 < (MAX_HEALTH_BY_UNIT_ID[actor.id] ?? actor.health);
+  const wounded = actor.health * 2 < actor.maxHealth;
   const levelHere = levelAt(state, actor.position);
 
   // The candidates are collected in tie-break order: the first one only loses to a strictly higher score.

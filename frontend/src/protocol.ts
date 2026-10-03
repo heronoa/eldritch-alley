@@ -70,6 +70,8 @@ export interface Unit {
  * revival; while the body lasts (`permanentlyDead` false) it occupies its tile.
  */
 export interface UnitState extends Unit {
+  /** HP the unit entered the match with. The ceiling for `health`. */
+  maxHealth: number;
   defeated: boolean;
   /** Rounds left in the magazine. Zero for classes without one. */
   ammo: number;
@@ -137,7 +139,7 @@ export type RejectReason =
  * Bumped whenever a payload changes shape. The client compares it with its own and refuses to play
  * a match it cannot draw.
  */
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 
 /** The single room type of M2-a. One room is one match. */
 export const ROOM_NAME = 'battle';

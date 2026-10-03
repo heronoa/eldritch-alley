@@ -133,6 +133,21 @@ describe('BattleRoom', () => {
     await reconnected.leave(true);
   }, 20_000);
 
+  it('sends a maximum health for every unit of the state', async () => {
+    const room = await server.createRoom<BattleRoom>(ROOM_NAME);
+    const human = await server.connectTo(room);
+    human.reconnection.enabled = false;
+
+    const message = (await human.waitForMessage(MESSAGE.state, 5_000)) as StateMessage;
+
+    expect(message.state.units.length).toBeGreaterThan(0);
+    for (const unit of message.state.units) {
+      expect(unit.maxHealth).toBeGreaterThan(0);
+    }
+
+    await human.leave(true);
+  }, 20_000);
+
   it('ends the match for the human when the reconnection window expires', async () => {
     const room = await server.createRoom<BattleRoom>(ROOM_NAME);
     shortenReconnectionWindow(room, 0.05);

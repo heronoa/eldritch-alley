@@ -4,6 +4,22 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Eldritch Alley: Tactics</title>
+    <style>
+      /* The game canvas scales to fit, so it needs a viewport-sized parent to scale against.
+         The background matches the game's own, so the bars around a fitted canvas are not white. */
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        background: #1b1a24;
+      }
+
+      #game {
+        width: 100%;
+        height: 100%;
+      }
+    </style>
   </head>
   <body>
     <div id="game"></div>

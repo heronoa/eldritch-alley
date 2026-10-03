@@ -71,6 +71,17 @@ describe('newMatch', () => {
     expect(state.movementLeft).toBe(2);
   });
 
+  it('captures the health the setup declares as the maximum health of the unit', () => {
+    const state = newMatch(
+      makeSetup({}, [
+        makeUnit({ id: 'a1', team: 'A', position: { x: 0, y: 0 }, speed: 9, health: 7 }),
+        makeUnit({ id: 'b1', team: 'B', position: { x: 7, y: 7 }, speed: 5, health: 13 }),
+      ]),
+    );
+    expect(state.units.map((unit) => unit.maxHealth)).toEqual([7, 13]);
+    expect(state.units.map((unit) => unit.health)).toEqual([7, 13]);
+  });
+
   it('keeps the unit data used by post-MVP progression', () => {
     const state = newMatch(
       makeSetup({}, [

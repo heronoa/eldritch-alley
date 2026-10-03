@@ -86,6 +86,19 @@ describe('hashState', () => {
     expect(hashState(damaged)).not.toBe(hashState(state));
   });
 
+  it('changes when only the maximum health changes', () => {
+    const state = newMatch(makeSetup());
+    // Without the field on both sides the comparison below would only notice an added key.
+    expect(state.units.every((unit) => Number.isInteger(unit.maxHealth))).toBe(true);
+    const raised: MatchState = {
+      ...state,
+      units: state.units.map((unit) =>
+        unit.id === 'b1' ? { ...unit, maxHealth: unit.maxHealth + 1 } : unit,
+      ),
+    };
+    expect(hashState(raised)).not.toBe(hashState(state));
+  });
+
   it('does not change with object key order', () => {
     const state = newMatch(makeSetup());
     // Same data, every object's keys written in reverse. Arrays keep their order, as they are state.

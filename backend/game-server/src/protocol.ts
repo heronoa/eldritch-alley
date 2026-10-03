@@ -6,7 +6,7 @@ import type { Event, Position, PublicState, RejectReason, Team, UnitId } from '@
  * Bumped whenever a payload changes shape. The client compares it with its own and refuses to play
  * a match it cannot draw.
  */
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 
 /** The single room type of M2-a. One room is one match. */
 export const ROOM_NAME = 'battle';

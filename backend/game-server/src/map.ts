@@ -114,8 +114,3 @@ export const ROSTER: { readonly A: readonly Unit[]; readonly B: readonly Unit[] 
 export function createMatchSetup(seed: number = MATCH_SEED): MatchSetup {
   return { seed, map: BOARD, teams: [ROSTER.A, ROSTER.B] };
 }
-
-/** The health each unit of the roster starts with, by unit id. The bot reads it to judge a retreat. */
-export const MAX_HEALTH_BY_UNIT_ID: Readonly<Record<string, number>> = Object.fromEntries(
-  [...ROSTER.A, ...ROSTER.B].map((unit) => [unit.id, unit.health]),
-);

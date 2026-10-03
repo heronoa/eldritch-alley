@@ -22,6 +22,7 @@ function makeUnit(spec: UnitSpec): UnitState {
     position: { ...spec.at },
     speed: 10,
     health: 12,
+    maxHealth: 12,
     attack: 4,
     hitChance: 80,
     range: spec.range ?? 3,
