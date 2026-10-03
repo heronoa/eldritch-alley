@@ -1,6 +1,6 @@
 # 0004. PvP turn timer
 
-**Status:** Proposed
+**Status:** Accepted
 
 ## Context
 
@@ -8,4 +8,4 @@ PvP matches need a limit on how long a player can hold the turn, both to keep ma
 
 ## Decision
 
-Start with a 30-second turn timer as a hypothesis. Revisit it after the M3 playtest and before M5 ships PvP. This ADR moves to Accepted with the value that the playtest supports.
+Turn timer of 30 seconds. The owner confirmed it on 2026-10-03: long enough to be fair, short enough to keep the match dynamic. The same timer bounds the reaction window (ADR 0007). The value is data, so the M3 playtest can change it without changing the rules.

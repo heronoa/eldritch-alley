@@ -53,13 +53,13 @@ Open, with no ADR yet: whether the setting shares the Magia Urbana universe. It 
 
 Sizes are relative (P, M, G) and have no dates, because they depend on team availability.
 
-### M0. Foundation (P, nearly done)
+### M0. Foundation (P, done)
 
 - [x] Monorepo with workspaces, scaffolds and Docker Compose.
 - [x] Project renamed to `eldritch-alley`, documentation and comments in English.
 - [x] Architecture decisions recorded in `docs/adr/`.
 - [x] `CLAUDE.md` with the project rules.
-- [ ] CI with typecheck, test and build on every pull request.
+- [x] CI with typecheck, test and build on every pull request (green on develop, run 37134898835).
 
 **Done when:** CI is green on every pull request, and the ADRs are merged.
 
@@ -75,32 +75,47 @@ Sizes are relative (P, M, G) and have no dates, because they depend on team avai
 
 **Done when:** a hash test shows that the same seed and the same actions always produce the same final state, and the engine has no framework or I/O dependencies.
 
-### M2. Playable match against the bot (G). Comparison point.
+### M2. Playable match against the bot, in two steps. Comparison point at the end of M2-b.
 
-Infrastructure is a proposal and needs approval before any resource is created.
+M2 is split so the code can be finished and reviewed before any cloud resource exists.
 
-- Map 8×8 with three height levels, with the three MVP classes (Sniper, Wizard, Priest) as configuration.
-- Client with Phaser and the Colyseus client: pick three units, play against the bot, see the grid with height, move and attack with clicks, initiative queue and action log. Placeholder art.
-- `BattleRoom` in the match server: creates the match, applies actions with the engine, sends only the differences.
+#### M2-a. Playable match against the bot, local (code only) (G)
+
+- Colyseus migrated to 0.18 first, with its ADR (ADR 0008). This closes the server-path high advisory of DT-08.
+- Map 8×8 with three height levels, with the three MVP classes (Sniper, Wizard, Priest) as configuration. Basic attack only; the classes differ by data (range, health, movement, attack, speed).
+- Ammunition for the Sniper is already implemented in M1 (ADR 0002 addendum), so it is not part of M2-a work. The Assaulter is data for M3.
+- Client with Phaser and the Colyseus client: pick three units, play against the bot, see the grid with height as coloured tiles, move and attack with clicks, initiative queue and action log. No artwork.
+- `BattleRoom` in the match server: one match per room, applies actions with the engine through its public contract, sends the public state and events.
 - Bot with a utility heuristic: attack the weakest target in range, seek height, retreat when health is low.
-- No login and no persistence. Anonymous session identity.
-- Published version:
-  - Frontend on Cloudflare Workers with Static Assets, at `eldritch.heronoa.com.br`.
-  - One match-server instance on AWS, proposed as a small EC2 instance running Docker Compose.
-  - Public access to the match server through a Cloudflare Tunnel at `eldritch-game.heronoa.com.br`. The client connects with `wss://eldritch-game.heronoa.com.br`. The instance has no inbound ports open to the internet.
-  - TLS: both names are first-level subdomains of `heronoa.com.br`. Cloudflare's documentation says Universal SSL covers the root domain and one level of subdomains on a full setup, so no extra certificate is needed. This holds only if the zone uses a full setup, which must be confirmed in the dashboard.
-  - Verification required before M2 is closed:
+- Anonymous session identity issued by the server. No login and no persistence.
+- Reconnection: the server sends the full public state on return.
+- No turn timer against the bot (the 30 s timer comes with PvP in M5).
+
+**Done when:** a complete match is played in the browser against the bot, locally, until one side is eliminated, and a forced disconnect is recovered by reconnecting.
+
+#### M2-b. Published version (deploy)
+
+Every cloud resource needs its own approval before it is created.
+
+- Frontend on Cloudflare Workers with Static Assets, at `eldritch.heronoa.com.br`.
+- One match-server instance on AWS, proposed as a small EC2 instance running Docker Compose.
+- Public access to the match server through a Cloudflare Tunnel at `eldritch-game.heronoa.com.br`. The client connects with `wss://eldritch-game.heronoa.com.br`. The instance has no inbound ports open to the internet.
+- TLS: both names are first-level subdomains of `heronoa.com.br`. Cloudflare's documentation says Universal SSL covers the root domain and one level of subdomains on a full setup, so no extra certificate is needed. This holds only if the zone uses a full setup, which must be confirmed in the dashboard.
+- Verification required before M2-b is closed:
     - Done: a real WebSocket connection through the tunnel, and the idle test. Result below. The idle timeout value is not stated in the Cloudflare docs; it was measured at ~125 s.
-    - Pending: the reconnection test, in the acceptance test below.
+    - Pending: the reconnection test through the tunnel.
     - Result:
 
       **Cloudflare Tunnel WebSocket test (2026-10-03):** WebSocket traffic reaches the local origin through the tunnel at `eldritch-game.heronoa.com.br`. An idle connection with no traffic was closed after ~125 s (close code 1006). With a ping every 25 s, the connection stayed open for the full 10-minute test. The test ended by timeout (exit code 124), not by a drop: 23 pongs were received, from 26 s to 576 s. Requirement: game-server heartbeat must stay well below ~100 s, and clients must reconnect.
 
       Confirmed in the installed packages: `@colyseus/ws-transport` 0.16.5 defaults `pingInterval` to 3000 ms (`WebSocketTransport.mjs`, line 22). That is well below the ~100 s limit. It is a WebSocket-level ping sent by the server.
 
-      **Pending, part of the M2 acceptance test:** with a real Colyseus room through the tunnel, keep one turn idle for more than 2 minutes (server-initiated pings at the 3 s default) and confirm the client reconnects after a forced drop.
+      **Pending, part of the M2-b acceptance test:** with a real Colyseus room through the tunnel, keep one turn idle for more than 2 minutes (server-initiated pings at the 3 s default) and confirm the client reconnects after a forced drop.
 
-**Done when:** a complete match is played in the browser until one side is eliminated, on the published version. The comparison with Wizard Battle is decided here.
+
+- **Gate before the public deploy:** the Colyseus 0.18 migration is done and `npm audit` shows no high advisory on the server path (DT-08). Already satisfied by M2-a, which must be merged first.
+
+**Done when:** the same match is played in the browser on the published version, and the tunnel tests above are recorded. The comparison with Wizard Battle is decided at this point.
 
 ### M3. Rules and content (G). Only if this project is chosen.
 
@@ -150,7 +165,7 @@ Infrastructure is a proposal and needs approval before any resource is created.
 
 ## Out of the MVP
 
-Class progression and unlocking advanced classes, roster management, secondary abilities, PvE campaign, more maps, equipment and 3D visuals. These go into a later roadmap, after feedback from M6.
+Everything in the MVP's out-of-scope list in [pitch.md](pitch.md), including progression, equipment and item drops, is described in the "Post-MVP: progression" section of the pitch. That section is direction, not scope: nothing in it enters milestones M0 to M6. Those items go into a later roadmap, after feedback from M6.
 
 ## Risks
 
