@@ -1,7 +1,7 @@
 {
-  // Cloudflare Workers com Static Assets: serve o build do Vite sem código de servidor.
+  // Cloudflare Workers with Static Assets: serves the Vite build with no server code.
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "mystic-alley",
+  "name": "eldritch-alley",
   "compatibility_date": "2026-01-01",
   "assets": {
     "directory": "./dist",

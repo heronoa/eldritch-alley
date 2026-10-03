@@ -1,7 +1,7 @@
 {
-  "name": "mystic-alley",
+  "name": "eldritch-alley",
   "private": true,
-  "description": "Eldritch Alley: Tactics — RPG tático por turnos no navegador",
+  "description": "Eldritch Alley: Tactics — turn-based tactical RPG for the browser",
   "workspaces": [
     "backend/engine",
     "backend/game-server",
@@ -9,12 +9,12 @@
     "frontend"
   ],
   "scripts": {
-    "build": "npm run build -w @mystic-alley/engine && npm run build -w @mystic-alley/game-server && npm run build -w @mystic-alley/platform-api && npm run build -w @mystic-alley/frontend",
-    "test": "npm test -w @mystic-alley/engine",
+    "build": "npm run build -w @eldritch-alley/engine && npm run build -w @eldritch-alley/game-server && npm run build -w @eldritch-alley/platform-api && npm run build -w @eldritch-alley/frontend",
+    "test": "npm test -w @eldritch-alley/engine",
     "typecheck": "tsc -b backend/engine backend/game-server backend/platform-api",
-    "dev:frontend": "npm run dev -w @mystic-alley/frontend",
-    "dev:game-server": "npm run dev -w @mystic-alley/game-server",
-    "dev:platform-api": "npm run dev -w @mystic-alley/platform-api",
+    "dev:frontend": "npm run dev -w @eldritch-alley/frontend",
+    "dev:game-server": "npm run dev -w @eldritch-alley/game-server",
+    "dev:platform-api": "npm run dev -w @eldritch-alley/platform-api",
     "infra:up": "docker compose up -d postgres redis localstack",
     "infra:down": "docker compose down"
   },
