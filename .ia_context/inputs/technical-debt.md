@@ -47,13 +47,12 @@ Status values: **Open**, **Closed**.
 - **Trigger:** implementing resurrection (M3).
 - **Evidence:** `docs/adr/0003-permanent-death.md` addendum; `backend/engine/src/corpses.test.ts`.
 
-### DT-08 · Known vulnerabilities in dependencies (one high left, on the server path)
+### DT-19 · Low and moderate advisories left after the Colyseus 0.18 migration
 - **Category:** Security
-- **Risk if untreated:** `npm audit` reports 15 advisories: 1 high, 12 moderate, 2 low. The high is `nanoid` (<=3.3.17), used by `@colyseus/core` on the server path, and it is fixed only by Colyseus 0.18. Most moderate and low advisories are fixed only by Colyseus 0.18 or by `overrides` in transitive packages pinned by Colyseus 0.16.
-- **Done on 2026-10-03:** `ts-node-dev` (and with it the high advisories `chokidar` and `braces`, which had no fix) was replaced by `tsx` in the dev scripts of `game-server` and `platform-api`. Tests, typecheck and build pass. The `nanoid` high remains.
-- **Effort:** M (Colyseus 0.18 migration, with its own ADR).
-- **Trigger:** start of M2. **Gate:** the public deploy of M2 does not ship until the Colyseus 0.18 migration is done and `npm audit` shows no high advisory on the server path (roadmap, M2).
-- **Evidence:** `npm audit` run on 2026-10-03 after the `tsx` swap (1 high, 15 total); `backend/*/package.json` dev scripts.
+- **Risk if untreated:** `npm audit` still reports 19 advisories: 14 low and 5 moderate, none high and none critical. The low ones sit on the `@colyseus/*` packages and `colyseus` itself; the moderate one is `grant`, pulled in by `@colyseus/auth`. They have no fix inside 0.18.9.
+- **Effort:** P (re-check on each Colyseus release; nothing to do until then).
+- **Trigger:** a Colyseus release past 0.18.9, or an advisory on the same packages moving to high.
+- **Evidence:** `npm audit --json` run on 2026-10-03: `{"low":14,"moderate":5,"high":0,"critical":0,"total":19}`; `docs/adr/0008-colyseus-0.18.md`.
 
 ### DT-17 · Reaction windows, slots and counter-attacks in the engine
 - **Category:** Rules
@@ -79,6 +78,7 @@ Status values: **Open**, **Closed**.
 | DT-11 | Reaction windows were not designed | Decided in ADR 0007 (Accepted). Implementation tracked as DT-17. |
 | DT-16 | "Initiated" vs "Initiate" | Kept "Initiated"; the pitch and the tables use it. |
 | DT-17 | Implement reactions in the engine | Added as an open item for M3 (see below). |
+| DT-08 | Known vulnerabilities in dependencies (one high left, on the server path) | Closed for the server path by the Colyseus 0.18 migration (ADR 0008): the `nanoid` high is gone and `npm audit` reports 0 high and 0 critical. The remaining low and moderate advisories are tracked as DT-19. Earlier step: `ts-node-dev` replaced by `tsx`, which removed the `chokidar` and `braces` highs. |
 | DT-09 | Movement allowed after the action was spent | `validateMove` rejects with `already-acted` once the action is spent. Covered by `actions.test.ts`. |
 | DT-10 | `unit-defeated` used `unit` while other events use `actor` or `target` | The field is now `target`, matching `attacked`. Covered by `actions.test.ts` and `events.test.ts`. |
 | DT-14 | M1 plan checklists unmarked; red phase not recorded | All 36 items marked, each mapped to a test. A retroactive red check is recorded in plan section 9. The original red-first order cannot be shown. |
