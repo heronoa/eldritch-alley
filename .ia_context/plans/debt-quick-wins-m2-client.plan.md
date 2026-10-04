@@ -9,13 +9,13 @@
 
 ### 1. Objective
 
-Four debts, all in `frontend/`, each a few lines:
+Five debts, all in `frontend/`, each a few lines:
 
 - **DT-44:** attack effects are drawn beneath the board's blocks. Give them a depth above the board.
 - **DT-47 (partial):** a constant test of that depth, which runs in Node. The scene-level test stays open.
+- **DT-52:** the turn queue shows a letter. It shows the unit's sprite instead.
 - **DT-59:** after "Vitória" or "Derrota" the player has no way out. Add a button that goes back to the lobby.
 - **DT-24:** a permanently removed unit still counts as an occupant on the client, and its ghost is drawn.
-- **DT-52:** the turn queue shows a letter. It shows the unit's sprite instead.
 
 ### 2. Prerequisites
 
@@ -29,14 +29,14 @@ Four debts, all in `frontend/`, each a few lines:
 | `frontend/src/view/iso.ts` | modify | Adds `EFFECT_DEPTH = 20` and `BOARD_TOP_DEPTH` = `depthOfUnit({x: 7, y: 7})` (14.5), with a comment on the layer order (section 4.1) |
 | `frontend/src/view/iso.test.ts` | modify | Asserts `EFFECT_DEPTH` is above every board object and below the HUD (section 5) |
 | `frontend/src/scenes/effects.ts` | modify | Every object created by an effect gets `setDepth(EFFECT_DEPTH)` (4.1) |
-| `frontend/src/scenes/MatchScene.ts` | modify | Result button (4.2); skips `permanentlyDead` units in `redrawUnits` (4.3); chips use the sprite frame (4.4) |
+| `frontend/src/scenes/MatchScene.ts` | modify | Result button (4.2); skips `permanentlyDead` units in `redrawUnits` (4.3) |
+| `frontend/src/view/unit-look.ts` | modify | `chipFrameOf(unit): number` (4.4) |
+| `frontend/src/view/unit-look.test.ts` | modify | Covers `chipFrameOf` |
+| `frontend/src/scenes/widgets.ts` | modify | `createTurnChip` draws the sprite frame instead of the initial (4.4) |
 | `frontend/src/net/session.ts` | modify | `close()` leaves the room without firing `onDrop` (4.2) |
 | `frontend/src/net/session.test.ts` | modify | Covers `close()` (section 5) |
 | `frontend/src/game/selection.ts` | modify | `occupantOf` ignores `permanentlyDead` units (4.3) |
 | `frontend/src/game/selection.test.ts` | modify | A permanently removed unit does not block a move onto its tile |
-| `frontend/src/view/unit-look.ts` | modify | `chipFrameOf(unit): number` (4.4) |
-| `frontend/src/view/unit-look.test.ts` | modify | Covers `chipFrameOf` |
-| `frontend/src/scenes/widgets.ts` | modify | `createTurnChip` draws the sprite frame instead of the initial (4.4) |
 | `frontend/src/view/layout.ts` | modify | `RESULT_BUTTON_RECT` (4.2); `HUD_DEPTH = 100` moves here from `MatchScene.ts`, exported |
 | `frontend/src/view/layout.test.ts` | modify | The result button is inside the canvas and clear of the carousel and the action bar |
 
@@ -114,8 +114,8 @@ Not touched: `backend/`, `protocol.ts`, the engine, the look of the board and th
 - [ ] Starting a second match from there plays normally, and one click produces one action (no duplicated handler).
 - [ ] The server log shows the leave, and no "Partida perdida" or reconnection notice appears after leaving.
 - [ ] A unit that is removed after its corpse expires leaves no ghost on its tile (DT-24).
-- [ ] A move onto the tile of a removed unit is accepted on the client too.
 - [ ] Each chip in the turn queue shows the unit's sprite in its team colour; a fallen one is grey.
+- [ ] A move onto the tile of a removed unit is accepted on the client too.
 
 ### 6. Dependencies
 
@@ -144,3 +144,4 @@ Not touched: `backend/`, `protocol.ts`, the engine, the look of the board and th
 - The sniper's sound and any audio (DT-56).
 - A "play again" button that starts a match without going through the lobby.
 - Scene-level depth tests (DT-47 scene part, DT-41).
+- The turn queue with portraits (DT-52): a feature, now in `backlog.md`.

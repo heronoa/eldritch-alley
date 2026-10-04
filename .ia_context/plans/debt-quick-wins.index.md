@@ -16,7 +16,7 @@ protect, or a visible defect. Excluded on purpose:
 
 | Debt | Why it is out |
 |---|---|
-| DT-53 attack after movement | Not reproduced. Needs the owner's steps first. |
+| DT-53 attack after movement | Closed as a false alarm (distance, not a bug). Nothing to plan. |
 | DT-54 pathfinding | Effort G and an architecture decision. Its own plan. |
 | DT-48 invariants of the map plan | Fix is in the map plan text; do it with `map-variety` M1, not as code. |
 | DT-51 branch with three subjects | Git hygiene, done by the owner at the MR, not in code. |

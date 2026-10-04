@@ -167,6 +167,15 @@ Planned features are not debt: they live in [backlog.md](./backlog.md).
 - **Trigger:** before the next playtest or the M2-b deploy.
 - **Evidence:** `frontend/src/scenes/MatchScene.ts:416-425` (`handleEnded` only sets the result text and redraws; no transition); the only `scene.start` calls leave the match or the lobby (`LobbyScene.ts:80`, `BootScene.ts:41`), and none returns from `match`. The `Session` is also never closed on the way out (suspicion, not verified: `frontend/src/net/session.ts`).
 
+### DT-52 · The turn queue shows class letters, not the characters
+- **Category:** Architecture (design)
+- **Risk if untreated:** the queue does not match the look of the rest of the game; the owner asked for the character's image.
+- **Effort:** P
+- **Trigger:** owner's request, next design pass.
+- **Evidence:** `frontend/src/scenes/widgets.ts` (`createTurnChip`, letter from `initialOf`); screenshot `.ia_context/descriptions/iso-board-screenshots/04-attack-landed-no-effect.png` (chips P, S, W).
+- **Context:** the turn-order queue was delivered with letters when the prototype was applied (identity feature). Left behind in that task; it is a delivery gap, not a future feature.
+
+
 ---
 
 ## Closed

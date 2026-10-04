@@ -34,13 +34,6 @@ Order follows the roadmap: [ROADMAP.md](../../ROADMAP.md).
 - **Trigger:** M3, before reaction skills are added.
 - **Evidence:** `docs/adr/0007-reaction-abilities.md`; the M1 engine has no reaction code.
 
-### DT-52 · The turn queue shows class letters, not the characters
-- **Category:** Architecture (design)
-- **Risk if untreated:** the queue does not match the look of the rest of the game; the owner asked for the character's image.
-- **Effort:** P
-- **Trigger:** owner's request, next design pass.
-- **Evidence:** `frontend/src/scenes/widgets.ts` (`createTurnChip`, letter from `initialOf`); screenshot `.ia_context/descriptions/iso-board-screenshots/04-attack-landed-no-effect.png` (chips P, S, W).
-
 ### DT-54 · Movement is one tile per action; there is no pathfinding
 - **Category:** Architecture (design)
 - **Risk if untreated:** the owner cannot cross the board in one move, and the move range is not shown. The engine refuses any step that is not adjacent.
