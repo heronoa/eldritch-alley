@@ -27,9 +27,10 @@ import {
   type Team,
   type UnitState,
 } from '../protocol';
-import { ORIGIN, TILE_SIZE, cellToPixel, heightColor, pixelToCell } from '../view/grid';
+import type { Cell, Pixel } from '../view/grid';
+import { cellAt, cellToScreen, depthOfCell, topFace } from '../view/iso';
 import {
-  LEGEND_Y,
+  LEGEND_RECT,
   LOG_LINES,
   LOG_RECT,
   LOG_TEXT_POINT,
@@ -37,10 +38,12 @@ import {
   PANEL_BAR_HEIGHT,
   PANEL_BAR_OFFSET,
   PANEL_RECT,
-  STATUS_Y,
+  STATUS_RECT,
   buttonIndexAt,
   buttonRect,
   carouselSlotRect,
+  containsPoint,
+  hudRects,
   panelRowPoint,
 } from '../view/layout';
 import {
@@ -48,8 +51,9 @@ import {
   FONT_BODY,
   FONT_SIZE,
   FONT_TITLE,
-  GRID_STROKE_COLOR,
+  HIGHLIGHT_ATTACK_ALPHA,
   HIGHLIGHT_ATTACK_COLOR,
+  HIGHLIGHT_MOVE_ALPHA,
   HIGHLIGHT_MOVE_COLOR,
   PANEL_STROKE,
   STAMP_COLOR,
@@ -58,18 +62,25 @@ import {
   TEXT_COLOR_ALERT,
   TEXT_COLOR_DISABLED,
 } from '../view/theme';
+import { BoardTiles } from './BoardTiles';
 import { playEffect } from './effects';
-import { UnitSprite } from './units';
+import { BODY_HEIGHT, UnitSprite, type Placement } from './units';
 import { Button, createPanel, createTurnChip } from './widgets';
 
 /** The side the person at the keyboard plays. */
 const HUMAN_TEAM: Team = 'A';
 
-/** How solid a highlighted cell is: enough to read, thin enough to leave the tile colour visible. */
-const HIGHLIGHT_ALPHA = 0.35;
-
 /** The air between the result and the stamp around it. */
 const STAMP_PADDING = 16;
+
+/** How far over its own cell a highlight is drawn, so the tile under it stays visible. */
+const HIGHLIGHT_DEPTH_STEP = 0.1;
+
+/**
+ * Where the HUD is drawn: over every tile (14) and every unit (14.5) of an 8x8 board, so a panel
+ * floating over the board is never covered by it. The result and its stamp sit over the panels.
+ */
+const HUD_DEPTH = 100;
 
 /** What the colours on the board mean, for a player who has not been told. Two lines of the column. */
 const LEGEND = 'Azul-tinta: você · Vermelho: bot · Papel: selecionado\nRealce azul: movimento · Realce vermelho: ataque';
@@ -116,9 +127,9 @@ export class MatchScene extends Phaser.Scene {
   /** What the client knew of each unit when the last events arrived, for `presentationOf`. */
   private snapshot = new Map<string, Snapshot>();
 
-  private grid!: Phaser.GameObjects.Graphics;
-  private highlights!: Phaser.GameObjects.Graphics;
-  private units!: Phaser.GameObjects.Container;
+  private tiles!: BoardTiles;
+  /** One graphic per highlighted cell, at the cell's own depth, rebuilt on every redraw. */
+  private highlights: Phaser.GameObjects.Graphics[] = [];
   private chips!: Phaser.GameObjects.Container;
   private panelRows!: Phaser.GameObjects.Container;
   private buttons: Button[] = [];
@@ -143,41 +154,47 @@ export class MatchScene extends Phaser.Scene {
     this.reconnecting = false;
     this.buttons = [];
     this.buttonModel = [];
+    this.highlights = [];
     this.sprites = new Map();
     this.snapshot = new Map();
   }
 
   create(): void {
-    // Drawing order is the order the objects are added: the board, the highlight over it, the pieces,
-    // then the sidebar.
-    this.grid = this.add.graphics();
-    this.highlights = this.add.graphics();
-    this.units = this.add.container(0, 0);
+    // Drawing order is depth here, not the order things are added: the blocks carry the depth of
+    // their cell, the highlights a hair over their own cell, the units half a step further, and the
+    // whole HUD floats above all of it.
+    this.tiles = new BoardTiles(this, (cell) => this.levelAt(cell));
 
     // The frames are drawn once; the chips and the panel rows are rebuilt from the state instead.
-    createPanel(this, PANEL_RECT, 'Unidade');
-    createPanel(this, LOG_RECT, 'Registro');
-    this.chips = this.add.container(0, 0);
-    this.panelRows = this.add.container(0, 0);
+    createPanel(this, PANEL_RECT, 'Unidade').setDepth(HUD_DEPTH);
+    createPanel(this, LOG_RECT, 'Registro').setDepth(HUD_DEPTH);
+    this.chips = this.add.container(0, 0).setDepth(HUD_DEPTH);
+    this.panelRows = this.add.container(0, 0).setDepth(HUD_DEPTH);
 
-    this.logText = this.add.text(LOG_TEXT_POINT.x, LOG_TEXT_POINT.y, '', {
-      fontFamily: FONT_BODY,
-      fontSize: FONT_SIZE.log,
-      color: TEXT_COLOR,
-      lineSpacing: 4,
-    });
+    this.logText = this.add
+      .text(LOG_TEXT_POINT.x, LOG_TEXT_POINT.y, '', {
+        fontFamily: FONT_BODY,
+        fontSize: FONT_SIZE.log,
+        color: TEXT_COLOR,
+        lineSpacing: 4,
+      })
+      .setDepth(HUD_DEPTH);
 
-    this.add.text(ORIGIN.x, LEGEND_Y, LEGEND, {
-      fontFamily: FONT_BODY,
-      fontSize: FONT_SIZE.legend,
-      color: TEXT_COLOR,
-    });
+    this.add
+      .text(LEGEND_RECT.x + PADDING, LEGEND_RECT.y + PADDING, LEGEND, {
+        fontFamily: FONT_BODY,
+        fontSize: FONT_SIZE.legend,
+        color: TEXT_COLOR,
+      })
+      .setDepth(HUD_DEPTH);
 
-    this.status = this.add.text(ORIGIN.x, STATUS_Y, '', {
-      fontFamily: FONT_BODY,
-      fontSize: FONT_SIZE.unit,
-      color: TEXT_COLOR_ALERT,
-    });
+    this.status = this.add
+      .text(STATUS_RECT.x + PADDING, STATUS_RECT.y, '', {
+        fontFamily: FONT_BODY,
+        fontSize: FONT_SIZE.unit,
+        color: TEXT_COLOR_ALERT,
+      })
+      .setDepth(HUD_DEPTH);
 
     this.result = this.add
       .text(this.scale.width / 2, this.scale.height / 2, '', {
@@ -185,10 +202,11 @@ export class MatchScene extends Phaser.Scene {
         fontSize: FONT_SIZE.result,
         color: TEXT_COLOR,
       })
-      .setOrigin(0.5);
+      .setOrigin(0.5)
+      .setDepth(HUD_DEPTH + 1);
 
     // The stamp is drawn over the result, so it is added after it and resized whenever it changes.
-    this.stamp = this.add.graphics();
+    this.stamp = this.add.graphics().setDepth(HUD_DEPTH + 2);
 
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => this.handleClick(pointer));
 
@@ -202,21 +220,27 @@ export class MatchScene extends Phaser.Scene {
   }
 
   /**
-   * The action bar is tested first, against the same rectangle that draws each button, so a click on
-   * a button never reaches the board (DT-30). What a board click means is decided by `resolveClick`,
-   * narrowed by `applyMode`; the server decides the rest.
+   * The HUD is tested first and consumes the click: the action bar against the same rectangle that
+   * draws each button (DT-30), then any point inside any HUD rectangle, even where no control is, so
+   * a panel floating over a tile never lets a click through to the tile. Only what is left reaches
+   * the board, and what it means there is decided by `resolveClick`, narrowed by `applyMode`; the
+   * server decides the rest.
    */
   private handleClick(pointer: Phaser.Input.Pointer): void {
     if (this.finished || this.state === null) return;
 
-    const buttonIndex = buttonIndexAt({ x: pointer.x, y: pointer.y });
+    const point = { x: pointer.x, y: pointer.y };
+
+    const buttonIndex = buttonIndexAt(point);
     if (buttonIndex !== null) {
       const button = this.buttonModel[buttonIndex];
       if (button !== undefined && button.enabled) this.pressAction(button.id, button.mode);
       return;
     }
 
-    const cell = pixelToCell({ x: pointer.x, y: pointer.y });
+    if (hudRects().some((rect) => containsPoint(rect, point))) return;
+
+    const cell = cellAt(point, (candidate) => this.levelAt(candidate));
     if (cell === null) return;
 
     const intent = applyMode(
@@ -283,6 +307,28 @@ export class MatchScene extends Phaser.Scene {
     return this.state.units.find((unit) => unit.id === currentId);
   }
 
+  /** The height of a cell, as the state carries it. Flat until the first state arrives. */
+  private levelAt(cell: Cell): number {
+    const board = this.state?.board;
+    if (board === undefined) return 0;
+
+    return board.levels[cell.y * board.width + cell.x];
+  }
+
+  /** Where a unit's feet rest on a cell: the centre of its top face, lifted by the cell's level. */
+  private placementOf(cell: Cell): Placement {
+    return { cell, anchor: cellToScreen(cell, this.levelAt(cell)) };
+  }
+
+  /**
+   * Where an effect is thrown from or lands: the middle of the figure's body, so a shot leaves the
+   * body and not the feet. The sky column is the exception — it falls from above onto the tile, so
+   * it is aimed at the top face instead.
+   */
+  private effectPoint(sprite: UnitSprite, onTileTop: boolean): Pixel {
+    return { x: sprite.x, y: sprite.y - (onTileTop ? 0 : BODY_HEIGHT / 2) };
+  }
+
   /**
    * Plays the events of one accepted action, then writes them into the log. The snapshot is read
    * for the cues and moved forward after them, so each event is read against the board it found.
@@ -298,7 +344,7 @@ export class MatchScene extends Phaser.Scene {
   private play(cue: Cue): void {
     switch (cue.kind) {
       case 'move':
-        this.sprites.get(cue.unitId)?.slideTo(cellToPixel(cue.from), cellToPixel(cue.to));
+        this.sprites.get(cue.unitId)?.slideTo(this.placementOf(cue.from), this.placementOf(cue.to));
         break;
 
       case 'attack': {
@@ -307,8 +353,8 @@ export class MatchScene extends Phaser.Scene {
         if (actor === undefined || target === undefined) break;
 
         // The effect is thrown from where the two units are drawn, so it reads even mid-move.
-        const from = { x: actor.x, y: actor.y };
-        const to = { x: target.x, y: target.y };
+        const from = this.effectPoint(actor, false);
+        const to = this.effectPoint(target, cue.effect.kind === 'sky-column');
         actor.playAttack(
           { style: cue.style, hit: cue.hit, travelMs: cue.effect.travelMs },
           this.time.now,
@@ -394,7 +440,7 @@ export class MatchScene extends Phaser.Scene {
   }
 
   private redraw(state: PublicState): void {
-    this.drawGrid(state);
+    this.tiles.sync((cell) => this.levelAt(cell));
     this.drawHighlights(state);
     this.redrawUnits(state);
     this.redrawCarousel(state);
@@ -402,25 +448,15 @@ export class MatchScene extends Phaser.Scene {
     this.updateActionBar(state);
   }
 
-  private drawGrid(state: PublicState): void {
-    this.grid.clear();
-    for (let y = 0; y < state.board.height; y += 1) {
-      for (let x = 0; x < state.board.width; x += 1) {
-        const corner = cellToPixel({ x, y });
-        this.grid.fillStyle(heightColor(state.board.levels[y * state.board.width + x]), 1);
-        this.grid.fillRect(corner.x, corner.y, TILE_SIZE, TILE_SIZE);
-        this.grid.lineStyle(1, GRID_STROKE_COLOR, 1);
-        this.grid.strokeRect(corner.x, corner.y, TILE_SIZE, TILE_SIZE);
-      }
-    }
-  }
-
-  /** The cells the armed mode would act on, over the grid and under the pieces. */
+  /** The cells the armed mode would act on, drawn as the top face of each cell they cover. */
   private drawHighlights(state: PublicState): void {
-    this.highlights.clear();
+    for (const graphic of this.highlights) graphic.destroy();
+    this.highlights = [];
     if (this.mode === 'inspect') return;
 
-    const color = this.mode === 'move' ? HIGHLIGHT_MOVE_COLOR : HIGHLIGHT_ATTACK_COLOR;
+    const move = this.mode === 'move';
+    const color = move ? HIGHLIGHT_MOVE_COLOR : HIGHLIGHT_ATTACK_COLOR;
+    const alpha = move ? HIGHLIGHT_MOVE_ALPHA : HIGHLIGHT_ATTACK_ALPHA;
     const cells = highlightedCells({
       state,
       selectedId: this.selectedId,
@@ -428,12 +464,15 @@ export class MatchScene extends Phaser.Scene {
       humanTeam: HUMAN_TEAM,
     });
 
-    this.highlights.fillStyle(color, HIGHLIGHT_ALPHA);
-    this.highlights.lineStyle(2, color, 1);
     for (const cell of cells) {
-      const corner = cellToPixel(cell);
-      this.highlights.fillRect(corner.x, corner.y, TILE_SIZE, TILE_SIZE);
-      this.highlights.strokeRect(corner.x, corner.y, TILE_SIZE, TILE_SIZE);
+      const graphic = this.add.graphics().setDepth(depthOfCell(cell) + HIGHLIGHT_DEPTH_STEP);
+      const face = topFace(cell, this.levelAt(cell));
+
+      graphic.fillStyle(color, alpha);
+      graphic.fillPoints(face, true);
+      graphic.lineStyle(2, color, 1);
+      graphic.strokePoints(face, true, true);
+      this.highlights.push(graphic);
     }
   }
 
@@ -449,11 +488,10 @@ export class MatchScene extends Phaser.Scene {
 
       let sprite = this.sprites.get(unit.id);
       if (sprite === undefined) {
-        sprite = new UnitSprite(this, unit, unit.id === this.selectedId, cellToPixel(unit.position));
+        sprite = new UnitSprite(this, unit, unit.id === this.selectedId, this.placementOf(unit.position));
         this.sprites.set(unit.id, sprite);
-        this.units.add(sprite);
       } else {
-        sprite.sync(unit, unit.id === this.selectedId, cellToPixel(unit.position));
+        sprite.sync(unit, unit.id === this.selectedId, this.placementOf(unit.position));
       }
     }
 
@@ -517,7 +555,9 @@ export class MatchScene extends Phaser.Scene {
     this.buttonModel = model;
 
     if (this.buttons.length === 0) {
-      this.buttons = model.map((button, index) => new Button(this, buttonRect(index), button.label));
+      this.buttons = model.map(
+        (button, index) => new Button(this, buttonRect(index), button.label).setDepth(HUD_DEPTH),
+      );
     }
 
     model.forEach((button, index) => {

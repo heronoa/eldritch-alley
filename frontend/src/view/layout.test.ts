@@ -1,22 +1,21 @@
 import { describe, expect, it } from 'vitest';
-import { BOARD_HEIGHT, BOARD_WIDTH, ORIGIN, TILE_SIZE } from './grid';
 import {
   ACTION_BAR_RECT,
   ACTION_BUTTON,
-  BOARD_RECT,
   CANVAS_HEIGHT,
   CANVAS_WIDTH,
   CAROUSEL_RECT,
   CAROUSEL_SLOT,
-  LEGEND_Y,
+  LEGEND_RECT,
   LOG_RECT,
   PANEL_RECT,
   PANEL_ROW_HEIGHT,
-  SIDEBAR,
-  STATUS_Y,
+  STATUS_RECT,
+  boardBounds,
   buttonIndexAt,
   buttonRect,
   carouselSlotRect,
+  hudRects,
   panelRowPoint,
   type Rect,
 } from './layout';
@@ -27,15 +26,8 @@ const PANEL_ROWS = 6;
 const CAROUSEL_SLOTS = 6;
 /** Mover, Atacar, Recarregar, Terminar turno. */
 const ACTION_BUTTONS = 4;
-
-const SIDEBAR_PIECES: [string, Rect][] = [
-  ['carousel', CAROUSEL_RECT],
-  ['action bar', ACTION_BAR_RECT],
-  ['panel', PANEL_RECT],
-  ['log', LOG_RECT],
-];
-
-const EVERY_PIECE: [string, Rect][] = [['board', BOARD_RECT], ...SIDEBAR_PIECES];
+/** The six pieces of the HUD, in the order `hudRects` returns them. */
+const HUD_NAMES = ['carousel', 'action bar', 'panel', 'log', 'legend', 'status'];
 
 function right(rect: Rect): number {
   return rect.x + rect.width;
@@ -55,40 +47,49 @@ describe('layout', () => {
     expect(CANVAS_HEIGHT).toBe(720);
   });
 
-  it('keeps every rectangle inside the canvas', () => {
-    for (const [name, rect] of EVERY_PIECE) {
+  it('keeps every piece of the HUD inside the canvas', () => {
+    const rects = hudRects();
+
+    expect(rects).toHaveLength(HUD_NAMES.length);
+    rects.forEach((rect, index) => {
+      const name = HUD_NAMES[index];
       expect(rect.x, name).toBeGreaterThanOrEqual(0);
       expect(rect.y, name).toBeGreaterThanOrEqual(0);
       expect(right(rect), name).toBeLessThanOrEqual(CANVAS_WIDTH);
       expect(bottom(rect), name).toBeLessThanOrEqual(CANVAS_HEIGHT);
-    }
-  });
-
-  it('leaves the board where it was, clear of the sidebar', () => {
-    expect(BOARD_RECT).toEqual({
-      x: ORIGIN.x,
-      y: ORIGIN.y,
-      width: BOARD_WIDTH * TILE_SIZE,
-      height: BOARD_HEIGHT * TILE_SIZE,
     });
-    expect(right(BOARD_RECT)).toBeLessThan(SIDEBAR.x);
   });
 
-  it('keeps every sidebar piece inside the sidebar', () => {
-    for (const [name, rect] of SIDEBAR_PIECES) {
-      expect(rect.x, name).toBeGreaterThanOrEqual(SIDEBAR.x);
-      expect(right(rect), name).toBeLessThanOrEqual(SIDEBAR.x + SIDEBAR.width);
-    }
-  });
+  it('floats the pieces over the board without any of them overlapping another', () => {
+    const rects = hudRects();
 
-  it('stacks the sidebar pieces without overlapping each other', () => {
-    for (let i = 0; i < SIDEBAR_PIECES.length; i += 1) {
-      for (let j = i + 1; j < SIDEBAR_PIECES.length; j += 1) {
-        const [nameA, rectA] = SIDEBAR_PIECES[i];
-        const [nameB, rectB] = SIDEBAR_PIECES[j];
-        expect(overlaps(rectA, rectB), `${nameA} over ${nameB}`).toBe(false);
+    for (let i = 0; i < rects.length; i += 1) {
+      for (let j = i + 1; j < rects.length; j += 1) {
+        expect(overlaps(rects[i], rects[j]), `${HUD_NAMES[i]} over ${HUD_NAMES[j]}`).toBe(false);
       }
     }
+  });
+
+  it('lists the pieces in the order the scene reads them', () => {
+    expect(hudRects()).toEqual([
+      CAROUSEL_RECT,
+      ACTION_BAR_RECT,
+      PANEL_RECT,
+      LOG_RECT,
+      LEGEND_RECT,
+      STATUS_RECT,
+    ]);
+  });
+
+  it('measures the board as the box every block of it fits in', () => {
+    expect(boardBounds()).toEqual({ x: 320, y: 200, width: 640, height: 360 });
+  });
+
+  it('leaves the board clear of the carousel and the action bar', () => {
+    const board = boardBounds();
+
+    expect(overlaps(board, CAROUSEL_RECT)).toBe(false);
+    expect(overlaps(board, ACTION_BAR_RECT)).toBe(false);
   });
 
   it('fits four buttons inside the action bar', () => {
@@ -132,13 +133,6 @@ describe('layout', () => {
     }
     expect(panelRowPoint(1).y - panelRowPoint(0).y).toBe(PANEL_ROW_HEIGHT);
   });
-
-  it('puts the legend and the status line under the board, clear of the sidebar', () => {
-    expect(LEGEND_Y).toBeGreaterThanOrEqual(bottom(BOARD_RECT));
-    expect(STATUS_Y).toBeGreaterThan(LEGEND_Y);
-    expect(STATUS_Y).toBeLessThan(CANVAS_HEIGHT);
-    expect(ORIGIN.x).toBeLessThan(SIDEBAR.x);
-  });
 });
 
 // DT-30: the four action buttons are hit-tested from the same rectangle that draws them, so a click
@@ -171,7 +165,7 @@ describe('buttonIndexAt', () => {
     }
   });
 
-  it('treats the far edge as outside, like pixelToCell does', () => {
+  it('treats the far edge as outside', () => {
     const rect = buttonRect(0);
     expect(buttonIndexAt({ x: right(rect), y: rect.y + 1 })).toBeNull();
     expect(buttonIndexAt({ x: rect.x + 1, y: bottom(rect) })).toBeNull();
@@ -189,7 +183,7 @@ describe('buttonIndexAt', () => {
   });
 
   it('answers nothing for a click on the board or off the canvas', () => {
-    expect(buttonIndexAt({ x: ORIGIN.x + TILE_SIZE / 2, y: ORIGIN.y + TILE_SIZE / 2 })).toBeNull();
+    expect(buttonIndexAt({ x: 640, y: 300 })).toBeNull();
     expect(buttonIndexAt({ x: -1, y: -1 })).toBeNull();
     expect(buttonIndexAt({ x: CANVAS_WIDTH, y: CANVAS_HEIGHT })).toBeNull();
   });

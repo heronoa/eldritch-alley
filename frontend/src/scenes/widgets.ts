@@ -7,7 +7,7 @@
 import Phaser from 'phaser';
 import type { TurnSlot } from '../game/turn-order';
 import type { UnitState } from '../protocol';
-import { PADDING, type Rect } from '../view/layout';
+import { PADDING, PANEL_ALPHA, type Rect } from '../view/layout';
 import {
   BUTTON_FILL,
   BUTTON_FILL_DISABLED,
@@ -96,21 +96,45 @@ export class Button extends Phaser.GameObjects.Container {
 /** How far inside the frame the second line is drawn. */
 const PANEL_INNER_INSET = 4;
 
+/** The look of an overlay panel: how solid its fill is, and how strong the line inside its frame. */
+export interface PanelStyle {
+  fillAlpha: number;
+  innerAlpha: number;
+  innerInset: number;
+}
+
+/**
+ * The panel of the match: the prototype's dark paper, floating over the board, with a paper line just
+ * inside the frame. Only the fill is translucent — the heading and the line stay at full strength.
+ */
+export const OVERLAY_PANEL: PanelStyle = {
+  fillAlpha: PANEL_ALPHA,
+  innerAlpha: PANEL_INNER_ALPHA,
+  innerInset: PANEL_INNER_INSET,
+};
+
 /**
  * A framed box with a title in its top-left corner: a carbon frame, a paper line just inside it, and
- * the heading in the typewriter face.
+ * the heading in the typewriter face. The style is passed in, so where the box floats and how solid it
+ * is are the scene's decision and not this widget's.
  */
-export function createPanel(scene: Phaser.Scene, rect: Rect, title: string): Phaser.GameObjects.Container {
+export function createPanel(
+  scene: Phaser.Scene,
+  rect: Rect,
+  title: string,
+  style: PanelStyle = OVERLAY_PANEL,
+): Phaser.GameObjects.Container {
   const frame = scene.add.rectangle(0, 0, rect.width, rect.height, PANEL_FILL).setOrigin(0);
   frame.setStrokeStyle(1, PANEL_STROKE);
+  frame.setAlpha(style.fillAlpha);
 
   const inner = scene.add.graphics();
-  inner.lineStyle(1, PANEL_INNER_STROKE, PANEL_INNER_ALPHA);
+  inner.lineStyle(1, PANEL_INNER_STROKE, style.innerAlpha);
   inner.strokeRect(
-    PANEL_INNER_INSET,
-    PANEL_INNER_INSET,
-    rect.width - 2 * PANEL_INNER_INSET,
-    rect.height - 2 * PANEL_INNER_INSET,
+    style.innerInset,
+    style.innerInset,
+    rect.width - 2 * style.innerInset,
+    rect.height - 2 * style.innerInset,
   );
 
   const heading = scene.add.text(PADDING, PADDING, title, {

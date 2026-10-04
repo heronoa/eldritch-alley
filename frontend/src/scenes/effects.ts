@@ -3,7 +3,8 @@
 import Phaser from 'phaser';
 import { ATTACK_TIMELINE } from '../view/animation';
 import type { Effect } from '../view/effects';
-import { TILE_SIZE, type Pixel } from '../view/grid';
+import type { Pixel } from '../view/grid';
+import { TILE_W } from '../view/iso';
 import { PAPER_COLOR } from '../view/theme';
 
 /** A 6 px flash at the actor's own tile, for the attack thrown from the hand. */
@@ -25,8 +26,9 @@ const COLUMN = { width: 10, height: 40 };
 const PARTICLE = { count: 4, size: 3, spread: 22 };
 
 /**
- * Draws one attack effect between the tiles the two units stand on, given by the centre of their
- * cell. The impact always ends on the target, whatever the kind of the effect.
+ * Draws one attack effect between the two screen points the scene gives it: the bodies of the two
+ * figures, except for the column, which lands on the centre of the target's top face. The impact
+ * always ends on the target, whatever the kind of the effect.
  */
 export function playEffect(scene: Phaser.Scene, effect: Effect, from: Pixel, to: Pixel): void {
   switch (effect.kind) {
@@ -53,13 +55,13 @@ export function playEffect(scene: Phaser.Scene, effect: Effect, from: Pixel, to:
   scene.time.delayedCall(effect.travelMs, () => burst(scene, effect.color, to));
 }
 
-/** A point at the edge of the actor's tile, on the side the target stands. */
+/** A point at the near edge of the actor's own tile, on the side the target stands. */
 function towards(from: Pixel, to: Pixel): Pixel {
   const dx = to.x - from.x;
   const dy = to.y - from.y;
   const length = Math.hypot(dx, dy) || 1;
 
-  return { x: from.x + (dx / length) * (TILE_SIZE / 3), y: from.y + (dy / length) * (TILE_SIZE / 3) };
+  return { x: from.x + (dx / length) * (TILE_W / 3), y: from.y + (dy / length) * (TILE_W / 3) };
 }
 
 function flash(scene: Phaser.Scene, color: number, at: Pixel, size: number, durationMs: number): void {
@@ -80,13 +82,13 @@ function tracer(scene: Phaser.Scene, effect: Effect, from: Pixel, to: Pixel): vo
   });
 }
 
+/** The column drops from above and comes to rest on the centre of the target's top face. */
 function skyColumn(scene: Phaser.Scene, effect: Effect, to: Pixel): void {
-  const bottom = to.y - TILE_SIZE / 2;
-  const column = scene.add.rectangle(to.x, bottom - COLUMN.height, COLUMN.width, COLUMN.height, effect.color);
+  const column = scene.add.rectangle(to.x, to.y - COLUMN.height, COLUMN.width, COLUMN.height, effect.color);
 
   scene.tweens.add({
     targets: column,
-    y: bottom,
+    y: to.y,
     alpha: 0,
     duration: effect.travelMs,
     onComplete: () => column.destroy(),

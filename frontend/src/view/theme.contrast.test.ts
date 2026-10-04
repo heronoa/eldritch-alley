@@ -6,15 +6,18 @@
 // the fills themselves are allowed to sit below 3:1 against a height, as section 4.1 of the M3 plan
 // records.
 import { describe, expect, it } from 'vitest';
-import { contrastRatio } from './contrast';
+import { contrastRatio, luminance } from './contrast';
 import { heightColor } from './grid';
+import { PANEL_ALPHA } from './layout';
 import {
   BG_COLOR,
   BUTTON_FILL,
   BUTTON_FILL_SELECTED,
   CORPSE_OUTLINE_COLOR,
+  FACE_COLORS,
   INK_COLOR,
   PANEL_FILL,
+  PANEL_INNER_ALPHA,
   PAPER_COLOR,
   TEAM_COLOR,
   TEXT_COLOR,
@@ -29,12 +32,38 @@ const BODY_FLOOR = 4.5;
 /** WCAG 2.1 AAA, asked of the outlines only. */
 const OUTLINE_FLOOR = 7;
 
+/** How visible the line drawn just inside a panel has to stay. It is decoration, but not invisible. */
+const INNER_LINE_FLOOR = 1.2;
+
 /** The three heights the board draws. */
 const BOARD_LEVELS = [0, 1, 2];
+
+/** The lightest tile a panel can end up over, which is the worst case for the text on it. */
+const LIGHTEST_HEIGHT = heightColor(2);
 
 /** The text colours are CSS strings; a ratio is measured on the 24-bit number. */
 function hex(color: string): number {
   return Number.parseInt(color.slice(1), 16);
+}
+
+/**
+ * The colour a player sees when `fill` is drawn at `alpha` over `back`, channel by channel: what
+ * Phaser's `setAlpha` composes. A panel floats over the board, so this is the colour its text
+ * really sits on, not `PANEL_FILL` on its own.
+ */
+function over(fill: number, alpha: number, back: number): number {
+  const channel = (shift: number) => {
+    const front = (fill >> shift) & 0xff;
+    const behind = (back >> shift) & 0xff;
+    return Math.round(front * alpha + behind * (1 - alpha));
+  };
+
+  return (channel(16) << 16) | (channel(8) << 8) | channel(0);
+}
+
+/** The panel as it looks over a tile. */
+function panelOver(back: number): number {
+  return over(PANEL_FILL, PANEL_ALPHA, back);
 }
 
 /** A text colour and the fill it is drawn on. */
@@ -79,5 +108,47 @@ describe('outline contrast', () => {
         `level ${level}`,
       ).toBeGreaterThanOrEqual(OUTLINE_FLOOR);
     }
+  });
+});
+
+// The panels float over the board, so their copy is read on the fill composed with the tile behind
+// it, not on `PANEL_FILL` alone.
+describe('overlay contrast', () => {
+  it('keeps panel copy readable over the night behind the board', () => {
+    expect(contrastRatio(hex(TEXT_COLOR), panelOver(BG_COLOR))).toBeGreaterThanOrEqual(BODY_FLOOR);
+  });
+
+  it('keeps panel copy readable over the lightest tile a panel can cover', () => {
+    expect(contrastRatio(hex(TEXT_COLOR), panelOver(LIGHTEST_HEIGHT))).toBeGreaterThanOrEqual(BODY_FLOOR);
+  });
+
+  it('keeps a disabled row readable over the panel', () => {
+    expect(
+      contrastRatio(hex(TEXT_COLOR_DISABLED), panelOver(BG_COLOR)),
+    ).toBeGreaterThanOrEqual(BODY_FLOOR);
+  });
+
+  it('keeps the line drawn just inside a panel visible over its fill', () => {
+    const line = over(PAPER_COLOR, PANEL_INNER_ALPHA, PANEL_FILL);
+
+    expect(contrastRatio(line, PANEL_FILL)).toBeGreaterThanOrEqual(INNER_LINE_FLOOR);
+  });
+});
+
+// The faces of a block, level by level: the prototype's tiles for asphalt, slab and plaza.
+describe('face colours', () => {
+  it('gives every level a lighter top and two darker sides', () => {
+    for (const [level, face] of FACE_COLORS.entries()) {
+      expect(luminance(face.left), `level ${level} left`).toBeLessThan(luminance(face.top));
+      expect(luminance(face.right), `level ${level} right`).toBeLessThan(luminance(face.top));
+    }
+  });
+
+  it('draws the three levels in the prototype’s tones', () => {
+    expect(FACE_COLORS).toEqual([
+      { top: 0x23283a, left: 0x171b28, right: 0x11141f },
+      { top: 0x30364a, left: 0x212536, right: 0x1a1d2b },
+      { top: 0x3f4152, left: 0x2b2d39, right: 0x22242e },
+    ]);
   });
 });

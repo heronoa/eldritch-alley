@@ -1,8 +1,9 @@
 // The palette and the type of the whole client, so the three scenes agree on both.
 //
-// Almost everything here is a fixed value. Two colours are derived instead of chosen: the ones of
-// the board's heights, which belong to `heightColor` in `grid.ts` because they come from the level
-// of the tile, and the colour of the letter on a unit, which comes from the fill under it.
+// Almost everything here is a fixed value. Two sets of colours are derived instead of chosen: the
+// tops of the board's heights, which come from `heightColor` in `grid.ts` because they are a function
+// of the level, and the colour of the letter on a unit, which comes from the fill under it. The side
+// faces are here as `FACE_COLORS`, and the tops repeated there are held to `heightColor` by a test.
 
 import { contrastRatio } from './contrast';
 
@@ -66,6 +67,26 @@ export const HIGHLIGHT_ATTACK_COLOR = ACCENT_COLOR;
 export const HIGHLIGHT_ATTACK_ALPHA = 0.48;
 
 export const GRID_STROKE_COLOR = 0x000000;
+
+/** The three faces of a block: the tile the unit stands on, and the two sides the viewer sees. */
+export interface FaceColors {
+  top: number;
+  left: number;
+  right: number;
+}
+
+/**
+ * The faces of a block, by level: the prototype's asphalt, slab and plaza tiles.
+ *
+ * The sides are the prototype's own values — a single shading factor does not reproduce them, because
+ * its faces are not one factor of its tops. The tops repeat `heightColor`, which is what the board
+ * actually draws them with; `grid.test.ts` holds the two tables together.
+ */
+export const FACE_COLORS: FaceColors[] = [
+  { top: 0x23283a, left: 0x171b28, right: 0x11141f },
+  { top: 0x30364a, left: 0x212536, right: 0x1a1d2b },
+  { top: 0x3f4152, left: 0x2b2d39, right: 0x22242e },
+];
 
 /** The frame stamped around the result of a finished match. Decoration: it carries no information. */
 export const STAMP_COLOR = ACCENT_COLOR;

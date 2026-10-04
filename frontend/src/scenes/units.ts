@@ -15,7 +15,8 @@ import {
   reloadFrame,
   walkFrame,
 } from '../view/animation';
-import { TILE_SIZE, type Pixel } from '../view/grid';
+import type { Cell, Pixel } from '../view/grid';
+import { TILE_H, TILE_W, depthOfUnit } from '../view/iso';
 import {
   CORPSE_COLOR,
   CORPSE_OUTLINE_COLOR,
@@ -63,13 +64,18 @@ const DIAMOND = [
   { x: -1, y: 0 },
 ];
 
-/** Geometry of a drawn unit, in pixels. The body is a 16x24 frame drawn at twice its size. */
-const BODY_SCALE = 2;
-const BODY_HEIGHT = 24 * BODY_SCALE;
-const MARKER_HALF_WIDTH = 18;
+/** Geometry of a drawn unit, in pixels. The body is a 16x24 frame drawn at three times its size. */
+const BODY_SCALE = 3;
+
+/** How tall the figure stands above its feet, which is what the bars and the shot leave from. */
+export const BODY_HEIGHT = 24 * BODY_SCALE;
+
+/** The ground marker lies flat on the tile, so its two axes follow the two axes of the top face. */
+const MARKER_HALF_WIDTH = TILE_W * 0.22;
+const MARKER_HALF_HEIGHT = TILE_H * 0.22;
 const CORNER_SIZE = 4;
 const RING_GAP = 3;
-const HEALTH_BAR = { width: 32, height: 4, gapAboveBody: 10 };
+const HEALTH_BAR = { width: 32, height: 4, gapAboveBody: 6 };
 const PIP = { size: 4, gap: 3, gapAboveBar: 6 };
 
 /** What the sprite is busy with, and when it started. Only one action runs at a time. */
@@ -82,6 +88,16 @@ export interface AttackPlan {
   style: 'melee' | 'ranged';
   hit: boolean;
   travelMs: number;
+}
+
+/**
+ * Where a unit is: the cell it occupies and the screen point its feet rest on, which is the centre of
+ * that cell's top face. The cell travels with the point because the depth and the length of a slide
+ * are counted in cells, and a screen point no longer says how many.
+ */
+export interface Placement {
+  cell: Cell;
+  anchor: Pixel;
 }
 
 /** How long an attack takes to reach its target: the strike at reach, the flight at range. */
@@ -108,7 +124,7 @@ export class UnitSprite extends Phaser.GameObjects.Container {
   private action: Action | null = null;
   private moving: { start: number } | null = null;
 
-  constructor(scene: Phaser.Scene, unit: UnitState, selected: boolean, cell: Pixel) {
+  constructor(scene: Phaser.Scene, unit: UnitState, selected: boolean, placement: Placement) {
     super(scene, 0, 0);
     this.bornAt = scene.time.now;
 
@@ -121,11 +137,11 @@ export class UnitSprite extends Phaser.GameObjects.Container {
     this.add([this.marker, this.corpse, this.figure, this.bars, this.ring]);
 
     scene.add.existing(this);
-    this.sync(unit, selected, cell);
+    this.sync(unit, selected, placement);
   }
 
   /** Redraws what the state says about the unit. A unit mid-move is left where its tween has it. */
-  sync(unit: UnitState, selected: boolean, cell: Pixel): void {
+  sync(unit: UnitState, selected: boolean, placement: Placement): void {
     this.team = unit.team;
     this.row = classRow(unit.primaryClass) ?? 0;
     this.defeated = unit.defeated;
@@ -137,7 +153,7 @@ export class UnitSprite extends Phaser.GameObjects.Container {
     // Each team faces the other from the start, so a unit is never seen from behind by its side.
     this.figure.setFlipX(unit.team === 'B');
 
-    if (this.moving === null) this.snapTo(cell);
+    if (this.moving === null) this.snapTo(placement);
 
     this.drawMarker();
     this.drawCorpse();
@@ -153,19 +169,29 @@ export class UnitSprite extends Phaser.GameObjects.Container {
     this.drawBars(this.scene.time.now);
   }
 
-  /** Slides the unit across the cells it was moved, one step of the walk per 150 ms. */
-  slideTo(from: Pixel, to: Pixel): void {
-    const cells = Math.max(Math.abs(to.x - from.x), Math.abs(to.y - from.y)) / TILE_SIZE;
+  /**
+   * Slides the unit across the cells it was moved, one step of the walk per 150 ms. The length is the
+   * cell distance, so a step is the same length wherever on the board it happens; the depth follows
+   * the slide so a unit moving towards the viewer comes out over the tiles it passes.
+   */
+  slideTo(from: Placement, to: Placement): void {
+    const cells = Math.max(Math.abs(to.cell.x - from.cell.x), Math.abs(to.cell.y - from.cell.y));
+    const fromDepth = depthOfUnit(from.cell);
+    const toDepth = depthOfUnit(to.cell);
 
     this.moving = { start: this.scene.time.now };
     this.snapTo(from);
     this.scene.tweens.add({
       targets: this,
-      x: to.x + TILE_SIZE / 2,
-      y: to.y + TILE_SIZE / 2,
+      x: to.anchor.x,
+      y: to.anchor.y,
       duration: movementDuration(cells),
+      onUpdate: (tween: Phaser.Tweens.Tween) => {
+        this.setDepth(fromDepth + (toDepth - fromDepth) * tween.progress);
+      },
       onComplete: () => {
         this.moving = null;
+        this.setDepth(toDepth);
       },
     });
   }
@@ -260,15 +286,17 @@ export class UnitSprite extends Phaser.GameObjects.Container {
     else this.figure.clearTint();
   }
 
-  private snapTo(cell: Pixel): void {
-    this.setPosition(cell.x + TILE_SIZE / 2, cell.y + TILE_SIZE / 2);
+  /** Puts the unit on its tile: feet at the anchor, and the depth of the cell it stands on. */
+  private snapTo(placement: Placement): void {
+    this.setPosition(placement.anchor.x, placement.anchor.y);
+    this.setDepth(depthOfUnit(placement.cell));
   }
 
   private drawMarker(): void {
     this.marker.clear();
     if (this.defeated) return;
 
-    const corners = DIAMOND.map((point) => ({ x: point.x * MARKER_HALF_WIDTH, y: point.y * MARKER_HALF_WIDTH }));
+    const corners = this.diamond(MARKER_HALF_WIDTH, MARKER_HALF_HEIGHT);
     this.marker.fillStyle(TEAM_COLOR[this.team], 1);
     this.marker.fillPoints(corners, true);
     this.marker.lineStyle(1, PAPER_COLOR, 1);
@@ -290,7 +318,7 @@ export class UnitSprite extends Phaser.GameObjects.Container {
     if (!this.defeated) return;
 
     this.corpse.lineStyle(2, CORPSE_OUTLINE_COLOR, 1);
-    this.corpse.strokePoints(this.diamond(MARKER_HALF_WIDTH), true, true);
+    this.corpse.strokePoints(this.diamond(MARKER_HALF_WIDTH, MARKER_HALF_HEIGHT), true, true);
   }
 
   private drawRing(): void {
@@ -298,7 +326,11 @@ export class UnitSprite extends Phaser.GameObjects.Container {
     if (!this.selected) return;
 
     this.ring.lineStyle(3, SELECTED_COLOR, 1);
-    this.ring.strokePoints(this.diamond(MARKER_HALF_WIDTH + RING_GAP), true, true);
+    this.ring.strokePoints(
+      this.diamond(MARKER_HALF_WIDTH + RING_GAP, MARKER_HALF_HEIGHT + RING_GAP),
+      true,
+      true,
+    );
   }
 
   private drawBars(now: number): void {
@@ -335,7 +367,8 @@ export class UnitSprite extends Phaser.GameObjects.Container {
     return this.pips.filled;
   }
 
-  private diamond(halfWidth: number): Pixel[] {
-    return DIAMOND.map((point) => ({ x: point.x * halfWidth, y: point.y * halfWidth }));
+  /** The four corners of a flat diamond lying on a top face, by its two half axes. */
+  private diamond(halfWidth: number, halfHeight: number): Pixel[] {
+    return DIAMOND.map((point) => ({ x: point.x * halfWidth, y: point.y * halfHeight }));
   }
 }

@@ -148,6 +148,28 @@ Status values: **Open**, **Closed**.
 - **Trigger:** before the next change to `backend/game-server`, and before the M2-b deploy.
 - **Evidence:** `npm test -w @eldritch-alley/game-server` (and `npx vitest run` inside the workspace, Node 22.19, vitest 3.2.7) fails with `failed to load config from backend/game-server/vitest.config.ts` / `Error [ERR_REQUIRE_ESM]: require() of ES Module .../vite/dist/node/index.js from .../vitest/dist/config.cjs not supported`. `frontend/package.json` carries `"type": "module"` and its suite runs; `backend/game-server/package.json` has no `type`, so Vite bundles the config as CJS and the `import { defineConfig } from 'vitest/config'` on line 1 lands on the CommonJS entry point, which `require`s the ESM-only `vite`. Suspected fix: add `"type": "module"` to the workspace (checking `tsconfig` and the `dist` output first), rename the config to `vitest.config.mts`, or drop the `vitest/config` import for a plain object. Not tried: nothing in the visual identity work touches `backend/` (`git status --porcelain -- backend/game-server/` is empty).
 
+### DT-44 · Effects are drawn beneath the board's pieces
+- **Category:** Architecture (design)
+- **Risk if untreated:** shots, tracers, missile darts, impact particles and the sky column of the attacks are covered by the blocks in front of them, so the attack animations the owner approved are partly invisible on the isometric board.
+- **Effort:** P
+- **Trigger:** before the approval of M2 of the isometric board (required).
+- **Evidence:** `frontend/src/scenes/effects.ts:68`, `:73`, `:87`, `:100`, `:128`, `:155`: no object sets a depth, so all of them sit at depth 0, while `BoardTiles` draws each cell at `depthOfCell` (`frontend/src/scenes/BoardTiles.ts`), from 0 to 14. Suggested fix: a constant `EFFECT_DEPTH` above every cell and below `HUD_DEPTH` (100).
+- **Measured in a real match** (2026-10-04, headless Chrome on the built client, a match played to its end): the objects do exist — read live from the display list during a fired attack they are `16x16@0`, `6x6@0` and four `3x3@0` — and every one of them is at depth 0 while the tiles around them are at 0..28. A 42 fps screencast across twelve bot turns found no effect-coloured pixel anywhere (cyan peaked at 3 px, magenta at 15 px, both anti-aliasing noise against a warm baseline of 45..95 px). The turn whose log reads `A-priest acertou B-wizard por 2` leaves the board pixel-identical to the frame before it. So the effect is built and then covered: **no attack ever shows its animation.** This is why the M3 screenshots have no "attack in progress" (M3 plan, section 7 step 5).
+
+### DT-46 · Highlight graphics are recreated on every redraw
+- **Category:** Performance
+- **Risk if untreated:** object churn in the scene on each state change. Suspected cost only; not measured.
+- **Effort:** P
+- **Trigger:** only if a measurement in a real match shows a cost.
+- **Evidence:** `frontend/src/scenes/MatchScene.ts:453-454` destroys the previous highlights, and `:468` creates a new `Graphics` for each highlighted cell.
+
+### DT-47 · No test of the scene's depth order
+- **Category:** Testing
+- **Risk if untreated:** a regression like DT-44 comes back without any failing test. `iso.test.ts` covers the depth values of the module, but not that every effect, unit and HUD object sits in the right layer.
+- **Effort:** M
+- **Trigger:** together with the fix of DT-44.
+- **Evidence:** `frontend/src/view/iso.test.ts` (depth functions only); no test imports `MatchScene` or `effects.ts`.
+
 ---
 
 ## Closed
@@ -170,3 +192,4 @@ Status values: **Open**, **Closed**.
 | EXTRA | Duplicate unit ids were accepted | `newMatch` throws `RangeError`. Tested by `match.test.ts`. |
 | DT-27 | The legend called team A "Azul claro", but its colour was beige | Closed by M3 (visual identity, section 4.3). `TEAM_COLOR.A` became ink blue `#6f95d6` with the night palette, so "Azul" is now the colour of A, and the legend reads "Azul-tinta: você · Vermelho: bot · Papel: selecionado / Realce azul: movimento · Realce vermelho: ataque". The old wording is gone with the beige it described. |
 | DT-30 | Clicks on the action buttons landed offset from where they are drawn | Closed by the recommended fix, applied as written. `Button` no longer takes pointer input of its own: it only draws. `layout.ts` gains `containsPoint` and `buttonIndexAt`, which test a point against the same `buttonRect` that draws the button, and `MatchScene.handleClick` tests the bar before `pixelToCell`, then acts on the `ActionButton` the drawn button came from. `LobbyScene` uses `containsPoint` against its own play-button rectangle, so its button did not stop responding when the widget lost its `pointerdown`. Covered by seven cases in `layout.test.ts` (each button under its centre and its corners, the far edge outside, the gap between buttons, above and below the bar, the board, off-canvas). Verified at runtime in headless Chrome at a 0.79 scale: all nine probe points inside each button act, the gap between buttons acts on nothing, and the lobby button answers at its bottom-right corner. **The original defect was never reproduced** — the old Container hit area also answered at the button centres in that harness — so the owner still has to confirm the fix in his own browser; if the offset survives, this item reopens. |
+| DT-45 | Block faces use `shade`, not the prototype's face colours | Closed by M3 of the isometric board, section 4.1. `theme.ts` gains `FACE_COLORS`, one `{top, left, right}` per level, holding the prototype's asphalt, slab and plaza tiles; `BoardTiles` reads the two side faces from it and the top from `heightColor` as before, so `shade` and its constants are no longer called by the board (`iso.test.ts` keeps their tests). `grid.test.ts` holds the two tables together (`heightColor(level)` is `FACE_COLORS[level].top`), and `theme.contrast.test.ts` checks each entry's sides are darker than its top and pins the six values. Verified on screen: the start of a match shows the three tones with darker left and right faces. |

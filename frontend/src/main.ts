@@ -11,7 +11,7 @@ new Phaser.Game({
   width: CANVAS_WIDTH,
   height: CANVAS_HEIGHT,
   backgroundColor: cssColor(BG_COLOR),
-  // The units are 16x24 pixel art drawn at twice their size: without this, every edge blurs.
+  // The units are 16x24 pixel art drawn at three times their size: without this, every edge blurs.
   pixelArt: true,
   // A fixed 1280x720 canvas is cropped outright on a shorter viewport; FIT is the one-line answer.
   scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },

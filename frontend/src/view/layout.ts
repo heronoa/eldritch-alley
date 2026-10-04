@@ -1,10 +1,11 @@
 // Where every piece of the HUD sits on the canvas. Plain arithmetic, no Phaser: the scene reads
 // these rectangles and draws them, so no coordinate is decided inside a drawing method.
 //
-// The board keeps the place it had. All of the extra width and height of the 1280x720 canvas is on
-// the right and the bottom, which is also why `pixelToCell` keeps returning null for a click in the
-// sidebar: the scene-wide pointer handler stays harmless there.
-import { BOARD_HEIGHT, BOARD_WIDTH, ORIGIN, TILE_SIZE, type Pixel } from './grid';
+// The HUD floats over the board instead of sitting beside it, so the rectangles are placed from the
+// edges of the canvas and the board keeps the middle. Every point inside one of them belongs to the
+// HUD, which is what lets a panel cover a tile without a click reaching the tile.
+import { BOARD_HEIGHT, BOARD_WIDTH, type Pixel } from './grid';
+import { HZ, TILE_H, TILE_W, TOP_Y, cellToScreen } from './iso';
 
 /** A rectangle on the canvas. */
 export interface Rect {
@@ -17,60 +18,60 @@ export interface Rect {
 export const CANVAS_WIDTH = 1280;
 export const CANVAS_HEIGHT = 720;
 
-/** Space between a piece of the HUD and the edge of what contains it. */
+/** Space between a piece of the HUD and the edge of the canvas. */
 export const PADDING = 16;
 
-/** The board, exactly where `grid.ts` draws it. */
-export const BOARD_RECT: Rect = {
-  x: ORIGIN.x,
-  y: ORIGIN.y,
-  width: BOARD_WIDTH * TILE_SIZE,
-  height: BOARD_HEIGHT * TILE_SIZE,
-};
+/** The widest level the board can reach, which is what the board's lowest block is drawn for. */
+const HIGHEST_LEVEL = 2;
 
-/** The column to the right of the board, which holds everything that is not the board. */
-export const SIDEBAR = {
-  x: BOARD_RECT.x + BOARD_RECT.width + 32,
-  y: ORIGIN.y,
-  width: CANVAS_WIDTH - (BOARD_RECT.x + BOARD_RECT.width + 32) - ORIGIN.x,
-};
+/** The carousel and the action bar share one column, centred on the canvas. */
+const CENTRED_X = 248;
+const CENTRED_WIDTH = 784;
+
+/** The panel and the log sit on one line, each in its own column against the edge. */
+const COLUMN_WIDTH = 300;
+const LEFT_COLUMN_X = PADDING;
+const RIGHT_COLUMN_X = CANVAS_WIDTH - PADDING - COLUMN_WIDTH;
+const COLUMN_Y = 120;
+const COLUMN_HEIGHT = 300;
 
 /** The turn-order carousel: one chip per unit still in play, the acting unit first. */
-export const CAROUSEL_RECT: Rect = {
-  x: SIDEBAR.x,
-  y: SIDEBAR.y,
-  width: SIDEBAR.width,
-  height: 80,
-};
+export const CAROUSEL_RECT: Rect = { x: CENTRED_X, y: PADDING, width: CENTRED_WIDTH, height: 80 };
 
 export const CAROUSEL_SLOT = { width: 96, height: 64, gap: 8 };
 
 /** The action bar: four buttons, `Mover` / `Atacar` / `Recarregar` / `Terminar turno`. */
-export const ACTION_BAR_RECT: Rect = {
-  x: SIDEBAR.x,
-  y: CAROUSEL_RECT.y + CAROUSEL_RECT.height + PADDING,
-  width: SIDEBAR.width,
-  height: 56,
-};
+export const ACTION_BAR_RECT: Rect = { x: CENTRED_X, y: 648, width: CENTRED_WIDTH, height: 56 };
 
 /** Four buttons and three gaps fill the bar exactly. */
 export const ACTION_BUTTON = { width: 184, height: 56, gap: 16 };
 
-/** The unit panel, under the action bar. */
+/** The unit panel, over the board on the left. */
 export const PANEL_RECT: Rect = {
-  x: SIDEBAR.x,
-  y: ACTION_BAR_RECT.y + ACTION_BAR_RECT.height + PADDING,
-  width: 368,
-  height: 300,
+  x: LEFT_COLUMN_X,
+  y: COLUMN_Y,
+  width: COLUMN_WIDTH,
+  height: COLUMN_HEIGHT,
 };
 
-/** The battle log, beside the panel. Between them they fill the width of the sidebar. */
+/**
+ * How solid the fill of a panel is. A panel floats over the board, so it has to let a little of the
+ * tiles under it through to stay readable as something laid on top; the text and the frame are drawn
+ * at full strength over it.
+ */
+export const PANEL_ALPHA = 0.94;
+
+/** The battle log, over the board on the right. */
 export const LOG_RECT: Rect = {
-  x: PANEL_RECT.x + PANEL_RECT.width + PADDING,
-  y: PANEL_RECT.y,
-  width: SIDEBAR.width - PANEL_RECT.width - PADDING,
-  height: PANEL_RECT.height,
+  x: RIGHT_COLUMN_X,
+  y: COLUMN_Y,
+  width: COLUMN_WIDTH,
+  height: COLUMN_HEIGHT,
 };
+
+/** The legend and the status line, under the panel in the left column. */
+export const LEGEND_RECT: Rect = { x: LEFT_COLUMN_X, y: 440, width: COLUMN_WIDTH, height: 44 };
+export const STATUS_RECT: Rect = { x: LEFT_COLUMN_X, y: 492, width: COLUMN_WIDTH, height: 24 };
 
 /** Height of one panel row, and the space the title above both boxes takes. */
 export const PANEL_ROW_HEIGHT = 40;
@@ -89,10 +90,24 @@ export const LOG_TEXT_POINT: Pixel = { x: LOG_RECT.x + PADDING, y: LOG_RECT.y + 
 /** The top-left of the panel's title. */
 export const PANEL_TITLE_POINT: Pixel = { x: PANEL_RECT.x + PADDING, y: PANEL_RECT.y + PADDING };
 
-/** The legend and the status line sit under the board, in the column the board leaves free. */
-export const LEGEND_Y = BOARD_RECT.y + BOARD_RECT.height + PADDING;
-/** The legend wraps to two lines, so the status line clears both. */
-export const STATUS_Y = LEGEND_Y + 44;
+/**
+ * The box that holds every top face and every block of the board, drawn at the highest level the
+ * board can reach: the west corner of the leftmost cell to the east corner of the rightmost one,
+ * and the north corner of the top cell down past the base of the tallest block.
+ */
+export function boardBounds(): Rect {
+  const north = TOP_Y;
+  const west = cellToScreen({ x: 0, y: BOARD_HEIGHT - 1 }, 0).x - TILE_W / 2;
+  const east = cellToScreen({ x: BOARD_WIDTH - 1, y: 0 }, 0).x + TILE_W / 2;
+  const south = cellToScreen({ x: BOARD_WIDTH - 1, y: BOARD_HEIGHT - 1 }, 0).y + TILE_H / 2 + HIGHEST_LEVEL * HZ;
+
+  return { x: west, y: north, width: east - west, height: south - north };
+}
+
+/** The six rectangles that cover the board, in the order the scene reads them. */
+export function hudRects(): Rect[] {
+  return [CAROUSEL_RECT, ACTION_BAR_RECT, PANEL_RECT, LOG_RECT, LEGEND_RECT, STATUS_RECT];
+}
 
 /** The rectangle of the nth button of the action bar, counting from the left. */
 export function buttonRect(index: number): Rect {
@@ -108,8 +123,8 @@ export function buttonRect(index: number): Rect {
 export const ACTION_BUTTONS = 4;
 
 /**
- * Whether a point of the canvas is inside a rectangle. Half-open, like `pixelToCell`: the far edge
- * belongs to the neighbour, so two touching rectangles never both claim the same pixel.
+ * Whether a point of the canvas is inside a rectangle. Half-open, like `cellAt`'s top faces: the far
+ * edge belongs to the neighbour, so two touching rectangles never both claim the same pixel.
  */
 export function containsPoint(rect: Rect, point: Pixel): boolean {
   return (
