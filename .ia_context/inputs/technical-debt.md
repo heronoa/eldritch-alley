@@ -24,14 +24,6 @@ Planned features are not debt: they live in [backlog.md](./backlog.md).
 - **Trigger:** a Colyseus release past 0.18.9, or an advisory on the same packages moving to high.
 - **Evidence:** `npm audit --json` run on 2026-10-03: `{"low":14,"moderate":5,"high":0,"critical":0,"total":19}`; `docs/adr/0008-colyseus-0.18.md`.
 
-### DT-20 · Validate the shape of client messages in the match server
-- **Status:** Implemented: `backend/game-server/src/action-shape.ts` and the check in `resolveHumanAction`, which answers `malformed-action`. The shape tests pass (6/6) and the resolver was checked directly (malformed refused, valid accepted). The `battle-room.test.ts` case is written but cannot run until DT-32 is fixed.
-- **Category:** Security
-- **Risk if untreated:** a malformed `action` payload (for example, a move without `to`) throws inside the room handler, because the payload is cast and handed to the engine without a shape check or a try/catch. The damage is limited to that one match, but a client can break its own room.
-- **Effort:** P
-- **Trigger:** before the M2-b public deploy.
-- **Evidence:** `backend/game-server/src/battle-room.ts:80,117`.
-
 ### DT-21 · The bot only starts playing after a human action
 - **Category:** Architecture (design)
 - **Risk if untreated:** if the initiative ever starts with a bot unit, nothing triggers the bot, the human gets `not-your-turn` on every action, and the match stalls. It does not happen today, because the sniper of team A has the highest speed.
@@ -74,14 +66,6 @@ Planned features are not debt: they live in [backlog.md](./backlog.md).
 - **Effort:** P
 - **Trigger:** the next red run of the engine suite, or the next change to `properties.test.ts`.
 - **Evidence:** `backend/engine/src/properties.test.ts:158`, "replays every accepted sequence to the same hash". 200 seeds × 40 steps, each hashing the whole state. Measured on 2026-10-04 with the browser harness, the Colyseus server and the Vite preview running: the test reports **6112 ms** in the full suite (13 files in parallel), over the 5000 ms default timeout, so it fails; **4.4 s** on its own, so it passes. Run `npm test -w @eldritch-alley/engine` with the machine otherwise idle and it passes. Untouched by the visual identity work (`git status --porcelain -- backend/` is empty); the test predates it.
-
-### DT-32 · The game-server test suite does not start at all
-- **Status:** Implemented in part. The config is now `vitest.config.mts`, and the suite starts. Still blocked: `battle-room.test.ts` and `integration.test.ts` fail at load with `SyntaxError: Unexpected token 'with'`; the cause is not located yet (`@colyseus/testing` loads fine under plain Node, so it is in the vitest transform). The root `npm test` is still red.
-- **Category:** Testing
-- **Risk if untreated:** `npm test` at the root stops on the second workspace, so every `battle-room` test is dead weight: they have not run, and no regression in the room, the bot or the message handlers can be caught. It also hides DT-31, because the root command never reaches the frontend.
-- **Effort:** P
-- **Trigger:** before the next change to `backend/game-server`, and before the M2-b deploy.
-- **Evidence:** `npm test -w @eldritch-alley/game-server` (and `npx vitest run` inside the workspace, Node 22.19, vitest 3.2.7) fails with `failed to load config from backend/game-server/vitest.config.ts` / `Error [ERR_REQUIRE_ESM]: require() of ES Module .../vite/dist/node/index.js from .../vitest/dist/config.cjs not supported`. `frontend/package.json` carries `"type": "module"` and its suite runs; `backend/game-server/package.json` has no `type`, so Vite bundles the config as CJS and the `import { defineConfig } from 'vitest/config'` on line 1 lands on the CommonJS entry point, which `require`s the ESM-only `vite`. Suspected fix: add `"type": "module"` to the workspace (checking `tsconfig` and the `dist` output first), rename the config to `vitest.config.mts`, or drop the `vitest/config` import for a plain object. Not tried: nothing in the visual identity work touches `backend/` (`git status --porcelain -- backend/game-server/` is empty).
 
 ### DT-46 · Highlight graphics are recreated on every redraw
 - **Category:** Performance
