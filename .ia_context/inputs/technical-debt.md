@@ -170,6 +170,118 @@ Status values: **Open**, **Closed**.
 - **Trigger:** together with the fix of DT-44.
 - **Evidence:** `frontend/src/view/iso.test.ts` (depth functions only); no test imports `MatchScene` or `effects.ts`.
 
+### DT-40 · Client bundle is 1.69 MB, not compared with develop
+- **Category:** Performance
+- **Risk if untreated:** a heavier first load on the Cloudflare deploy than necessary; unknown whether the growth comes from Phaser or from the new code.
+- **Effort:** P
+- **Trigger:** before the M2-b deploy.
+- **Evidence:** `npm run build -w @eldritch-alley/frontend` output, `dist/assets/index-*.js` 1,686 kB (gzip 402 kB). Not compared with a build of `develop`.
+
+### DT-41 · The match scene has no automated test
+- **Category:** Testing
+- **Risk if untreated:** regressions in `MatchScene`, `units.ts` and `effects.ts` appear only in the browser, by hand.
+- **Effort:** M
+- **Trigger:** the first change to those files after this entry; first step is DT-47.
+- **Evidence:** `frontend/src/scenes/MatchScene.ts`, `units.ts`, `effects.ts`; the Node suites only cover the pure modules they call.
+
+### DT-42 · The DT-30 close relies on a browser run with no artifact
+- **Category:** Documentation
+- **Risk if untreated:** the fix is approved on a check nobody can repeat; the defect may still be there for the owner.
+- **Effort:** P
+- **Trigger:** the owner confirms the clicks in his own browser, or DT-30 is reopened.
+- **Evidence:** DT-30 resolution in the Closed table ("Verified at runtime in headless Chrome at a 0.79 scale"); no script or output is committed.
+
+### DT-43 · `README-license-section.md` sits loose at the repository root
+- **Category:** Documentation
+- **Risk if untreated:** two licence sources that can drift apart; a reader does not know which one is authoritative.
+- **Effort:** P
+- **Trigger:** when the licence files are split out of the visual identity branch (DT-51).
+- **Evidence:** `README-license-section.md` at the root; not linked from `README.md`.
+
+### DT-48 · Wall and reach invariants of the map plan use orthogonal adjacency
+- **Category:** Testing
+- **Risk if untreated:** a map with a level-2 cell diagonal to a level-3 wall passes the test, and a unit can step diagonally into the wall. The engine allows diagonal steps (Chebyshev distance 1).
+- **Effort:** P
+- **Trigger:** before `map-variety-m3-server` is executed.
+- **Evidence:** `.ia_context/plans/map-variety-m3-server.plan.md` (I1, I1b, I3); `backend/engine/src/actions.ts:96` (`distance(...) !== 1`), `backend/engine/src/board.ts:19-21`.
+
+### DT-49 · Map variety starts with DT-44 still open, despite the declared blocker
+- **Category:** Architecture (design)
+- **Risk if untreated:** the three maps and the four milestones are built on attack effects that are partly invisible.
+- **Effort:** P
+- **Trigger:** before `map-variety-m1-logic` starts.
+- **Evidence:** `frontend/src/scenes/effects.ts` (no `setDepth`); DT-44 in this file, marked as required before the M2 approval.
+
+### DT-50 · Map plan measures the panel edge with a 4 px error
+- **Category:** Documentation
+- **Risk if untreated:** the layout reading of the map plan is wrong in the review.
+- **Effort:** P
+- **Trigger:** next edit of `map-variety-m1-logic.plan.md`.
+- **Evidence:** `.ia_context/plans/map-variety-m1-logic.plan.md` (west corner at x 320; the left panel ends at x 316, `layout.ts` `PANEL_RECT`).
+
+### DT-51 · The visual identity branch mixes three subjects
+- **Category:** Architecture (design)
+- **Risk if untreated:** the MR for the visual identity carries the title-screen plans, the title prototype and the licence files, against `CLAUDE.md` rule 5 (one subject per diff).
+- **Effort:** P
+- **Trigger:** before the MR of `feat/visual-identity` is opened.
+- **Evidence:** `git diff --stat develop...feat/visual-identity` lists `.ia_context/plans/title-screen-*`, `.ia_context/prototypes/eldritch-alley-title-screen/`, `ASSETS_LICENSE.md`, `README-license-section.md`.
+
+### DT-52 · The turn queue shows class letters, not the characters
+- **Category:** Architecture (design)
+- **Risk if untreated:** the queue does not match the look of the rest of the game; the owner asked for the character's image.
+- **Effort:** P
+- **Trigger:** owner's request, next design pass.
+- **Evidence:** `frontend/src/scenes/widgets.ts` (`createTurnChip`, letter from `initialOf`); screenshot `.ia_context/descriptions/iso-board-screenshots/04-attack-landed-no-effect.png` (chips P, S, W).
+
+### DT-53 · Attack after spending the movement: not reproduced
+- **Category:** Testing
+- **Risk if untreated:** the owner cannot attack after moving and no code path explains it, so the bug stays open with no test.
+- **Effort:** P
+- **Trigger:** the owner gives the class, the positions and the log line at the moment of the click.
+- **Evidence:** the engine allows it: `backend/engine/src/actions.ts:107-117` (`validateAttack` has no movement term), `backend/engine/src/events.ts:24` (`moved` spends movement only). The client gates it with `frontend/src/game/actions.ts:57-59` (`canAct` and a target in reach). Likely cause to check: no enemy in reach from the new cell, or a Sniper with an empty magazine (melee reach 1, `selection.ts:29-31`).
+
+### DT-54 · Movement is one tile per action; there is no pathfinding
+- **Category:** Architecture (design)
+- **Risk if untreated:** the owner cannot cross the board in one move, and the move range is not shown. The engine refuses any step that is not adjacent.
+- **Effort:** G
+- **Trigger:** decision between options A (client path, one message per step), B (engine path action, protocol bump) and C (engine `reachableCells`, one action); and whether allies block passage.
+- **Evidence:** `backend/engine/src/actions.ts:96` (`not-adjacent`); `frontend/src/game/selection.ts` (`chebyshev(...) === 1`).
+
+### DT-55 · Tiles that hide units are not faded
+- **Category:** Architecture (design)
+- **Risk if untreated:** a unit behind a raised block cannot be seen. Known limit, recorded in the isometric plan.
+- **Effort:** M
+- **Trigger:** playtest shows units lost behind blocks.
+- **Evidence:** `.ia_context/plans/iso-board.index.md` (decision 4); `frontend/src/scenes/BoardTiles.ts`.
+
+### DT-56 · No audio in the client
+- **Category:** Architecture (design)
+- **Risk if untreated:** effects such as the sniper's bolt click and the impacts are silent. Known limit of the identity and title plans.
+- **Effort:** M
+- **Trigger:** the first audio plan.
+- **Evidence:** `.ia_context/plans/visual-identity-m2-integration.plan.md` (section 9); no audio file or loader in `frontend/`.
+
+### DT-57 · Mana pips are not drawn; the engine has no mana
+- **Category:** Architecture (design)
+- **Risk if untreated:** wizards and priests show no resource on the board. Known limit.
+- **Effort:** G
+- **Trigger:** mana reaches the engine (ADR 0002, M3).
+- **Evidence:** `frontend/src/view/unit-look.ts` (`pipsFor` returns `null` for magazine `null`); `.ia_context/plans/visual-identity-m1-logic.plan.md` (section 9).
+
+### DT-58 · Sprites have no back view
+- **Category:** Architecture (design)
+- **Risk if untreated:** a unit walking away from the camera still shows its face. Known limit of the characters handoff.
+- **Effort:** M
+- **Trigger:** the first view of a unit facing away from the camera in a playtest.
+- **Evidence:** `.ia_context/prototypes/eldritch-alley-characters-v1/README.md` ("Only the front view exists").
+
+### DT-59 · No way out of the match after it ends
+- **Category:** Architecture (design)
+- **Risk if untreated:** after "Vitória" or "Derrota" the player is stuck on the final screen: no button to start again and no way back to the main menu. The only recovery is reloading the page.
+- **Effort:** P
+- **Trigger:** before the next playtest or the M2-b deploy.
+- **Evidence:** `frontend/src/scenes/MatchScene.ts:416-425` (`handleEnded` only sets the result text and redraws; no transition); the only `scene.start` calls leave the match or the lobby (`LobbyScene.ts:80`, `BootScene.ts:41`), and none returns from `match`. The `Session` is also never closed on the way out (suspicion, not verified: `frontend/src/net/session.ts`).
+
 ---
 
 ## Closed
