@@ -24,8 +24,8 @@ The owner chose the three values below after the M3 review; they are fixed for t
    panels.
 2. **Walls as cliffs, levels 0..3.** A four-tone palette; level 3 is the building mass. The engine already
    refuses a step with `|Δlevel| > 1` (`backend/engine/src/actions.ts`, `'height-step-too-high'`), so a
-   3-level block only has to be authored so that no level-2 cell touches it and it is impassable. **No
-   engine rule changes.**
+   3-level block only has to be authored so that **no level-2 cell is within Chebyshev distance 1 of it**
+   (diagonals included: the engine steps diagonally, DT-48) and it is impassable. **No engine rule changes.**
 3. **Fixed corner spawns, derived from the board size**, as today: A = (0,0), (1,0), (0,1);
    B = (w−1, h−1), (w−2, h−1), (w−1, h−2). On 10×10 that is the (0,0) and (9,9) corners.
 
@@ -60,8 +60,8 @@ The owner chose the three values below after the M3 review; they are fixed for t
 | # | Plan | Status | PR |
 |---|------|--------|----|
 | 1 | [map-variety-m1-logic.plan.md](./map-variety-m1-logic.plan.md): size-driven projection and picking, four-tone palette (no Phaser) | [x] concluído | — |
-| 2 | [map-variety-m2-integration.plan.md](./map-variety-m2-integration.plan.md): the client draws the board the state carries | [ ] pendente | — |
-| 3 | [map-variety-m3-server.plan.md](./map-variety-m3-server.plan.md): three 10×10 maps, spawns by size, one drawn at random per match (DT-32 first) | [ ] pendente | — |
+| 2 | [map-variety-m2-integration.plan.md](./map-variety-m2-integration.plan.md): the client draws the board the state carries | [x] concluído | — |
+| 3 | [map-variety-m3-server.plan.md](./map-variety-m3-server.plan.md): three 10×10 maps, spawns by size, one drawn at random per match (DT-32 first) | [x] concluído | — |
 | 4 | [map-variety-m4-design.plan.md](./map-variety-m4-design.plan.md): design pass by screenshot, owner approval | [ ] pendente | — |
 
 ## Dependency notes

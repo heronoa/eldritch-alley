@@ -19,6 +19,7 @@ import { turnOrder } from '../game/turn-order';
 import { Session } from '../net/session';
 import {
   PROTOCOL_VERSION,
+  type Board,
   type ClientAction,
   type EndedMessage,
   type Event,
@@ -123,7 +124,8 @@ export class MatchScene extends Phaser.Scene {
   /** What the client knew of each unit when the last events arrived, for `presentationOf`. */
   private snapshot = new Map<string, Snapshot>();
 
-  private tiles!: BoardTiles;
+  /** Built from the first board the state carries: the size is not known before it arrives. */
+  private tiles: BoardTiles | null = null;
   /** One graphic per highlighted cell, at the cell's own depth, rebuilt on every redraw. */
   private highlights: Phaser.GameObjects.Graphics[] = [];
   private chips!: Phaser.GameObjects.Container;
@@ -153,6 +155,7 @@ export class MatchScene extends Phaser.Scene {
     this.buttons = [];
     this.buttonModel = [];
     this.highlights = [];
+    this.tiles = null;
     this.sprites = new Map();
     this.snapshot = new Map();
   }
@@ -161,7 +164,9 @@ export class MatchScene extends Phaser.Scene {
     // Drawing order is depth here, not the order things are added: the blocks carry the depth of
     // their cell, the highlights a hair over their own cell, the units half a step further, and the
     // whole HUD floats above all of it.
-    this.tiles = new BoardTiles(this, (cell) => this.levelAt(cell));
+    //
+    // The tiles are not here: the size of the board is only known once the state arrives, and
+    // `handleState` builds them then.
 
     // The frames are drawn once; the chips and the panel rows are rebuilt from the state instead.
     createPanel(this, PANEL_RECT, 'Unidade').setDepth(HUD_DEPTH);
@@ -290,6 +295,7 @@ export class MatchScene extends Phaser.Scene {
     // The state always comes after the events it caused, so what it says here is where the board
     // ends up — and every event that arrives next is read against it.
     this.snapshot = snapshotOf(message.state);
+    this.ensureTiles(message.state.board);
 
     // The acting unit is selected for the player, so the board and the panel are about the unit that
     // can actually act; the mode then falls back if the new turn has nothing left to do.
@@ -303,6 +309,18 @@ export class MatchScene extends Phaser.Scene {
       this.reconnecting = false;
       this.status.setText('');
     }
+  }
+
+  /**
+   * Builds the tiles from the board the state carries, once. A room always sends the same board, so a
+   * differing size only happens on a re-join; rebuilding is the cheap correct answer and it costs one
+   * comparison per state.
+   */
+  private ensureTiles(board: Board): void {
+    if (this.tiles !== null && this.tiles.fits(board)) return;
+
+    this.tiles?.destroy();
+    this.tiles = new BoardTiles(this, board, (cell) => this.levelAt(cell));
   }
 
   private actor(): UnitState | undefined {
@@ -456,7 +474,7 @@ export class MatchScene extends Phaser.Scene {
   }
 
   private redraw(state: PublicState): void {
-    this.tiles.sync((cell) => this.levelAt(cell));
+    this.tiles?.sync((cell) => this.levelAt(cell));
     this.drawHighlights(state);
     this.redrawUnits(state);
     this.redrawCarousel(state);

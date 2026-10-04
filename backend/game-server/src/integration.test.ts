@@ -7,13 +7,14 @@ import {
   publicState,
   type Action,
   type Event,
+  type MatchSetup,
   type MatchState,
   type Position,
   type UnitState,
 } from '@eldritch-alley/engine';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { BattleRoom } from './battle-room';
-import { createMatchSetup, MATCH_SEED } from './map';
+import { createMatchSetup } from './map';
 import { MESSAGE, ROOM_NAME, type ClientAction, type EndedMessage, type StateMessage } from './protocol';
 
 /** Every test file boots its own server, so each one needs a port of its own. */
@@ -122,8 +123,14 @@ describe('a full match against the bot', () => {
     const client = await server.connectTo(room);
     client.reconnection.enabled = false;
 
-    const setup = createMatchSetup(MATCH_SEED);
+    // The room draws the map at random, so the setup is only known from the seed the first state carries.
+    // Every later state is then rebuilt by replaying the events onto that setup.
+    let setup: MatchSetup | null = null;
     const events: Event[] = [];
+    const replay = (): MatchState => {
+      if (setup === null) throw new Error('no state has arrived yet');
+      return applyEvents(setup, events);
+    };
     let latest: StateMessage | null = null;
     let ended = false;
     let sent = 0;
@@ -143,21 +150,22 @@ describe('a full match against the bot', () => {
         return;
       }
 
-      const actor = unitOnTurn(applyEvents(setup, events));
+      const actor = unitOnTurn(replay());
       if (!actor || actor.team !== 'A') return;
 
       sent += 1;
-      client.send(MESSAGE.action, toClientAction(chooseHumanAction(applyEvents(setup, events), actor)));
+      client.send(MESSAGE.action, toClientAction(chooseHumanAction(replay(), actor)));
     };
 
     client.onMessage(MESSAGE.events, (batch: Event[]) => events.push(...batch));
     client.onMessage(MESSAGE.state, (message: StateMessage) => {
+      setup ??= createMatchSetup(message.state.seed);
       latest = message;
       act();
     });
     client.onMessage(MESSAGE.rejected, () => {
       // The scripted action was refused: hand the turn over instead of stalling.
-      const actor = unitOnTurn(applyEvents(setup, events));
+      const actor = unitOnTurn(replay());
       if (actor?.team === 'A') client.send(MESSAGE.action, { type: 'endTurn' });
     });
 
@@ -175,7 +183,7 @@ describe('a full match against the bot', () => {
 
     const last = latest as StateMessage | null;
     expect(last).not.toBeNull();
-    expect(publicState(applyEvents(setup, events))).toEqual((last as StateMessage).state);
+    expect(publicState(replay())).toEqual((last as StateMessage).state);
 
     await client.leave(true);
   }, 90_000);

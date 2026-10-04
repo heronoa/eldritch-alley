@@ -81,34 +81,34 @@ plus `MAX_LEVEL * HZ`.
 ### 5. Tests planned
 
 **`grid.test.ts`**
-- [ ] `[0, 1, 2, 3].map(heightColor)` equals the four pinned tones and stays distinct.
-- [ ] Each level's top equals `FACE_COLORS[level].top` (the two tables can never disagree).
-- [ ] No tone equals `BG_COLOR`.
-- [ ] `heightColor(4)` and `heightColor(-1)` throw `RangeError` (was 3).
+- [x] `[0, 1, 2, 3].map(heightColor)` equals the four pinned tones and stays distinct.
+- [x] Each level's top equals `FACE_COLORS[level].top` (the two tables can never disagree).
+- [x] No tone equals `BG_COLOR`.
+- [x] `heightColor(4)` and `heightColor(-1)` throw `RangeError` (was 3).
 
 **`theme.contrast.test.ts`**
-- [ ] The paper marker and the corpse outline clear 7:1 on **all four** heights, level 3 included.
-- [ ] The pinned `FACE_COLORS` table gains the level-3 row.
-- [ ] The lightest tile a panel can cover stays level 2 (level 3 is darker), so `LIGHTEST_HEIGHT` is
+- [x] The paper marker and the corpse outline clear 7:1 on **all four** heights, level 3 included.
+- [x] The pinned `FACE_COLORS` table gains the level-3 row.
+- [x] The lightest tile a panel can cover stays level 2 (level 3 is darker), so `LIGHTEST_HEIGHT` is
       unchanged and the overlay cases keep meaning what they meant.
 
 **`iso.test.ts`**
-- [ ] `cellToScreen` pins recomputed for `TILE_W`/`TILE_H`/`HZ`: `({0,0}, 0)` = (640, 216),
+- [x] `cellToScreen` pins recomputed for `TILE_W`/`TILE_H`/`HZ`: `({0,0}, 0)` = (640, 216),
       `({9,0}, 0)` = (928, 360), `({0,9}, 0)` = (352, 360), `({9,9}, 0)` = (640, 504), and the level-lift
       case keeps `HZ` between levels.
-- [ ] `topFace({x:3,y:3}, 0)` = (640, 296), (672, 312), (640, 328), (608, 312).
-- [ ] Every sweep (inverse of `cellToScreen`, corners, block picking) runs on a **10×10** board and passes
+- [x] `topFace({x:3,y:3}, 0)` = (640, 296), (672, 312), (640, 328), (608, 312).
+- [x] Every sweep (inverse of `cellToScreen`, corners, block picking) runs on a **10×10** board and passes
       the explicit size.
-- [ ] The block-picking cases still hold with the new geometry (the raised block over the flat cell behind
+- [x] The block-picking cases still hold with the new geometry (the raised block over the flat cell behind
       it, and the point on a right side face).
-- [ ] Blocks are picked with a level-3 wall present, to prove a four-tone board picks as well as a three-tone
+- [x] Blocks are picked with a level-3 wall present, to prove a four-tone board picks as well as a three-tone
       one.
 
 **`layout.test.ts`**
-- [ ] `boardBounds({ width: 10, height: 10 })` equals `{ x: 320, y: 152, width: 640, height: 416 }`.
-- [ ] The board does not overlap the carousel or the action bar, and every cell of a 10×10 board is drawn
+- [x] `boardBounds({ width: 10, height: 10 })` equals `{ x: 320, y: 152, width: 640, height: 416 }`.
+- [x] The board does not overlap the carousel or the action bar, and every cell of a 10×10 board is drawn
       inside the board's own box (the projection and the box agree).
-- [ ] `boardBounds` grows with the size it is given (8×8 is strictly smaller than 10×10), so the box is not
+- [x] `boardBounds` grows with the size it is given (8×8 is strictly smaller than 10×10), so the box is not
       a constant in disguise.
 
 ### 6. Dependencies
@@ -127,9 +127,13 @@ plus `MAX_LEVEL * HZ`.
 
 ### 8. Acceptance
 
-- [ ] The frontend suite is green with the new geometry, `tsc --noEmit` is clean and the build succeeds.
-- [ ] No file outside the list above changes.
-- [ ] The client still draws the server's current 8×8 board correctly (m2's subject is unchanged behaviour).
+- [x] The frontend suite is green with the new geometry, `tsc --noEmit` is clean and the build succeeds.
+      211/211, `tsc --noEmit` and `vite build` clean.
+- [x] No file outside the list above changes — except the single `MatchScene.ts` line recorded in section 10,
+      which the signature change forced.
+- [x] The client still draws the server's current 8×8 board correctly (m2's subject is unchanged behaviour).
+      The live check happened after M2 and M3 were in the working tree, so it ran on the 10×10 board the
+      owner approved; see section 10 of the M2 plan.
 
 ### 9. Out of scope
 
@@ -137,13 +141,13 @@ plus `MAX_LEVEL * HZ`.
 - The map data itself, which is M3's.
 - `shade` and the `SHADE_*` factors, which the board no longer uses for its faces but keeps for its tests.
 
-### 10. Divergências na execução (2026-10-04)
+### 10. Divergences in the execution (2026-10-04)
 
-- **`BOARD_WIDTH`/`BOARD_HEIGHT` ficaram em `grid.ts`.** O plano pedia removê-las, mas `scenes/BoardTiles.ts`
-  (arquivo do M2) ainda itera com elas. São duas constantes a menos para o M2 apagar quando `BoardTiles`
-  passar a receber o tabuleiro.
-- **Uma linha fora do escopo: `scenes/MatchScene.ts:247`** passou a ser
-  `cellAt(point, this.state.board, …)`. A mudança de assinatura de `cellAt` quebrava a compilação, e a
-  guarda da linha 236 já garante `this.state !== null`. O M2 reestrutura essa chamada de qualquer forma.
-- **`cellsFrontToBack` não ficou exportada:** nada fora de `iso.ts` a usa.
-- `MAX_LEVEL` foi exportado de `grid.ts` e é o que `boardBounds` usa para a borda norte da caixa.
+- **`BOARD_WIDTH`/`BOARD_HEIGHT` stayed in `grid.ts`.** The plan called for removing them, but
+  `scenes/BoardTiles.ts` (M2's file) still iterates with them. They are two constants for M2 to delete once
+  `BoardTiles` takes the board as an argument. M2 did delete them.
+- **One line outside the scope: `scenes/MatchScene.ts:247`** became
+  `cellAt(point, this.state.board, …)`. The change to `cellAt`'s signature broke the build, and the guard on
+  line 236 already ensures `this.state !== null`. M2 restructures that call anyway.
+- **`cellsFrontToBack` was left unexported:** nothing outside `iso.ts` uses it.
+- `MAX_LEVEL` was exported from `grid.ts`, and it is what `boardBounds` uses for the box's northern edge.

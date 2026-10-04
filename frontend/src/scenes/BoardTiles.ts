@@ -1,10 +1,11 @@
 // The board as isometric blocks: one `Graphics` per cell, each carrying the depth of its own cell so
 // the blocks in front cover the ones behind. Only the cells whose level changed are redrawn.
 //
-// It decides nothing: the levels come from the state, the geometry and the shading from `view/iso.ts`
+// It decides nothing: the board comes from the state, the geometry and the shading from `view/iso.ts`
 // and the colours from `view/grid.ts` and `view/theme.ts`.
 import Phaser from 'phaser';
-import { BOARD_HEIGHT, BOARD_WIDTH, heightColor, type Cell } from '../view/grid';
+import type { Board } from '../protocol';
+import { heightColor, type Cell } from '../view/grid';
 import { HZ, depthOfCell, topFace } from '../view/iso';
 import { FACE_COLORS, GRID_STROKE_COLOR } from '../view/theme';
 
@@ -13,37 +14,49 @@ const UNKNOWN_LEVEL = Number.NaN;
 
 export class BoardTiles {
   private readonly tiles: Phaser.GameObjects.Graphics[] = [];
-  private readonly levels: number[] = [];
+  /** The level each cell was last drawn at, so `sync` only redraws what changed. */
+  private readonly drawn: number[] = [];
+  /** The board these tiles were built for, and the one their cells are indexed by. */
+  private readonly board: Board;
 
-  constructor(scene: Phaser.Scene, levelAt: (cell: Cell) => number) {
-    for (let y = 0; y < BOARD_HEIGHT; y += 1) {
-      for (let x = 0; x < BOARD_WIDTH; x += 1) {
+  constructor(scene: Phaser.Scene, board: Board, levelAt: (cell: Cell) => number) {
+    this.board = board;
+
+    for (let y = 0; y < board.height; y += 1) {
+      for (let x = 0; x < board.width; x += 1) {
         const cell = { x, y };
         this.tiles.push(scene.add.graphics().setDepth(depthOfCell(cell)));
-        this.levels.push(UNKNOWN_LEVEL);
+        this.drawn.push(UNKNOWN_LEVEL);
       }
     }
 
     this.sync(levelAt);
   }
 
+  /** Whether these tiles are the ones drawn for `board`. */
+  fits(board: Board): boolean {
+    return this.board.width === board.width && this.board.height === board.height;
+  }
+
   /** Redraws only the cells whose level changed since the last call. */
   sync(levelAt: (cell: Cell) => number): void {
-    for (let y = 0; y < BOARD_HEIGHT; y += 1) {
-      for (let x = 0; x < BOARD_WIDTH; x += 1) {
-        const index = y * BOARD_WIDTH + x;
+    for (let y = 0; y < this.board.height; y += 1) {
+      for (let x = 0; x < this.board.width; x += 1) {
+        const index = y * this.board.width + x;
         const level = levelAt({ x, y });
-        if (level === this.levels[index]) continue;
+        if (level === this.drawn[index]) continue;
 
-        this.levels[index] = level;
+        this.drawn[index] = level;
         this.draw(index, { x, y }, level);
       }
     }
   }
 
-  /** The level of a cell as of the last `sync`, which is what the scene picks cells and places units by. */
-  levelOf(cell: Cell): number {
-    return this.levels[cell.y * BOARD_WIDTH + cell.x];
+  /** Takes every tile out of the scene, for when a state carries a board of another size. */
+  destroy(): void {
+    for (const tile of this.tiles) tile.destroy();
+    this.tiles.length = 0;
+    this.drawn.length = 0;
   }
 
   /**

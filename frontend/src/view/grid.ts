@@ -4,14 +4,6 @@
 // Where a cell is drawn on the canvas is `iso.ts`'s business: the board is isometric, so a cell has no
 // top-left corner to speak of.
 
-/**
- * The board is 8x8 and this module hard-codes it. The state carries the real size, so the projection
- * and the picking take the board as an argument now; what still counts cells with these two is
- * `BoardTiles`, which learns the size it is handed in M2 of the map-variety feature.
- */
-export const BOARD_WIDTH = 8;
-export const BOARD_HEIGHT = 8;
-
 /** A cell of the board. */
 export interface Cell {
   x: number;

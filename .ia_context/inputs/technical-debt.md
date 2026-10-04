@@ -103,27 +103,6 @@ Planned features are not debt: they live in [backlog.md](./backlog.md).
 - **Trigger:** when the licence files are split out of the visual identity branch (DT-51).
 - **Evidence:** `README-license-section.md` at the root; not linked from `README.md`.
 
-### DT-48 · Wall and reach invariants of the map plan use orthogonal adjacency
-- **Category:** Testing
-- **Risk if untreated:** a map with a level-2 cell diagonal to a level-3 wall passes the test, and a unit can step diagonally into the wall. The engine allows diagonal steps (Chebyshev distance 1).
-- **Effort:** P
-- **Trigger:** before `map-variety-m3-server` is executed.
-- **Evidence:** `.ia_context/plans/map-variety-m3-server.plan.md` (I1, I1b, I3); `backend/engine/src/actions.ts:96` (`distance(...) !== 1`), `backend/engine/src/board.ts:19-21`.
-
-### DT-49 · Map variety starts with DT-44 still open, despite the declared blocker
-- **Category:** Architecture (design)
-- **Risk if untreated:** the three maps and the four milestones are built on attack effects that are partly invisible.
-- **Effort:** P
-- **Trigger:** before `map-variety-m1-logic` starts.
-- **Evidence:** `frontend/src/scenes/effects.ts` (no `setDepth`); DT-44 in this file, marked as required before the M2 approval.
-
-### DT-50 · Map plan measures the panel edge with a 4 px error
-- **Category:** Documentation
-- **Risk if untreated:** the layout reading of the map plan is wrong in the review.
-- **Effort:** P
-- **Trigger:** next edit of `map-variety-m1-logic.plan.md`.
-- **Evidence:** `.ia_context/plans/map-variety-m1-logic.plan.md` (west corner at x 320; the left panel ends at x 316, `layout.ts` `PANEL_RECT`).
-
 ### DT-51 · The visual identity branch mixes three subjects
 - **Category:** Architecture (design)
 - **Risk if untreated:** the MR for the visual identity carries the title-screen plans, the title prototype and the licence files, against `CLAUDE.md` rule 5 (one subject per diff).

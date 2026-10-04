@@ -3,7 +3,7 @@
 **Milestone:** m3-server
 **Parent feature:** [map-variety.index.md](./map-variety.index.md)
 **Created on:** 2026-10-04
-**Status:** pendente
+**Status:** concluído em 2026-10-04
 
 ---
 
@@ -104,13 +104,14 @@ y4  2 2 2 2 2 2 2 2 2 2
 y5  2 2 2 2 2 2 0 2 2 2
 y6  2 2 2 2 2 2 0 2 2 2
 y7  1 2 2 2 2 2 0 2 2 2
-y8  1 1 2 2 2 2 0 2 2 2
-y9  1 1 2 2 2 2 0 2 2 1
+y8  1 1 2 2 2 2 0 2 2 1
+y9  1 1 2 2 2 2 0 2 1 1
 ```
 
 `(6,4)` is the plank: the gap column's only level-2 cell, so the west half of the roof and the east half
 (where the prototype puts the neighbour's roof and the sniper's high point) are joined by that one cell.
-The deck at the south-west corner is the low ground the squad arrives on.
+The deck at the north-west corner is the low ground team A arrives on, and the two cells the carve opened
+at the (9,9) corner — `(8,9)` and `(9,8)`, both 1 — are the landing team B arrives on.
 
 #### 4.3 Spawns, by board size
 
@@ -141,20 +142,27 @@ On 10×10 that is (0,0) and (9,9). The order still matches `CLASS_ORDER`, so the
 > a way onto the wall, and a flood fill that only walks orthogonally reports a map as split when the engine
 > says it is joined. Every invariant below is written on that neighbourhood.
 
-- [ ] **I1 — walls are unreachable:** no level-3 cell has a level-2 cell among its eight neighbours.
-- [ ] **I1b — the gap is unreachable:** on `roof`, every one of the eight neighbours of a gap cell is level 2
-      (so the gap is a two-level drop from every side), and `(6,4)` is the column's only level-2 cell.
-- [ ] **I2 — spawns are legal:** the six spawn cells are in bounds and at level 1, and the two clusters are
-      distinct.
-- [ ] **I3 — no orphans:** a flood fill from `(0,0)` over the eight neighbours, stepping only where
-      `|Δlevel| ≤ 1`, reaches every walkable cell (level ≤ 2) and every other spawn.
-- [ ] **I4 — the palette holds:** every level is 0..3, the board is `width × height` with
+- [x] **I1 — walls are unreachable:** no level-3 cell has a level-2 cell among its eight neighbours.
+- [x] **I1b — the gap is unreachable:** on `roof`, the gap is the column `x = 6` at level 0 and `(6,4)` is
+      the column's only level-2 cell; every neighbour of a gap cell **that is not itself in the column** is
+      level 2, so the gap is a two-level drop from every side it can be entered from, and the plank is the
+      only crossing.
+- [x] **I2 — spawns are legal:** the six spawn cells are in bounds and at level 1, the two clusters are
+      distinct, and no spawn sits on a cut-off cell.
+- [x] **I3 — no orphans:** a flood fill from `(0,0)` over the eight neighbours, stepping only where
+      `|Δlevel| ≤ 1`, reaches every walkable cell (level ≤ 2) **except the cells the map cuts off on
+      purpose** — the roof's nine gap cells — and every other spawn. A chasm cannot be a wall (a wall is
+      level 3 and has to stay out of reach of level 2), so the gap is level 0 ringed by level 2: nothing can
+      step into it, which is exactly what the test asserts by declaring it.
+- [x] **I4 — the palette holds:** every level is 0..3, the board is `width × height` with
       `levels.length === width * height`, and `validateBoard` accepts it.
-- [ ] The three `id`s are `street`, `park`, `roof` and no two boards are equal.
-- [ ] `mapIndex` is stable for a seed and covers all three maps across `0..MAPS.length * 3`.
-- [ ] `createMatchSetup(MATCH_SEED)` returns `MAPS[mapIndex(MATCH_SEED)]`'s board, and the same setup twice.
-- [ ] Each map's spawns are reachable **from the other team's spawns** (implied by I3, asserted directly so a
+- [x] The three `id`s are `street`, `park`, `roof` and no two boards are equal.
+- [x] `mapIndex` is stable for a seed and covers all three maps across `0..MAPS.length * 3`.
+- [x] `createMatchSetup(MATCH_SEED)` returns `MAPS[mapIndex(MATCH_SEED)]`'s board, and the same setup twice.
+- [x] Each map's spawns are reachable **from the other team's spawns** (implied by I3, asserted directly so a
       future map edit that isolates a cluster fails with an obvious message).
+
+All nine are in `map.test.ts`, which is 27 cases once `describe.each` expands the per-map block.
 
 ### 6. Dependencies
 
@@ -168,6 +176,9 @@ On 10×10 that is (0,0) and (9,9). The order still matches `CLASS_ORDER`, so the
    `npm test -w @eldritch-alley/game-server` and confirm `battle-room`, `bot` and `integration` run. Record
    the resolution in `technical-debt.md`.
 2. Write `map.test.ts` first, against the three boards described above, and watch it fail on the old `map.ts`.
+   The invariants walk the **eight** neighbours of a cell (DT-48): a version that walks only N/E/S/W passes
+   both loops, so it is written with an explicit `for (dy of [-1, 0, 1])` nest and the diagonal cells are
+   asserted to be reached by the flood fill.
 3. Rewrite `map.ts`: `MATCH_SEED`, `MAPS`, `spawnsFor`, `rosterFor`, `mapIndex`, `createMatchSetup`, keeping
    `CLASS_SPECS`, `CLASS_ORDER`, `makeUnit`, `emptyEquipment` and `emptyAbilities` as they are.
 4. `battle-room.ts`: `newMatch(createMatchSetup(randomSeed()))`.
@@ -177,10 +188,12 @@ On 10×10 that is (0,0) and (9,9). The order still matches `CLASS_ORDER`, so the
 
 ### 8. Acceptance
 
-- [ ] The game-server suite runs and is green, including the new map tests.
-- [ ] The three existing test files pass with `MATCH_SEED`, unchanged.
-- [ ] `backend/engine/` is untouched (`git status --porcelain -- backend/engine` is empty).
-- [ ] Two live matches in a row show different maps.
+- [x] The game-server suite runs and is green, including the new map tests. 45/45 on Node 22, in five files.
+- [x] The three existing test files pass with `MATCH_SEED`, unchanged. `battle-room` and `bot` do; the
+      integration test had to follow the seed the room now draws (section 10).
+- [x] `backend/engine/` is untouched (`git status --porcelain -- backend/engine` is empty).
+- [x] Two live matches in a row show different maps. Eight rooms booted through `@colyseus/testing` drew
+      `roof park street park park roof park park`, every one of them a 10×10 board.
 
 ### 9. Out of scope
 
@@ -192,3 +205,37 @@ On 10×10 that is (0,0) and (9,9). The order still matches `CLASS_ORDER`, so the
   spawn. The landing is carved to level 1, but B still starts two moves from the plateau while A crosses the
   map. Mirroring the park board left-to-right would even that out; it is not done here because it would
   change the prototype's orientation. The owner decides after playing it.
+
+---
+
+### 10. Divergences in the execution (2026-10-04)
+
+- **DT-32 cost nothing.** The rename to `vitest.config.mts` and `.nvmrc` = 22 had already landed before this
+  milestone (commit `dade2aa`), so step 1 of section 7 was a confirmation only. The caveat that remains: the
+  shell's default Node is 18 and the game-server suite needs 22, so it runs with
+  `PATH="$HOME/.nvm/versions/node/v22.19.0/bin:$PATH"`.
+- **`integration.test.ts` is not in section 3 and had to change.** The room now draws its own seed, so the
+  `setup` the test built up front from `MATCH_SEED` stopped matching the real match. It now takes the seed
+  from the first state that arrives (`setup ??= createMatchSetup(message.state.seed)`) and rebuilds through a
+  `replay()` helper. Section 8's criterion, "the three existing test files pass with `MATCH_SEED`, unchanged",
+  therefore does not hold as written: `battle-room.test.ts` and `bot.test.ts` build their own setup and are
+  untouched, and `MATCH_SEED` stays the deterministic default of `createMatchSetup` — only the test that
+  relied on the room using it had to follow the seed.
+- **A defect in my own Fase 1 test.** I1 was written as "every neighbour of a wall is below 2", which forbids
+  a wall touching a wall — and a building mass is exactly that. The test now reads from the raised ground,
+  where the hazard is: no level-2 cell has a level-3 neighbour, which is the plan's own wording.
+- **`spawnsFor` derives B by mirroring A** (Fase 3 refactor): the B list in section 4.3 is exactly A's
+  mirrored through the board's centre, so the code says that instead of repeating the three cells.
+- **`randomSeed()` gained the `SEED_RANGE` constant.** The draw is uniform over 0..2³²−1 and `mapIndex` takes
+  it modulo 3, so index 0 gets two seeds more than the other two — a 2⁻³² bias, which does not pay for a
+  rejection loop.
+- **Two plan defects were corrected before the implementation** (sections 4.2 and 5): B's landing on the
+  `roof` map, which the published grid left at level 2, and the wording of I1b/I3, which treated the gap's
+  column as if it were not the gap itself.
+- **The RED run failed at collection, not case by case.** `describe.each(MAPS)` throws while the file is
+  being collected (`MAPS` does not exist yet), so the 27 cases never ran individually and I cannot show each
+  one failing on the old `map.ts`. The failure is the missing implementation and not a syntax or config
+  error, which is what the phase asks for, but it is a weaker RED than the plan's step 2 describes.
+  `MAPS`, `spawnsFor` and `mapIndex` are named at the top of the file, so any test that mentions them at all
+  goes red before the implementation exists; keeping `MAPS` out of the module scope would have failed case by
+  case at the cost of a less readable test.
