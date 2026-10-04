@@ -9,14 +9,13 @@
 
 Automated first. These are the proxies for what has no browser.
 
+- **Use Node 22 first** (`nvm use` reads `.nvmrc`). The server tests stop with a clear message on Node 18.
 - **Frontend suite, typecheck and build:** `npm test -w @eldritch-alley/frontend` (expect 203 passing, 0 failing),
   `npx tsc --noEmit` inside `frontend/`, and `npm run build -w @eldritch-alley/frontend`.
 - **Engine suite:** `npm test -w @eldritch-alley/engine` (expect 122 passing). The property test now has a 30 s timeout.
 - **Server typecheck:** `npx tsc --noEmit` inside `backend/game-server/` (expect no errors).
-- **Server suite, expect it to fail:** `npm test -w @eldritch-alley/game-server` runs `action-shape.test.ts` (6 passing)
-  and fails to load `battle-room.test.ts` and `integration.test.ts` with `SyntaxError: Unexpected token 'with'`. This is
-  DT-32, still open. Do not treat it as a regression of this MR, but do not merge a branch that claims the root
-  `npm test` is green.
+- **Server suite:** `npm test -w @eldritch-alley/game-server` expects 18 passing across 4 files, including the
+  `malformed-action` case and the shape tests. Or run the root `npm test` for all four workspaces.
 
 Manual, in a browser at 1280×720, with the game server running (`npm run dev -w @eldritch-alley/game-server` and
 the frontend dev server):
@@ -52,7 +51,7 @@ the frontend dev server):
 - [ ] The engine's `RejectReason` is unchanged (`git diff develop -- backend/engine/src/types.ts` is empty)
 - [ ] `malformed-action` is mapped in `frontend/src/game/log.ts` and in both protocol copies
 - [ ] The tests of §1 cover the new modules (`action-shape`, `iso`, `unit-look`, `presentation`, `session`, `selection`)
-- [ ] `technical-debt.md` and `technical-debt-closed.md` agree with each other on DT-44, DT-59, DT-24, DT-52, DT-20, DT-31
+- [ ] `technical-debt.md` and `technical-debt-closed.md` agree with each other on DT-44, DT-59, DT-24, DT-52, DT-20, DT-32; DT-31 stays open until its loaded-machine check
 - [ ] Decide the branch split before the merge (see the description, §4): the identity work and the title-screen
       plans, the licence files and the debt reorganisation are different subjects
 

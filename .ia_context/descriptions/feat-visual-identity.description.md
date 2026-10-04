@@ -22,11 +22,10 @@ reason (`malformed-action`) that the server now sends when a client payload has 
 - **The map variety plan is not implemented.** The commit `8df2ea5` is titled "implement map variety feature",
   but it only adds the plans and the debt entries. `backend/game-server/src/map.ts` still has the 8×8 board with
   four raised cells. The three prototype maps are the next work, and they are not in this MR.
-- **The quick-win plan is partly done.** DT-20, DT-31, DT-44, DT-24, DT-52 and DT-59 are implemented. DT-47 is
-  partly done (only the constant is tested). DT-32 is partly done: the server's vitest config now loads, but
-  `battle-room.test.ts` and `integration.test.ts` still fail at load with `SyntaxError: Unexpected token 'with'`.
-  The root `npm test` is still red for that reason, and the server test that covers DT-20 (`battle-room.test.ts`)
-  has not run. DT-20 was checked by calling `resolveHumanAction` directly.
+- **The quick-win plan is done, with one exception.** DT-20, DT-32, DT-44, DT-24, DT-52 and DT-59 are closed,
+  and DT-31 is implemented (the loaded-machine check is still pending). DT-47 is partly done: only the depth
+  constant is tested; the scene-level test stays open. The root `npm test` is green on Node 22: engine 122,
+  game-server 18 (including the `malformed-action` case of DT-20), frontend 203.
 - **The isometric board follows its plans (M1 to M3).** The block faces use the prototype's colours as an explicit
   table (`FACE_COLORS`), as the M3 plan asked, and the contrast of the panels over the board is tested.
 - **The branch also carries work that is not part of the identity plan:** the title-screen plans and their
@@ -51,7 +50,8 @@ reason (`malformed-action`) that the server now sends when a client payload has 
 | `frontend/src/scenes/widgets.ts` | The turn-queue chip shows the unit's sprite in its team colour; a fallen one is grey | The queue matches the rest of the game (DT-52) |
 | `backend/game-server/src/action-shape.ts` | Checks that a client action has one of the four shapes the protocol defines | A malformed payload is refused, instead of throwing inside the engine (DT-20) |
 | `backend/game-server/src/battle-room.ts`, `protocol.ts` | `resolveHumanAction` refuses a malformed action with `malformed-action`; the server's refusal type widens by that one value | The engine's `RejectReason` is unchanged |
-| `backend/game-server/vitest.config.mts` | Renamed from `.ts` | The server's vitest config loads as ESM (DT-32, partly) |
+| `backend/game-server/vitest.config.mts` | Renamed from `.ts`, with a guard that stops below Node 22 | The config loads as ESM, and a wrong Node version fails with a clear message (DT-32) |
+| `.nvmrc` | Pins Node 22 | Matches CI and the `engines` field |
 | `backend/engine/src/properties.test.ts` | Explicit 30 s timeout on the property test | The property test does not fail on a loaded machine (DT-31) |
 | `frontend/public/fonts/*`, `frontend/public/sprites/*` | Self-hosted Special Elite and IBM Plex Mono, and the two character sheets | No runtime request to a font CDN |
 | `.ia_context/plans/{visual-identity,iso-board,title-screen,map-variety,debt-quick-wins}*` | The plans for each feature | The reviewed plans behind the code above |
@@ -66,7 +66,6 @@ reason (`malformed-action`) that the server now sends when a client payload has 
 - Movement across more than one tile in one action (pathfinding, backlog DT-54).
 - The fix for DT-60: after a refresh in the middle of a match, the lobby shows "Servidor indisponível" instead of
   returning to the battle. Suggested fix is recorded in the debt list.
-- DT-32 (server test suite): the root `npm test` is still red.
 
 ### 4. Notes for the reviewer
 
@@ -78,7 +77,8 @@ reason (`malformed-action`) that the server now sends when a client payload has 
 - **Manual checks are the owner's.** The look (identity, board, HUD, effects) was approved by the owner on screen.
   The owner also confirmed DT-30, DT-42, DT-44, DT-59, DT-24 and DT-52 in the browser. Do not treat the automated
   tests as the acceptance of the visuals.
-- **Known open defect for the reviewer's attention:** DT-60 (refresh in the middle of a match).
-- **The count of tests:** frontend 203 passing; engine 122 passing; server tests cannot run yet (DT-32).
+- **Known open defect for the reviewer's attention:** DT-60 (refresh in the middle of a match). Its fix is not in this MR.
+- **The count of tests:** frontend 203 passing; engine 122 passing; game-server 18 passing (Node 22).
+- **Node version:** the server tests need Node 22. A shell that defaults to Node 18 fails at load with a clear message.
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
