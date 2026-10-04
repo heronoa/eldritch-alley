@@ -62,7 +62,7 @@ The owner chose the three values below after the M3 review; they are fixed for t
 | 1 | [map-variety-m1-logic.plan.md](./map-variety-m1-logic.plan.md): size-driven projection and picking, four-tone palette (no Phaser) | [x] concluído | — |
 | 2 | [map-variety-m2-integration.plan.md](./map-variety-m2-integration.plan.md): the client draws the board the state carries | [x] concluído | — |
 | 3 | [map-variety-m3-server.plan.md](./map-variety-m3-server.plan.md): three 10×10 maps, spawns by size, one drawn at random per match (DT-32 first) | [x] concluído | — |
-| 4 | [map-variety-m4-design.plan.md](./map-variety-m4-design.plan.md): design pass by screenshot, owner approval | [ ] pendente | — |
+| 4 | [map-variety-m4-design.plan.md](./map-variety-m4-design.plan.md): design pass by screenshot, owner approval | [~] executado em 2026-10-04 — sem mudança de código; aguardando o dono | — |
 
 ## Dependency notes
 
@@ -72,4 +72,10 @@ The owner chose the three values below after the M3 review; they are fixed for t
 - M3 also carries the DT-32 fix, because its trigger is "before the next change to `backend/game-server`"
   and the new map tests cannot run without it.
 - M4 depends on M3: the screenshots have to show the three real maps.
-- DT-44 (attack effects drawn beneath the board) stays open and is not fixed here.
+- DT-44 (attack effects drawn beneath the board) is **closed**: `EFFECT_DEPTH = 20` in the isometric
+  feature put the effects above the deepest cell a unit stands on and below the HUD. The note that called
+  it open was stale.
+- **Open after M4, found by its section 4.4 check:** `cellAt` tests every top face before any block, so a
+  click on a tall block's side face can resolve to a cell hidden behind it — on the street map, the pixel
+  at (592, 320) is painted as the wall at (3, 5) and picks (3, 4). It needs its own change; the detail is
+  in [map-variety-m4-design.plan.md](./map-variety-m4-design.plan.md), section 10.
