@@ -1,6 +1,6 @@
 // The pure choices behind drawing a unit: which sheet and frame, how full the bars are, and which
 // marker its team takes. The scene draws what this returns; nothing here knows about Phaser.
-import type { Team } from '../protocol';
+import type { Team, UnitState } from '../protocol';
 
 /** The two sheets, one per side. */
 export type SpriteSheet = 'ally' | 'enemy';
@@ -68,4 +68,9 @@ export function pipsFor(unit: { magazine: number | null; ammo: number }): Pips |
 /** How the ground marker tells one team from the other: colour, and shape for the bot's side. */
 export function markerStyle(team: Team): MarkerStyle {
   return { diamond: true, corners: team === 'B' };
+}
+
+/** The frame a turn-order chip shows: the idle pose of the unit's class. Unknown classes use row 0. */
+export function chipFrameOf(unit: UnitState): number {
+  return frameIndex(classRow(unit.primaryClass) ?? 0, 0);
 }

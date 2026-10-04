@@ -13,6 +13,7 @@ const fake = vi.hoisted(() => {
     reconnectionToken = '';
     readonly reconnection = { enabled: true };
     readonly sent: { type: string; payload: unknown }[] = [];
+    leaves = 0;
     private readonly handlers = new Map<string, Set<PayloadHandler>>();
     private readonly drops = new Set<DropHandler>();
 
@@ -39,6 +40,10 @@ const fake = vi.hoisted(() => {
 
     send(type: string, payload: unknown): void {
       this.sent.push({ type, payload });
+    }
+
+    leave(): void {
+      this.leaves += 1;
     }
 
     emit(type: string, payload: unknown): void {
@@ -204,5 +209,40 @@ describe('Session against a room', () => {
     reconnected.drop();
 
     expect(states).toHaveLength(2);
+  });
+
+  it('leaves the room when it is closed', async () => {
+    const session = new Session('ws://localhost:2567');
+    await session.connect();
+
+    session.close();
+
+    expect(fake.rooms[0].leaves).toBe(1);
+  });
+
+  it('does not report the leave as a drop', async () => {
+    const session = new Session('ws://localhost:2567');
+    await session.connect();
+    let drops = 0;
+    session.onDrop(() => {
+      drops += 1;
+    });
+
+    session.close();
+    fake.rooms[0].drop();
+
+    expect(drops).toBe(0);
+  });
+
+  it('does nothing when it is closed twice, and sends nothing after it is closed', async () => {
+    const session = new Session('ws://localhost:2567');
+    await session.connect();
+
+    session.close();
+    session.close();
+    session.send({ type: 'endTurn' });
+
+    expect(fake.rooms[0].leaves).toBe(1);
+    expect(fake.rooms[0].sent).toEqual([]);
   });
 });

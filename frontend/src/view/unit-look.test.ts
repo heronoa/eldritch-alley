@@ -1,5 +1,6 @@
+import type { UnitState } from '../protocol';
 import { describe, expect, it } from 'vitest';
-import { classRow, frameIndex, healthFraction, markerStyle, pipsFor, spriteSheetOf } from './unit-look';
+import { chipFrameOf, classRow, frameIndex, healthFraction, markerStyle, pipsFor, spriteSheetOf } from './unit-look';
 
 describe('spriteSheetOf', () => {
   it('gives the human side the ally sheet and the bot the enemy sheet', () => {
@@ -63,5 +64,19 @@ describe('markerStyle', () => {
   it('marks the diamond for both teams and the corners for the bot only', () => {
     expect(markerStyle('A')).toEqual({ diamond: true, corners: false });
     expect(markerStyle('B')).toEqual({ diamond: true, corners: true });
+  });
+});
+
+describe('chipFrameOf', () => {
+  it('shows the idle frame of the class in its own row', () => {
+    const sniper = { primaryClass: 'sniper' } as UnitState;
+
+    expect(chipFrameOf(sniper)).toBe(frameIndex(3, 0));
+  });
+
+  it('falls back to the first row for a class the sheet does not carry', () => {
+    const unknown = { primaryClass: 'soldier' } as UnitState;
+
+    expect(chipFrameOf(unknown)).toBe(frameIndex(0, 0));
   });
 });

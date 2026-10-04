@@ -133,7 +133,8 @@ export type RejectReason =
   | 'no-magazine'
   | 'magazine-full'
   | 'not-adjacent'
-  | 'game-over';
+  | 'game-over'
+  | 'malformed-action';
 
 /**
  * Bumped whenever a payload changes shape. The client compares it with its own and refuses to play

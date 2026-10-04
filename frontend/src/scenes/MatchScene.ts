@@ -40,6 +40,8 @@ import {
   PANEL_RECT,
   STATUS_RECT,
   buttonIndexAt,
+  HUD_DEPTH,
+  RESULT_BUTTON_RECT,
   buttonRect,
   carouselSlotRect,
   containsPoint,
@@ -75,12 +77,6 @@ const STAMP_PADDING = 16;
 
 /** How far over its own cell a highlight is drawn, so the tile under it stays visible. */
 const HIGHLIGHT_DEPTH_STEP = 0.1;
-
-/**
- * Where the HUD is drawn: over every tile (14) and every unit (14.5) of an 8x8 board, so a panel
- * floating over the board is never covered by it. The result and its stamp sit over the panels.
- */
-const HUD_DEPTH = 100;
 
 /** What the colours on the board mean, for a player who has not been told. Two lines of the column. */
 const LEGEND = 'Azul-tinta: você · Vermelho: bot · Papel: selecionado\nRealce azul: movimento · Realce vermelho: ataque';
@@ -138,6 +134,8 @@ export class MatchScene extends Phaser.Scene {
   private logText!: Phaser.GameObjects.Text;
   private status!: Phaser.GameObjects.Text;
   private result!: Phaser.GameObjects.Text;
+  /** Shown once the match is over, so the player can leave it. */
+  private wayOut!: Button;
   private stamp!: Phaser.GameObjects.Graphics;
 
   constructor() {
@@ -217,6 +215,8 @@ export class MatchScene extends Phaser.Scene {
     this.session.onDrop(() => {
       void this.handleDrop();
     });
+
+    this.wayOut = new Button(this, RESULT_BUTTON_RECT, 'Voltar ao início').setDepth(HUD_DEPTH).setVisible(false);
   }
 
   /**
@@ -227,9 +227,13 @@ export class MatchScene extends Phaser.Scene {
    * server decides the rest.
    */
   private handleClick(pointer: Phaser.Input.Pointer): void {
-    if (this.finished || this.state === null) return;
-
     const point = { x: pointer.x, y: pointer.y };
+
+    if (this.finished && containsPoint(RESULT_BUTTON_RECT, point)) {
+      this.leave();
+      return;
+    }
+    if (this.finished || this.state === null) return;
 
     const buttonIndex = buttonIndexAt(point);
     if (buttonIndex !== null) {
@@ -408,13 +412,25 @@ export class MatchScene extends Phaser.Scene {
     if (await this.session.reconnect()) return;
 
     this.reconnecting = false;
-    this.finished = true;
+    this.finish();
     this.status.setText('Partida perdida');
     if (this.state) this.updateActionBar(this.state);
   }
 
-  private handleEnded(message: EndedMessage): void {
+  /** The match is over: clicks stop, and the way out appears. */
+  private finish(): void {
     this.finished = true;
+    this.wayOut.setVisible(true);
+  }
+
+  /** Back to the lobby. The session is closed first, so the room does not report the exit as a drop. */
+  private leave(): void {
+    this.session.close();
+    this.scene.start('lobby');
+  }
+
+  private handleEnded(message: EndedMessage): void {
+    this.finish();
     this.reconnecting = false;
     this.mode = 'inspect';
     this.selectedId = null;
@@ -484,6 +500,7 @@ export class MatchScene extends Phaser.Scene {
     const inPlay = new Set<string>();
 
     for (const unit of state.units) {
+      if (unit.permanentlyDead) continue;
       inPlay.add(unit.id);
 
       let sprite = this.sprites.get(unit.id);

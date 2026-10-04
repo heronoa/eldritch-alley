@@ -8,6 +8,7 @@ import Phaser from 'phaser';
 import type { TurnSlot } from '../game/turn-order';
 import type { UnitState } from '../protocol';
 import { PADDING, PANEL_ALPHA, type Rect } from '../view/layout';
+import { chipFrameOf, spriteSheetOf } from '../view/unit-look';
 import {
   BUTTON_FILL,
   BUTTON_FILL_DISABLED,
@@ -162,13 +163,10 @@ export function createTurnChip(
   const body = scene.add.rectangle(0, 0, rect.width, rect.height, fill).setOrigin(0);
   if (slot.isCurrent) body.setStrokeStyle(3, CURRENT_TURN_COLOR);
 
-  const letter = scene.add
-    .text(rect.width / 2, rect.height / 2, initialOf(slot.unit), {
-      fontFamily: FONT_TITLE,
-      fontSize: FONT_SIZE.title,
-      color: cssColor(labelColorOn(fill)),
-    })
-    .setOrigin(0.5);
+  const figure = scene.add
+    .sprite(rect.width / 2, rect.height / 2, `unit-${spriteSheetOf(slot.unit.team)}`, chipFrameOf(slot.unit))
+    .setScale(2);
+  if (slot.unit.defeated) figure.setTint(CORPSE_COLOR);
 
-  return scene.add.container(rect.x, rect.y, [body, letter]);
+  return scene.add.container(rect.x, rect.y, [body, figure]);
 }

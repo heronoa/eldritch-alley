@@ -21,6 +21,12 @@ export const CANVAS_HEIGHT = 720;
 /** Space between a piece of the HUD and the edge of the canvas. */
 export const PADDING = 16;
 
+/**
+ * Where the HUD is drawn: over every tile (14) and every unit (14.5) of an 8x8 board, so a panel
+ * floating over the board is never covered by it. The result and its stamp sit over the panels.
+ */
+export const HUD_DEPTH = 100;
+
 /** The widest level the board can reach, which is what the board's lowest block is drawn for. */
 const HIGHEST_LEVEL = 2;
 
@@ -34,6 +40,9 @@ const LEFT_COLUMN_X = PADDING;
 const RIGHT_COLUMN_X = CANVAS_WIDTH - PADDING - COLUMN_WIDTH;
 const COLUMN_Y = 120;
 const COLUMN_HEIGHT = 300;
+
+/** The way out of a finished match, under the result, centred on the canvas. */
+export const RESULT_BUTTON_RECT: Rect = { x: 540, y: 440, width: 200, height: 56 };
 
 /** The turn-order carousel: one chip per unit still in play, the acting unit first. */
 export const CAROUSEL_RECT: Rect = { x: CENTRED_X, y: PADDING, width: CENTRED_WIDTH, height: 80 };

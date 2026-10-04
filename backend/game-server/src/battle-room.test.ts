@@ -41,6 +41,14 @@ function shortenReconnectionWindow(room: BattleRoom, seconds: number): void {
 }
 
 describe('resolveHumanAction', () => {
+  it('refuses a malformed action with malformed-action, without throwing', () => {
+    const state = newMatch(createMatchSetup(MATCH_SEED));
+
+    const outcome = resolveHumanAction(state, 'A', { type: 'move' } as never);
+
+    expect(outcome).toEqual({ ok: false, reason: 'malformed-action' });
+  });
+
   it('accepts an action while a human unit is on turn', () => {
     const state = newMatch(createMatchSetup(MATCH_SEED));
 

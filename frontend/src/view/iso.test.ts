@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { BOARD_HEIGHT, BOARD_WIDTH, type Cell } from './grid';
+import { HUD_DEPTH } from './layout';
 import {
+  EFFECT_DEPTH,
   HZ,
   SHADE_LEFT,
   SHADE_RIGHT,
@@ -155,5 +157,12 @@ describe('shade', () => {
     // The light in the prototype comes from the left, so the left face keeps more of the top colour.
     expect(SHADE_LEFT).toBeGreaterThan(SHADE_RIGHT);
     expect(SHADE_RIGHT).toBeGreaterThan(0);
+  });
+
+  it('draws the effects above every piece of the board and below the HUD', () => {
+    const highestPiece = depthOfUnit({ x: BOARD_WIDTH - 1, y: BOARD_HEIGHT - 1 });
+
+    expect(EFFECT_DEPTH).toBeGreaterThan(highestPiece);
+    expect(EFFECT_DEPTH).toBeLessThan(HUD_DEPTH);
   });
 });

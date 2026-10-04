@@ -49,6 +49,8 @@ export class Session {
    * scene that draws it is still being created — so it is kept for whoever subscribes late.
    */
   private lastState: StateMessage | null = null;
+  /** Set by `close()`: the room is left on purpose, so nothing that follows is a drop. */
+  private closing = false;
 
   constructor(endpoint: string) {
     this.client = new Client(endpoint);
@@ -59,6 +61,17 @@ export class Session {
     // A new match brings a new board: the previous room's state must not be handed to anyone.
     this.lastState = null;
     this.attachRoom(await this.client.joinOrCreate(ROOM_NAME));
+  }
+
+  /**
+   * Leaves the room on purpose. A session is single-use: a new match gets a new one. Closing twice does
+   * nothing, and so does sending afterwards.
+   */
+  close(): void {
+    if (this.closing) return;
+    this.closing = true;
+    void this.room?.leave();
+    this.room = null;
   }
 
   /** Sends an action. Before `connect()` there is nothing to send it to, so this does nothing. */
@@ -91,8 +104,11 @@ export class Session {
   /** Called the moment the connection to the room is lost, before any reconnection attempt. */
   onDrop(handler: () => void): () => void {
     return this.subscribe((room) => {
-      room.onDrop(handler);
-      return () => room.onDrop.remove(handler);
+      const reported = () => {
+        if (!this.closing) handler();
+      };
+      room.onDrop(reported);
+      return () => room.onDrop.remove(reported);
     });
   }
 

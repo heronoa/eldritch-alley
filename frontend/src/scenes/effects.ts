@@ -4,7 +4,7 @@ import Phaser from 'phaser';
 import { ATTACK_TIMELINE } from '../view/animation';
 import type { Effect } from '../view/effects';
 import type { Pixel } from '../view/grid';
-import { TILE_W } from '../view/iso';
+import { EFFECT_DEPTH, TILE_W } from '../view/iso';
 import { PAPER_COLOR } from '../view/theme';
 
 /** A 6 px flash at the actor's own tile, for the attack thrown from the hand. */
@@ -65,12 +65,12 @@ function towards(from: Pixel, to: Pixel): Pixel {
 }
 
 function flash(scene: Phaser.Scene, color: number, at: Pixel, size: number, durationMs: number): void {
-  const square = scene.add.rectangle(at.x, at.y, size, size, color);
+  const square = scene.add.rectangle(at.x, at.y, size, size, color).setDepth(EFFECT_DEPTH);
   scene.time.delayedCall(durationMs, () => square.destroy());
 }
 
 function tracer(scene: Phaser.Scene, effect: Effect, from: Pixel, to: Pixel): void {
-  const line = scene.add.graphics();
+  const line = scene.add.graphics().setDepth(EFFECT_DEPTH);
   line.lineStyle(2, effect.color, 1);
   line.lineBetween(from.x, from.y, to.x, to.y);
 
@@ -84,7 +84,9 @@ function tracer(scene: Phaser.Scene, effect: Effect, from: Pixel, to: Pixel): vo
 
 /** The column drops from above and comes to rest on the centre of the target's top face. */
 function skyColumn(scene: Phaser.Scene, effect: Effect, to: Pixel): void {
-  const column = scene.add.rectangle(to.x, to.y - COLUMN.height, COLUMN.width, COLUMN.height, effect.color);
+  const column = scene.add
+    .rectangle(to.x, to.y - COLUMN.height, COLUMN.width, COLUMN.height, effect.color)
+    .setDepth(EFFECT_DEPTH);
 
   scene.tweens.add({
     targets: column,
@@ -97,7 +99,7 @@ function skyColumn(scene: Phaser.Scene, effect: Effect, to: Pixel): void {
 
 function gust(scene: Phaser.Scene, from: Pixel, to: Pixel): void {
   const at = towards(from, to);
-  const arcs = scene.add.graphics();
+  const arcs = scene.add.graphics().setDepth(EFFECT_DEPTH);
   arcs.lineStyle(2, PAPER_COLOR, GUST.alpha);
 
   for (let i = 0; i < GUST.arcs; i += 1) {
@@ -125,7 +127,9 @@ function missiles(scene: Phaser.Scene, effect: Effect, from: Pixel, to: Pixel): 
   for (let i = 0; i < MISSILES.count; i += 1) {
     const bow = MISSILES.firstBow + i * MISSILES.bowStep;
     const control = { x: middle.x + across.x * bow, y: middle.y + across.y * bow };
-    const dart = scene.add.rectangle(from.x, from.y, MISSILES.size, MISSILES.size, effect.color);
+    const dart = scene.add
+      .rectangle(from.x, from.y, MISSILES.size, MISSILES.size, effect.color)
+      .setDepth(EFFECT_DEPTH);
     const progress = { value: 0 };
 
     scene.tweens.add({
@@ -152,7 +156,7 @@ function pathAt(from: Pixel, control: Pixel, to: Pixel, t: number): [number, num
 function burst(scene: Phaser.Scene, color: number, at: Pixel): void {
   for (let i = 0; i < PARTICLE.count; i += 1) {
     const angle = (i / PARTICLE.count) * Math.PI * 2;
-    const particle = scene.add.rectangle(at.x, at.y, PARTICLE.size, PARTICLE.size, color);
+    const particle = scene.add.rectangle(at.x, at.y, PARTICLE.size, PARTICLE.size, color).setDepth(EFFECT_DEPTH);
 
     scene.tweens.add({
       targets: particle,

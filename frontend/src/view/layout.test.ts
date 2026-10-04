@@ -10,6 +10,7 @@ import {
   LOG_RECT,
   PANEL_RECT,
   PANEL_ROW_HEIGHT,
+  RESULT_BUTTON_RECT,
   STATUS_RECT,
   boardBounds,
   buttonIndexAt,
@@ -186,5 +187,18 @@ describe('buttonIndexAt', () => {
     expect(buttonIndexAt({ x: 640, y: 300 })).toBeNull();
     expect(buttonIndexAt({ x: -1, y: -1 })).toBeNull();
     expect(buttonIndexAt({ x: CANVAS_WIDTH, y: CANVAS_HEIGHT })).toBeNull();
+  });
+
+  it('places the way out of a finished match inside the canvas, clear of the carousel and the action bar', () => {
+    const r = RESULT_BUTTON_RECT;
+    const overlaps = (a: { x: number; y: number; width: number; height: number }, b: typeof a) =>
+      a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+
+    expect(r.x).toBeGreaterThanOrEqual(0);
+    expect(r.y).toBeGreaterThanOrEqual(0);
+    expect(r.x + r.width).toBeLessThanOrEqual(CANVAS_WIDTH);
+    expect(r.y + r.height).toBeLessThanOrEqual(CANVAS_HEIGHT);
+    expect(overlaps(r, CAROUSEL_RECT)).toBe(false);
+    expect(overlaps(r, ACTION_BAR_RECT)).toBe(false);
   });
 });

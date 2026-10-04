@@ -15,6 +15,12 @@ export const TILE_H = 40;
 /** How far one level lifts a top face. */
 export const HZ = 20;
 
+/**
+ * Draw order of the attack effects: above every piece of the board (the highest is a unit on (7, 7),
+ * at 14.5), and below the HUD, which is drawn at 100.
+ */
+export const EFFECT_DEPTH = 20;
+
 /** Canvas x of the vertical axis the board is centred on. */
 export const CX = 640;
 

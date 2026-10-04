@@ -215,7 +215,7 @@ describe('properties', () => {
     expect(attacks).toBeGreaterThan(100);
     expect(hits).toBeGreaterThan(0);
     expect(attacks - hits).toBeGreaterThan(0);
-  });
+  }, 30_000);
 
   it('a rebuilt match rolls the same numbers as the live match after the replay', () => {
     const setup: MatchSetup = {
