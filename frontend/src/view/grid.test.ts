@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BOARD_HEIGHT, BOARD_WIDTH, cellToPixel, heightColor, ORIGIN, pixelToCell, TILE_SIZE } from './grid';
+import { BG_COLOR } from './theme';
 
 const BOARD_LEVELS = [0, 1, 2];
 
@@ -44,8 +45,15 @@ describe('pixelToCell', () => {
 
 describe('heightColor', () => {
   it('gives a distinct colour to each level', () => {
-    expect(BOARD_LEVELS.map(heightColor)).toEqual([0x2b2d3a, 0x4a4e69, 0x7b6d8d]);
+    expect(BOARD_LEVELS.map(heightColor)).toEqual([0x23283a, 0x30364a, 0x3f4152]);
     expect(new Set(BOARD_LEVELS.map(heightColor)).size).toBe(BOARD_LEVELS.length);
+  });
+
+  it('keeps every tile apart from the night behind the board', () => {
+    // A tile the same value as the page would erase the edge of the board.
+    for (const level of BOARD_LEVELS) {
+      expect(heightColor(level), `level ${level}`).not.toBe(BG_COLOR);
+    }
   });
 
   it('refuses a level that is not on the board', () => {

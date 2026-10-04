@@ -38,15 +38,20 @@ export function pixelToCell(px: Pixel): Cell | null {
   return { x, y };
 }
 
-/** The colour of a tile at a given height. Levels are data; only 0, 1 and 2 exist. */
+/**
+ * The colour of a tile at a given height. Levels are data; only 0, 1 and 2 exist.
+ *
+ * The three tones are the tile tops of the prototype — asphalt, slab, plaza — kept dark enough that
+ * the paper outline of a unit's marker clears 7:1 on all of them (`theme.contrast.test.ts`).
+ */
 export function heightColor(level: number): number {
   switch (level) {
     case 0:
-      return 0x2b2d3a;
+      return 0x23283a;
     case 1:
-      return 0x4a4e69;
+      return 0x30364a;
     case 2:
-      return 0x7b6d8d;
+      return 0x3f4152;
     default:
       throw new RangeError(`unknown height level: ${level}`);
   }

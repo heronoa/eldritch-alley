@@ -13,6 +13,7 @@ import {
 import { highlightedCells } from '../game/highlight';
 import { describeEvent, describeRejection, type UnitNames } from '../game/log';
 import { unitPanel } from '../game/panel';
+import { presentationOf, type Cue, type Snapshot } from '../game/presentation';
 import { resolveClick } from '../game/selection';
 import { turnOrder } from '../game/turn-order';
 import { Session } from '../net/session';
@@ -20,6 +21,7 @@ import {
   PROTOCOL_VERSION,
   type ClientAction,
   type EndedMessage,
+  type Event,
   type PublicState,
   type StateMessage,
   type Team,
@@ -36,41 +38,54 @@ import {
   PANEL_BAR_OFFSET,
   PANEL_RECT,
   STATUS_Y,
+  buttonIndexAt,
   buttonRect,
   carouselSlotRect,
   panelRowPoint,
 } from '../view/layout';
 import {
   CURRENT_TURN_COLOR,
-  FONT,
+  FONT_BODY,
   FONT_SIZE,
+  FONT_TITLE,
   GRID_STROKE_COLOR,
   HIGHLIGHT_ATTACK_COLOR,
   HIGHLIGHT_MOVE_COLOR,
   PANEL_STROKE,
-  SELECTED_COLOR,
+  STAMP_COLOR,
+  STAMP_WIDTH,
   TEXT_COLOR,
   TEXT_COLOR_ALERT,
   TEXT_COLOR_DISABLED,
-  cssColor,
-  labelColorOn,
 } from '../view/theme';
-import { Button, createPanel, createTurnChip, fillColorOf, initialOf } from './widgets';
+import { playEffect } from './effects';
+import { UnitSprite } from './units';
+import { Button, createPanel, createTurnChip } from './widgets';
 
 /** The side the person at the keyboard plays. */
 const HUMAN_TEAM: Team = 'A';
 
-/** Side of the unit rectangle drawn inside a tile. */
-const UNIT_SIZE = 36;
-
 /** How solid a highlighted cell is: enough to read, thin enough to leave the tile colour visible. */
 const HIGHLIGHT_ALPHA = 0.35;
 
+/** The air between the result and the stamp around it. */
+const STAMP_PADDING = 16;
+
 /** What the colours on the board mean, for a player who has not been told. Two lines of the column. */
-const LEGEND = 'Azul claro: você · Escuro: bot · Amarelo: selecionado\nRealce azul: movimento · Realce vermelho: ataque';
+const LEGEND = 'Azul-tinta: você · Vermelho: bot · Papel: selecionado\nRealce azul: movimento · Realce vermelho: ataque';
 
 /** The state carries no display name for a unit, so the log falls back to the id. */
 const UNIT_NAMES: UnitNames = {};
+
+/** What the presentation needs to know about a unit, so it never reads the whole state. */
+function snapshotOf(state: PublicState): Map<string, Snapshot> {
+  return new Map(
+    state.units.map((unit) => [
+      unit.id,
+      { position: unit.position, primaryClass: unit.primaryClass, magazine: unit.magazine },
+    ]),
+  );
+}
 
 /** The two buttons that act at once, without a board target. The other two arm a mode instead. */
 function immediateAction(id: ActionButton['id']): ClientAction | null {
@@ -96,15 +111,23 @@ export class MatchScene extends Phaser.Scene {
   /** True while waiting for a reconnection, so the first state that arrives can clear the notice. */
   private reconnecting = false;
 
+  /** One sprite per unit, kept for the whole match so an animation is never cut by a redraw. */
+  private sprites = new Map<string, UnitSprite>();
+  /** What the client knew of each unit when the last events arrived, for `presentationOf`. */
+  private snapshot = new Map<string, Snapshot>();
+
   private grid!: Phaser.GameObjects.Graphics;
   private highlights!: Phaser.GameObjects.Graphics;
   private units!: Phaser.GameObjects.Container;
   private chips!: Phaser.GameObjects.Container;
   private panelRows!: Phaser.GameObjects.Container;
   private buttons: Button[] = [];
+  /** The model the drawn buttons came from, so a click resolves to the action the player sees. */
+  private buttonModel: ActionButton[] = [];
   private logText!: Phaser.GameObjects.Text;
   private status!: Phaser.GameObjects.Text;
   private result!: Phaser.GameObjects.Text;
+  private stamp!: Phaser.GameObjects.Graphics;
 
   constructor() {
     super('match');
@@ -119,6 +142,9 @@ export class MatchScene extends Phaser.Scene {
     this.finished = false;
     this.reconnecting = false;
     this.buttons = [];
+    this.buttonModel = [];
+    this.sprites = new Map();
+    this.snapshot = new Map();
   }
 
   create(): void {
@@ -135,38 +161,39 @@ export class MatchScene extends Phaser.Scene {
     this.panelRows = this.add.container(0, 0);
 
     this.logText = this.add.text(LOG_TEXT_POINT.x, LOG_TEXT_POINT.y, '', {
-      fontFamily: FONT,
+      fontFamily: FONT_BODY,
       fontSize: FONT_SIZE.log,
       color: TEXT_COLOR,
       lineSpacing: 4,
     });
 
     this.add.text(ORIGIN.x, LEGEND_Y, LEGEND, {
-      fontFamily: FONT,
-      fontSize: FONT_SIZE.log,
+      fontFamily: FONT_BODY,
+      fontSize: FONT_SIZE.legend,
       color: TEXT_COLOR,
     });
 
     this.status = this.add.text(ORIGIN.x, STATUS_Y, '', {
-      fontFamily: FONT,
+      fontFamily: FONT_BODY,
       fontSize: FONT_SIZE.unit,
       color: TEXT_COLOR_ALERT,
     });
 
     this.result = this.add
       .text(this.scale.width / 2, this.scale.height / 2, '', {
-        fontFamily: FONT,
-        fontSize: '48px',
+        fontFamily: FONT_TITLE,
+        fontSize: FONT_SIZE.result,
         color: TEXT_COLOR,
       })
       .setOrigin(0.5);
 
+    // The stamp is drawn over the result, so it is added after it and resized whenever it changes.
+    this.stamp = this.add.graphics();
+
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => this.handleClick(pointer));
 
     this.session.onState((message) => this.handleState(message));
-    this.session.onEvents((events) => {
-      for (const event of events) this.appendLog(describeEvent(event, UNIT_NAMES));
-    });
+    this.session.onEvents((events) => this.handleEvents(events));
     this.session.onRejected((message) => this.appendLog(describeRejection(message.reason)));
     this.session.onEnded((message) => this.handleEnded(message));
     this.session.onDrop(() => {
@@ -174,9 +201,20 @@ export class MatchScene extends Phaser.Scene {
     });
   }
 
-  /** What the click means is decided by `resolveClick`, narrowed by `applyMode`; the server decides. */
+  /**
+   * The action bar is tested first, against the same rectangle that draws each button, so a click on
+   * a button never reaches the board (DT-30). What a board click means is decided by `resolveClick`,
+   * narrowed by `applyMode`; the server decides the rest.
+   */
   private handleClick(pointer: Phaser.Input.Pointer): void {
     if (this.finished || this.state === null) return;
+
+    const buttonIndex = buttonIndexAt({ x: pointer.x, y: pointer.y });
+    if (buttonIndex !== null) {
+      const button = this.buttonModel[buttonIndex];
+      if (button !== undefined && button.enabled) this.pressAction(button.id, button.mode);
+      return;
+    }
 
     const cell = pixelToCell({ x: pointer.x, y: pointer.y });
     if (cell === null) return;
@@ -221,6 +259,9 @@ export class MatchScene extends Phaser.Scene {
     }
 
     this.state = message.state;
+    // The state always comes after the events it caused, so what it says here is where the board
+    // ends up — and every event that arrives next is read against it.
+    this.snapshot = snapshotOf(message.state);
 
     // The acting unit is selected for the player, so the board and the panel are about the unit that
     // can actually act; the mode then falls back if the new turn has nothing left to do.
@@ -240,6 +281,66 @@ export class MatchScene extends Phaser.Scene {
     if (!this.state) return undefined;
     const currentId = this.state.initiative[this.state.currentIndex];
     return this.state.units.find((unit) => unit.id === currentId);
+  }
+
+  /**
+   * Plays the events of one accepted action, then writes them into the log. The snapshot is read
+   * for the cues and moved forward after them, so each event is read against the board it found.
+   */
+  private handleEvents(events: Event[]): void {
+    for (const event of events) {
+      for (const cue of presentationOf(event, this.snapshot)) this.play(cue);
+      this.advanceSnapshot(event);
+      this.appendLog(describeEvent(event, UNIT_NAMES));
+    }
+  }
+
+  private play(cue: Cue): void {
+    switch (cue.kind) {
+      case 'move':
+        this.sprites.get(cue.unitId)?.slideTo(cellToPixel(cue.from), cellToPixel(cue.to));
+        break;
+
+      case 'attack': {
+        const actor = this.sprites.get(cue.actorId);
+        const target = this.sprites.get(cue.targetId);
+        if (actor === undefined || target === undefined) break;
+
+        // The effect is thrown from where the two units are drawn, so it reads even mid-move.
+        const from = { x: actor.x, y: actor.y };
+        const to = { x: target.x, y: target.y };
+        actor.playAttack(
+          { style: cue.style, hit: cue.hit, travelMs: cue.effect.travelMs },
+          this.time.now,
+          () => playEffect(this, cue.effect, from, to),
+        );
+        break;
+      }
+
+      case 'reload':
+        this.sprites.get(cue.unitId)?.playReload(cue.from, cue.to, this.time.now);
+        break;
+
+      case 'defeat':
+        this.sprites.get(cue.unitId)?.markDefeated();
+        break;
+
+      case 'remove':
+        this.sprites.get(cue.unitId)?.destroy();
+        this.sprites.delete(cue.unitId);
+        break;
+    }
+  }
+
+  /** What an event changes about the board, for the events that follow it in the same batch. */
+  private advanceSnapshot(event: Event): void {
+    if (event.type === 'moved') {
+      const unit = this.snapshot.get(event.actor);
+      if (unit !== undefined) this.snapshot.set(event.actor, { ...unit, position: event.to });
+      return;
+    }
+
+    if (event.type === 'corpse-removed') this.snapshot.delete(event.target);
   }
 
   /** A rejected action changes nothing: the state, the selection and the armed mode stay as they were. */
@@ -273,7 +374,23 @@ export class MatchScene extends Phaser.Scene {
     this.selectedId = null;
     this.status.setText('');
     this.result.setText(message.winner === HUMAN_TEAM ? 'Vitória' : 'Derrota');
+    this.drawStamp();
     if (this.state) this.redraw(this.state);
+  }
+
+  /** The stamp frame hugs whatever the result says, so it is redrawn rather than placed once. */
+  private drawStamp(): void {
+    this.stamp.clear();
+    if (this.result.text === '') return;
+
+    const bounds = this.result.getBounds();
+    this.stamp.lineStyle(STAMP_WIDTH, STAMP_COLOR, 1);
+    this.stamp.strokeRect(
+      bounds.x - STAMP_PADDING,
+      bounds.y - STAMP_PADDING,
+      bounds.width + 2 * STAMP_PADDING,
+      bounds.height + 2 * STAMP_PADDING,
+    );
   }
 
   private redraw(state: PublicState): void {
@@ -320,29 +437,36 @@ export class MatchScene extends Phaser.Scene {
     }
   }
 
+  /**
+   * Brings the sprites in line with the state. A sprite is created once and then only synced, so an
+   * animation that is playing is never thrown away by a redraw that arrives in the middle of it.
+   */
   private redrawUnits(state: PublicState): void {
-    this.units.removeAll(true);
+    const inPlay = new Set<string>();
 
     for (const unit of state.units) {
-      const corner = cellToPixel(unit.position);
-      const centreX = corner.x + TILE_SIZE / 2;
-      const centreY = corner.y + TILE_SIZE / 2;
+      inPlay.add(unit.id);
 
-      const fill = fillColorOf(unit);
-      const body = this.add.rectangle(centreX, centreY, UNIT_SIZE, UNIT_SIZE, fill);
-      if (unit.id === this.selectedId) body.setStrokeStyle(3, SELECTED_COLOR);
-
-      // The letter takes the colour that reads on the fill it sits on, so a piece is never a smudge.
-      const initial = this.add
-        .text(centreX, centreY, initialOf(unit), {
-          fontFamily: FONT,
-          fontSize: FONT_SIZE.unit,
-          color: cssColor(labelColorOn(fill)),
-        })
-        .setOrigin(0.5);
-
-      this.units.add([body, initial]);
+      let sprite = this.sprites.get(unit.id);
+      if (sprite === undefined) {
+        sprite = new UnitSprite(this, unit, unit.id === this.selectedId, cellToPixel(unit.position));
+        this.sprites.set(unit.id, sprite);
+        this.units.add(sprite);
+      } else {
+        sprite.sync(unit, unit.id === this.selectedId, cellToPixel(unit.position));
+      }
     }
+
+    for (const id of [...this.sprites.keys()]) {
+      if (inPlay.has(id)) continue;
+      this.sprites.get(id)?.destroy();
+      this.sprites.delete(id);
+    }
+  }
+
+  /** One frame of every animation on the board. The scene decides nothing; the sprites advance. */
+  update(time: number): void {
+    for (const sprite of this.sprites.values()) sprite.tick(time);
   }
 
   /** One chip per unit still in play, in turn order, so the queue shrinks as units fall. */
@@ -365,12 +489,12 @@ export class MatchScene extends Phaser.Scene {
       const color = row.enabled ? TEXT_COLOR : TEXT_COLOR_DISABLED;
 
       const label = this.add.text(point.x, point.y, row.label, {
-        fontFamily: FONT,
+        fontFamily: FONT_BODY,
         fontSize: FONT_SIZE.log,
         color,
       });
       const value = this.add
-        .text(valueX, point.y, row.value, { fontFamily: FONT, fontSize: FONT_SIZE.log, color })
+        .text(valueX, point.y, row.value, { fontFamily: FONT_BODY, fontSize: FONT_SIZE.log, color })
         .setOrigin(1, 0);
       this.panelRows.add([label, value]);
 
@@ -390,14 +514,10 @@ export class MatchScene extends Phaser.Scene {
   /** Built once from the model, then only refreshed, because a button keeps its own visual state. */
   private updateActionBar(state: PublicState): void {
     const model = actionButtons(state, HUMAN_TEAM);
+    this.buttonModel = model;
 
     if (this.buttons.length === 0) {
-      this.buttons = model.map(
-        (button, index) =>
-          new Button(this, buttonRect(index), button.label, () =>
-            this.pressAction(button.id, button.mode),
-          ),
-      );
+      this.buttons = model.map((button, index) => new Button(this, buttonRect(index), button.label));
     }
 
     model.forEach((button, index) => {

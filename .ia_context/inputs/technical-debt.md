@@ -119,16 +119,9 @@ Status values: **Open**, **Closed**.
 - **Trigger:** before the merge of m2a-integration.
 - **Evidence:** `.ia_context/plans/m2a-integration.plan.md`, section 5 (manual items); no record in the PR.
 
-### DT-27 · The legend calls team A "Azul claro", but its colour is beige
-- **Category:** Documentation
-- **Risk if untreated:** the player reads "Azul claro" for a beige piece. The plan wrote the wording and the colour, and they disagree.
-- **Effort:** P
-- **Trigger:** before the merge of the HUD view, together with the owner's visual check.
-- **Evidence:** `frontend/src/scenes/MatchScene.ts:70` (LEGEND) and `TEAM_COLOR.A` in `frontend/src/view/theme.ts:7` (0xd9d4c7, beige).
-
 ### DT-28 · Manual acceptance of the HUD: approved by the owner, not yet recorded in the PR
 - **Category:** Testing
-- **Status:** the owner played the match in the browser and approved it, with one reservation (DT-30). The result still has to be written in the PR, and the reconnection and end-of-match items of the checklist have to be marked there.
+- **Status:** the owner played the match in the browser and approved it, with one reservation (DT-30). That approval applies to the **old** HUD (the one M2-a delivered); M3 replaces it, so the owner has to approve the new look, from screenshots, in the PR of the visual identity. The result still has to be written in the PR, and the reconnection and end-of-match items of the checklist have to be marked there.
 - **Risk if untreated:** the HUD's playability is proved by one person's check, with no record and no automated test.
 - **Effort:** P
 - **Trigger:** when the PR of m2a-hud-view is opened.
@@ -141,14 +134,19 @@ Status values: **Open**, **Closed**.
 - **Trigger:** together with the next edit of the HUD plans.
 - **Evidence:** `.ia_context/plans/m2a-hud-view.plan.md` section 4.1 versus `frontend/src/view/layout.ts:84` (`LOG_LINES = 12`) and the six rows of `frontend/src/game/panel.ts`.
 
-### DT-30 · Clicks on the action buttons land offset from where they are drawn
-- **Category:** Usability (defect)
-- **Observed:** the owner reports that every button only responds when the click is further left and further up than the button's drawn area. The grid does not show the problem.
-- **Probable cause (not reproduced):** each `Button` is a Container with its own hit area (`frontend/src/scenes/widgets.ts:57-60`). The grid uses the scene's `pointer.x/y` through `pixelToCell` (`frontend/src/scenes/MatchScene.ts:181`) and works. The two paths do not share coordinates, and the Container's local hit area is the suspect. The Phaser source read so far did not show the exact mechanism.
-- **Recommended fix:** do not click the Container. In the scene's global `pointerdown`, test `pointer.x/y` against `buttonRect(i)` (the same geometry that draws the button) before `pixelToCell`, and call the same action. Remove the per-button `pointerdown` so the click does not fire twice. The geometry then lives in one place and is covered by `layout.test.ts`.
+### DT-31 · The engine property test sits on the default 5 s timeout and fails on a loaded machine
+- **Category:** Testing
+- **Risk if untreated:** `npm test` fails intermittently for a reason that has nothing to do with the change being tested, so a real regression can be dismissed as "the flaky one".
 - **Effort:** P
-- **Trigger:** before the merge of the HUD view, and before the M2-b deploy.
-- **Evidence:** `frontend/src/scenes/widgets.ts:57-60,63-65`; `frontend/src/scenes/MatchScene.ts:178-182`; `frontend/src/view/layout.ts:98` (`buttonRect`).
+- **Trigger:** the next red run of the engine suite, or the next change to `properties.test.ts`.
+- **Evidence:** `backend/engine/src/properties.test.ts:158`, "replays every accepted sequence to the same hash". 200 seeds × 40 steps, each hashing the whole state. Measured on 2026-10-04 with the browser harness, the Colyseus server and the Vite preview running: the test reports **6112 ms** in the full suite (13 files in parallel), over the 5000 ms default timeout, so it fails; **4.4 s** on its own, so it passes. Run `npm test -w @eldritch-alley/engine` with the machine otherwise idle and it passes. Untouched by the visual identity work (`git status --porcelain -- backend/` is empty); the test predates it.
+
+### DT-32 · The game-server test suite does not start at all
+- **Category:** Testing
+- **Risk if untreated:** `npm test` at the root stops on the second workspace, so every `battle-room` test is dead weight: they have not run, and no regression in the room, the bot or the message handlers can be caught. It also hides DT-31, because the root command never reaches the frontend.
+- **Effort:** P
+- **Trigger:** before the next change to `backend/game-server`, and before the M2-b deploy.
+- **Evidence:** `npm test -w @eldritch-alley/game-server` (and `npx vitest run` inside the workspace, Node 22.19, vitest 3.2.7) fails with `failed to load config from backend/game-server/vitest.config.ts` / `Error [ERR_REQUIRE_ESM]: require() of ES Module .../vite/dist/node/index.js from .../vitest/dist/config.cjs not supported`. `frontend/package.json` carries `"type": "module"` and its suite runs; `backend/game-server/package.json` has no `type`, so Vite bundles the config as CJS and the `import { defineConfig } from 'vitest/config'` on line 1 lands on the CommonJS entry point, which `require`s the ESM-only `vite`. Suspected fix: add `"type": "module"` to the workspace (checking `tsconfig` and the `dist` output first), rename the config to `vitest.config.mts`, or drop the `vitest/config` import for a plain object. Not tried: nothing in the visual identity work touches `backend/` (`git status --porcelain -- backend/game-server/` is empty).
 
 ---
 
@@ -170,3 +168,5 @@ Status values: **Open**, **Closed**.
 | DT-06 | Wide public surface in `index.ts` | Exports only the contract. |
 | BUG-01 | Replay did not advance the rng, so rebuilt matches rolled differently | `attacked` carries `rngState`; `applyEvent` applies it. Tested by `properties.test.ts` (replay on full state, and a rebuilt match rolling the same numbers). Found in review, not in the original audit. |
 | EXTRA | Duplicate unit ids were accepted | `newMatch` throws `RangeError`. Tested by `match.test.ts`. |
+| DT-27 | The legend called team A "Azul claro", but its colour was beige | Closed by M3 (visual identity, section 4.3). `TEAM_COLOR.A` became ink blue `#6f95d6` with the night palette, so "Azul" is now the colour of A, and the legend reads "Azul-tinta: você · Vermelho: bot · Papel: selecionado / Realce azul: movimento · Realce vermelho: ataque". The old wording is gone with the beige it described. |
+| DT-30 | Clicks on the action buttons landed offset from where they are drawn | Closed by the recommended fix, applied as written. `Button` no longer takes pointer input of its own: it only draws. `layout.ts` gains `containsPoint` and `buttonIndexAt`, which test a point against the same `buttonRect` that draws the button, and `MatchScene.handleClick` tests the bar before `pixelToCell`, then acts on the `ActionButton` the drawn button came from. `LobbyScene` uses `containsPoint` against its own play-button rectangle, so its button did not stop responding when the widget lost its `pointerdown`. Covered by seven cases in `layout.test.ts` (each button under its centre and its corners, the far edge outside, the gap between buttons, above and below the bar, the board, off-canvas). Verified at runtime in headless Chrome at a 0.79 scale: all nine probe points inside each button act, the gap between buttons acts on nothing, and the lobby button answers at its bottom-right corner. **The original defect was never reproduced** — the old Container hit area also answered at the button centres in that harness — so the owner still has to confirm the fix in his own browser; if the offset survives, this item reopens. |

@@ -5,6 +5,32 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Eldritch Alley: Tactics</title>
     <style>
+      /* Both typefaces are served from this origin, so a match never waits on a third party and
+         the page still renders — in the fallback monospace — with the network off. */
+      @font-face {
+        font-family: 'Special Elite';
+        src: url('/fonts/SpecialElite-Regular.woff2') format('woff2');
+        font-weight: 400;
+        font-style: normal;
+        font-display: block;
+      }
+
+      @font-face {
+        font-family: 'IBM Plex Mono';
+        src: url('/fonts/IBMPlexMono-Regular.woff2') format('woff2');
+        font-weight: 400;
+        font-style: normal;
+        font-display: block;
+      }
+
+      @font-face {
+        font-family: 'IBM Plex Mono';
+        src: url('/fonts/IBMPlexMono-SemiBold.woff2') format('woff2');
+        font-weight: 600;
+        font-style: normal;
+        font-display: block;
+      }
+
       /* The game canvas scales to fit, so it needs a viewport-sized parent to scale against.
          The background matches the game's own, so the bars around a fitted canvas are not white. */
       html,
@@ -12,7 +38,7 @@
         margin: 0;
         padding: 0;
         height: 100%;
-        background: #1b1a24;
+        background: #0b0e18;
       }
 
       #game {

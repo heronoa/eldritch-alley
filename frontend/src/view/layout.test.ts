@@ -14,6 +14,7 @@ import {
   PANEL_ROW_HEIGHT,
   SIDEBAR,
   STATUS_Y,
+  buttonIndexAt,
   buttonRect,
   carouselSlotRect,
   panelRowPoint,
@@ -137,5 +138,59 @@ describe('layout', () => {
     expect(STATUS_Y).toBeGreaterThan(LEGEND_Y);
     expect(STATUS_Y).toBeLessThan(CANVAS_HEIGHT);
     expect(ORIGIN.x).toBeLessThan(SIDEBAR.x);
+  });
+});
+
+// DT-30: the four action buttons are hit-tested from the same rectangle that draws them, so a click
+// on a drawn button is a click on that button and nothing else.
+describe('buttonIndexAt', () => {
+  const centre = (index: number) => {
+    const rect = buttonRect(index);
+    return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+  };
+
+  it('no two buttons overlap, so the answer is never ambiguous', () => {
+    for (let i = 0; i < ACTION_BUTTONS; i += 1) {
+      for (let j = i + 1; j < ACTION_BUTTONS; j += 1) {
+        expect(overlaps(buttonRect(i), buttonRect(j)), `${i} over ${j}`).toBe(false);
+      }
+    }
+  });
+
+  it('finds each button under its own centre', () => {
+    for (let index = 0; index < ACTION_BUTTONS; index += 1) {
+      expect(buttonIndexAt(centre(index)), `button ${index}`).toBe(index);
+    }
+  });
+
+  it('finds each button under all four of its corners, less the far edge', () => {
+    for (let index = 0; index < ACTION_BUTTONS; index += 1) {
+      const rect = buttonRect(index);
+      expect(buttonIndexAt({ x: rect.x, y: rect.y }), `top-left ${index}`).toBe(index);
+      expect(buttonIndexAt({ x: right(rect) - 1, y: bottom(rect) - 1 }), `bottom-right ${index}`).toBe(index);
+    }
+  });
+
+  it('treats the far edge as outside, like pixelToCell does', () => {
+    const rect = buttonRect(0);
+    expect(buttonIndexAt({ x: right(rect), y: rect.y + 1 })).toBeNull();
+    expect(buttonIndexAt({ x: rect.x + 1, y: bottom(rect) })).toBeNull();
+  });
+
+  it('answers nothing for the gap between two buttons', () => {
+    const gapX = right(buttonRect(0)) + ACTION_BUTTON.gap / 2;
+    expect(buttonIndexAt({ x: gapX, y: buttonRect(0).y + 1 })).toBeNull();
+  });
+
+  it('answers nothing above or below the bar', () => {
+    const { x } = centre(0);
+    expect(buttonIndexAt({ x, y: buttonRect(0).y - 1 })).toBeNull();
+    expect(buttonIndexAt({ x, y: bottom(buttonRect(0)) })).toBeNull();
+  });
+
+  it('answers nothing for a click on the board or off the canvas', () => {
+    expect(buttonIndexAt({ x: ORIGIN.x + TILE_SIZE / 2, y: ORIGIN.y + TILE_SIZE / 2 })).toBeNull();
+    expect(buttonIndexAt({ x: -1, y: -1 })).toBeNull();
+    expect(buttonIndexAt({ x: CANVAS_WIDTH, y: CANVAS_HEIGHT })).toBeNull();
   });
 });

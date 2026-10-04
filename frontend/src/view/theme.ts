@@ -4,59 +4,85 @@
 // the board's heights, which belong to `heightColor` in `grid.ts` because they come from the level
 // of the tile, and the colour of the letter on a unit, which comes from the fill under it.
 
-/** Fill of a unit, by team. The letter on top tells the teams apart as well; both are kept. */
-export const TEAM_COLOR = { A: 0xd9d4c7, B: 0x3b2f4a };
+import { contrastRatio } from './contrast';
+
+/** The canvas and the page behind it: the night the whole identity sits on. */
+export const BG_COLOR = 0x0b0e18;
+
+/** The fill of a unit, by team. A is the human side (ink blue), B the bot (stamp red). */
+export const TEAM_COLOR = { A: 0x6f95d6, B: 0xd9473d };
+
+/** Aged paper: the ink of every shape a player is meant to read as a mark. */
+export const PAPER_COLOR = 0xe6dcc4;
+
+/** The ink a letter takes on a paper fill: the night itself, so the two never clash. */
+export const INK_COLOR = BG_COLOR;
+
+/** The stamp red: a decoration, the outline of the primary action, and the warning line. */
+export const ACCENT_COLOR = 0xc8322a;
 
 /** The colour of every piece of text the player reads. */
-export const TEXT_COLOR = '#e8e2d0';
+export const TEXT_COLOR = cssColor(PAPER_COLOR);
 
 /** Text that is there to hold the place but cannot be used yet: a placeholder row, a dead button. */
-export const TEXT_COLOR_DISABLED = '#6f6b7d';
+export const TEXT_COLOR_DISABLED = '#9b937f';
 
-/** Text drawn on a light fill, such as the armed button. The dark of the canvas background. */
-export const TEXT_COLOR_ON_LIGHT = '#1b1a24';
+/** Text drawn on a light fill, such as the armed button. */
+export const TEXT_COLOR_ON_LIGHT = cssColor(INK_COLOR);
 
-export const FONT = 'sans-serif';
+/** The same red for the lines of text Phaser takes as a CSS string, such as a warning. */
+export const TEXT_COLOR_ALERT = cssColor(ACCENT_COLOR);
 
-/** Points, by the place the text appears. Phaser takes the number as pixels. */
-export const FONT_SIZE = { title: 32, unit: 18, log: 14 };
+/** The frame of the unit panel and of the log: carbon paper over the night. */
+export const PANEL_FILL = 0x131622;
+export const PANEL_STROKE = 0x3a3f55;
 
-/** The amber of everything that is active. Shapes take it as a 24-bit number. */
-const ACTIVE_AMBER = 0xe0b050;
+/** The second line of a panel, drawn just inside the frame: paper seen through the dark. */
+export const PANEL_INNER_STROKE = PAPER_COLOR;
+export const PANEL_INNER_ALPHA = 0.12;
 
-/** The same amber for the lines of text Phaser takes as a CSS string, such as a warning. */
-export const TEXT_COLOR_ALERT = cssColor(ACTIVE_AMBER);
+/** The fill of a button: idle, out of reach, and armed. The armed one is paper, so it reads. */
+export const BUTTON_FILL = 0x23283a;
+export const BUTTON_FILL_DISABLED = 0x171b28;
+export const BUTTON_FILL_SELECTED = PAPER_COLOR;
 
-/** The stroke around the unit the player has selected. */
-export const SELECTED_COLOR = 0xffd166;
-
-/** The slot of the unit whose turn it is, in the carousel. */
-export const CURRENT_TURN_COLOR = ACTIVE_AMBER;
+/** The stroke around the unit the player has selected, and the ring of the one on turn. */
+export const SELECTED_COLOR = PAPER_COLOR;
+export const CURRENT_TURN_COLOR = PAPER_COLOR;
 
 /** A unit that fell keeps its tile, greyed out, until the body is removed. */
 export const CORPSE_COLOR = 0x4a4a4a;
 
-export const GRID_STROKE_COLOR = 0x000000;
+/** The outline of a fallen unit, so its silhouette reads on every height. */
+export const CORPSE_OUTLINE_COLOR = PAPER_COLOR;
 
-/** The frame of the unit panel and of the log. */
-export const PANEL_FILL = 0x23222e;
-export const PANEL_STROKE = 0x3a3846;
-
-/** The fill of a button: idle, out of reach, and armed. */
-export const BUTTON_FILL = 0x353341;
-export const BUTTON_FILL_DISABLED = 0x26252f;
-export const BUTTON_FILL_SELECTED = ACTIVE_AMBER;
+/** Ammunition pips. */
+export const WARM_COLOR = 0xf0d9a0;
 
 /** The cells the armed mode would act on. A move and an attack never look alike. */
-export const HIGHLIGHT_MOVE_COLOR = 0x4fa3d1;
-export const HIGHLIGHT_ATTACK_COLOR = 0xd15b5b;
+export const HIGHLIGHT_MOVE_COLOR = TEAM_COLOR.A;
+export const HIGHLIGHT_MOVE_ALPHA = 0.42;
+export const HIGHLIGHT_ATTACK_COLOR = ACCENT_COLOR;
+export const HIGHLIGHT_ATTACK_ALPHA = 0.48;
+
+export const GRID_STROKE_COLOR = 0x000000;
+
+/** The frame stamped around the result of a finished match. Decoration: it carries no information. */
+export const STAMP_COLOR = ACCENT_COLOR;
+export const STAMP_WIDTH = 4;
+
+/** Titles, panel headings and the result: the typewriter of the identity. */
+export const FONT_TITLE = '"Special Elite", "Courier New", monospace';
+
+/** Everything else: the labels, the log, the panel rows. */
+export const FONT_BODY = '"IBM Plex Mono", ui-monospace, monospace';
 
 /**
- * The letter drawn on a unit. Each team takes the colour of the other one, which is what makes the
- * letter readable: on team A's light fill a light letter was invisible, at 1.14:1 against 8.4:1.
+ * Points, by the place the text appears. Phaser takes the number as pixels. The legend is smaller
+ * than the log on purpose: its two lines have to fit the column left of the sidebar, and at the log
+ * size the first one runs into the unit panel.
  */
-export const DARK_LABEL_COLOR = TEAM_COLOR.B;
-export const LIGHT_LABEL_COLOR = TEAM_COLOR.A;
+export const FONT_SIZE = { title: 32, unit: 18, log: 14, legend: 12, result: 48 };
 
 /** The colour as the CSS string Phaser takes for text. Shapes take the number instead. */
 export function cssColor(color: number): string {
@@ -64,15 +90,10 @@ export function cssColor(color: number): string {
 }
 
 /**
- * The letter that reads on `fill`. The fallen are the case a plain swap of the two team colours
- * gets wrong: the body turns dark grey, so its letter has to go light whatever team it played for.
+ * The letter that reads on `fill`: whichever of the two inks of the identity contrasts more with
+ * it. It is never a team colour, so the fallen — whose fill turns grey whatever team they played
+ * for — get a paper letter like any other dark fill.
  */
 export function labelColorOn(fill: number): number {
-  const channels = [16, 8, 0].map((shift) => {
-    const value = ((fill >> shift) & 0xff) / 255;
-    return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
-  });
-  const luminance = 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
-
-  return luminance > 0.5 ? DARK_LABEL_COLOR : LIGHT_LABEL_COLOR;
+  return contrastRatio(fill, INK_COLOR) >= contrastRatio(fill, PAPER_COLOR) ? INK_COLOR : PAPER_COLOR;
 }

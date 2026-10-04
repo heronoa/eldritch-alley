@@ -104,6 +104,35 @@ export function buttonRect(index: number): Rect {
   };
 }
 
+/** How many buttons the action bar holds: Mover, Atacar, Recarregar, Terminar turno. */
+export const ACTION_BUTTONS = 4;
+
+/**
+ * Whether a point of the canvas is inside a rectangle. Half-open, like `pixelToCell`: the far edge
+ * belongs to the neighbour, so two touching rectangles never both claim the same pixel.
+ */
+export function containsPoint(rect: Rect, point: Pixel): boolean {
+  return (
+    point.x >= rect.x &&
+    point.x < rect.x + rect.width &&
+    point.y >= rect.y &&
+    point.y < rect.y + rect.height
+  );
+}
+
+/**
+ * The action button under a point, or null when the point is on none of them.
+ *
+ * The result is the same rectangle `buttonRect` draws (DT-30): a click lands on the button the
+ * player sees, and the scene never has to know how a widget hit-tests itself.
+ */
+export function buttonIndexAt(point: Pixel): number | null {
+  for (let index = 0; index < ACTION_BUTTONS; index += 1) {
+    if (containsPoint(buttonRect(index), point)) return index;
+  }
+  return null;
+}
+
 /** The rectangle of the nth slot of the carousel, counting from the left, centred vertically. */
 export function carouselSlotRect(index: number): Rect {
   return {

@@ -14,9 +14,12 @@ import {
   BUTTON_FILL_SELECTED,
   CORPSE_COLOR,
   CURRENT_TURN_COLOR,
-  FONT,
+  FONT_BODY,
   FONT_SIZE,
+  FONT_TITLE,
   PANEL_FILL,
+  PANEL_INNER_ALPHA,
+  PANEL_INNER_STROKE,
   PANEL_STROKE,
   TEAM_COLOR,
   TEXT_COLOR,
@@ -31,39 +34,35 @@ export function initialOf(unit: { primaryClass: string }): string {
   return unit.primaryClass.charAt(0).toUpperCase();
 }
 
-/** A button of the action bar. It can be pressed, armed, or out of reach. */
+/**
+ * A button of the action bar. It can be pressed, armed, or out of reach.
+ *
+ * It only draws, and it does not take pointer input of its own. The scene hit-tests the rectangle
+ * `buttonRect` returns, which is the same rectangle this widget is built from, so the click lands
+ * where the button is drawn (DT-30) and the two paths can never disagree.
+ */
 export class Button extends Phaser.GameObjects.Container {
   private readonly background: Phaser.GameObjects.Rectangle;
   private readonly caption: Phaser.GameObjects.Text;
-  private readonly onPress: () => void;
   private usable = true;
   private armed = false;
 
-  constructor(scene: Phaser.Scene, rect: Rect, label: string, onPress: () => void) {
+  constructor(scene: Phaser.Scene, rect: Rect, label: string) {
     super(scene, rect.x, rect.y);
-    this.onPress = onPress;
 
-    this.background = scene.add.rectangle(0, 0, rect.width, rect.height, BUTTON_FILL).setOrigin(0);
+    this.background = scene.add
+      .rectangle(0, 0, rect.width, rect.height, BUTTON_FILL)
+      .setOrigin(0)
+      .setStrokeStyle(1, PANEL_STROKE);
     this.caption = scene.add
       .text(rect.width / 2, rect.height / 2, label, {
-        fontFamily: FONT,
+        fontFamily: FONT_BODY,
         fontSize: FONT_SIZE.unit,
         color: TEXT_COLOR,
       })
       .setOrigin(0.5);
 
     this.add([this.background, this.caption]);
-    this.setSize(rect.width, rect.height);
-    this.setInteractive(
-      new Phaser.Geom.Rectangle(0, 0, rect.width, rect.height),
-      Phaser.Geom.Rectangle.Contains,
-    );
-    if (this.input) this.input.cursor = 'pointer';
-
-    this.on('pointerdown', () => {
-      if (this.usable) this.onPress();
-    });
-
     scene.add.existing(this);
   }
 
@@ -94,18 +93,33 @@ export class Button extends Phaser.GameObjects.Container {
   }
 }
 
-/** A framed box with a title in its top-left corner. */
+/** How far inside the frame the second line is drawn. */
+const PANEL_INNER_INSET = 4;
+
+/**
+ * A framed box with a title in its top-left corner: a carbon frame, a paper line just inside it, and
+ * the heading in the typewriter face.
+ */
 export function createPanel(scene: Phaser.Scene, rect: Rect, title: string): Phaser.GameObjects.Container {
   const frame = scene.add.rectangle(0, 0, rect.width, rect.height, PANEL_FILL).setOrigin(0);
   frame.setStrokeStyle(1, PANEL_STROKE);
 
+  const inner = scene.add.graphics();
+  inner.lineStyle(1, PANEL_INNER_STROKE, PANEL_INNER_ALPHA);
+  inner.strokeRect(
+    PANEL_INNER_INSET,
+    PANEL_INNER_INSET,
+    rect.width - 2 * PANEL_INNER_INSET,
+    rect.height - 2 * PANEL_INNER_INSET,
+  );
+
   const heading = scene.add.text(PADDING, PADDING, title, {
-    fontFamily: FONT,
+    fontFamily: FONT_TITLE,
     fontSize: FONT_SIZE.unit,
     color: TEXT_COLOR,
   });
 
-  return scene.add.container(rect.x, rect.y, [frame, heading]);
+  return scene.add.container(rect.x, rect.y, [frame, inner, heading]);
 }
 
 /** The fill of a unit: the colour of its team, greyed out once it has fallen. */
@@ -126,7 +140,7 @@ export function createTurnChip(
 
   const letter = scene.add
     .text(rect.width / 2, rect.height / 2, initialOf(slot.unit), {
-      fontFamily: FONT,
+      fontFamily: FONT_TITLE,
       fontSize: FONT_SIZE.title,
       color: cssColor(labelColorOn(fill)),
     })

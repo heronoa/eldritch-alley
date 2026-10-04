@@ -7,11 +7,11 @@ Order of execution: server first, then frontend logic, then integration, then de
 
 | # | Plan | Status | PR |
 |---|------|--------|----|
-| 1 | [m2a-server.plan.md](m2a-server.plan.md): Colyseus 0.18, room, session, bot, reconnection | [ ] pendente | — |
-| 2 | [m2a-logic.plan.md](m2a-logic.plan.md): grid functions, protocol, net client, selection, log (no browser) | [ ] pendente | — |
-| 3 | [m2a-integration.plan.md](m2a-integration.plan.md): scenes, full match against the bot, reconnection in the browser | [ ] pendente | — |
-| 4 | [m2a-design.plan.md](m2a-design.plan.md): colours, labels and layout only | [ ] pendente | — |
-| 5 | [m2a-hud.index.md](m2a-hud.index.md): `maxHealth` and protocol v2, then the turn-order carousel, the action buttons and the unit status panel | [ ] pendente | — |
+| 1 | [m2a-server.plan.md](m2a-server.plan.md): Colyseus 0.18, room, session, bot, reconnection | [x] aprovado | #6 |
+| 2 | [m2a-logic.plan.md](m2a-logic.plan.md): grid functions, protocol, net client, selection, log (no browser) | [x] aprovado | #6 |
+| 3 | [m2a-integration.plan.md](m2a-integration.plan.md): scenes, full match against the bot, reconnection in the browser | [x] aprovado | #6 |
+| 4 | [m2a-design.plan.md](m2a-design.plan.md): colours, labels and layout only | [x] aprovado | #6 |
+| 5 | [m2a-hud.index.md](m2a-hud.index.md): `maxHealth` and protocol v2, then the turn-order carousel, the action buttons and the unit status panel | [x] aprovado | #6 |
 
 ## Dependency notes
 
