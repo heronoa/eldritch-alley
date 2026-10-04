@@ -14,6 +14,7 @@ import {
   type Team,
   type UnitState,
 } from '@eldritch-alley/engine';
+import { isClientAction } from './action-shape';
 import { chooseBotAction } from './bot';
 import { createMatchSetup } from './map';
 import {
@@ -23,6 +24,7 @@ import {
   type EndedMessage,
   type RejectedMessage,
   type StateMessage,
+  type WireRejectReason,
 } from './protocol';
 
 /** The first client plays team A; the room plays team B. */
@@ -42,7 +44,7 @@ export function teamHasLivingUnit(state: MatchState, team: Team): boolean {
 
 export type HumanActionOutcome =
   | { ok: true; state: MatchState; events: Event[] }
-  | { ok: false; reason: RejectReason };
+  | { ok: false; reason: WireRejectReason };
 
 /** The unit whose turn it is, or undefined in a match that is over. */
 function unitOnTurn(state: MatchState): UnitState | undefined {
@@ -59,6 +61,9 @@ export function resolveHumanAction(
   humanTeam: Team,
   action: ClientAction,
 ): HumanActionOutcome {
+  // A payload the protocol does not define never reaches the engine, which would throw on it.
+  if (!isClientAction(action)) return { ok: false, reason: 'malformed-action' };
+
   const current = unitOnTurn(state);
   if (!current || current.team !== humanTeam) return { ok: false, reason: 'not-your-turn' };
 
@@ -173,7 +178,7 @@ export class BattleRoom extends Room {
     this.broadcast(MESSAGE.ended, message);
   }
 
-  private refuse(client: Client, reason: RejectReason): void {
+  private refuse(client: Client, reason: WireRejectReason): void {
     const message: RejectedMessage = { reason };
     client.send(MESSAGE.rejected, message);
   }

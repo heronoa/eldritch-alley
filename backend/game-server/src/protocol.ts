@@ -41,8 +41,11 @@ export interface StateMessage {
 
 export type EventsMessage = Event[];
 
+/** What the server can refuse: every engine reason, and a malformed action the engine never sees. */
+export type WireRejectReason = RejectReason | 'malformed-action';
+
 export interface RejectedMessage {
-  reason: RejectReason;
+  reason: WireRejectReason;
 }
 
 export interface EndedMessage {

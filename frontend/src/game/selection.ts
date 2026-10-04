@@ -19,7 +19,9 @@ export interface ClickInput {
 
 /** The unit standing on a cell, living or a body. A cell with a body is not empty. */
 function occupantOf(state: PublicState, cell: Cell): UnitState | undefined {
-  return state.units.find((unit) => unit.position.x === cell.x && unit.position.y === cell.y);
+  return state.units.find(
+    (unit) => !unit.permanentlyDead && unit.position.x === cell.x && unit.position.y === cell.y,
+  );
 }
 
 function chebyshev(a: Cell, b: Cell): number {

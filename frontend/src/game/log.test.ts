@@ -89,6 +89,7 @@ describe('describeRejection', () => {
     'magazine-full': 'Carregador cheio',
     'not-adjacent': 'Casa não adjacente',
     'game-over': 'Partida encerrada',
+    'malformed-action': 'Ação inválida',
   };
 
   it('answers a sentence in the player language for every reason', () => {

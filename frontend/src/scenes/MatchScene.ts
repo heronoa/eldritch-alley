@@ -13,6 +13,7 @@ import {
 import { highlightedCells } from '../game/highlight';
 import { describeEvent, describeRejection, type UnitNames } from '../game/log';
 import { unitPanel } from '../game/panel';
+import { presentationOf, type Cue, type Snapshot } from '../game/presentation';
 import { resolveClick } from '../game/selection';
 import { turnOrder } from '../game/turn-order';
 import { Session } from '../net/session';
@@ -20,14 +21,16 @@ import {
   PROTOCOL_VERSION,
   type ClientAction,
   type EndedMessage,
+  type Event,
   type PublicState,
   type StateMessage,
   type Team,
   type UnitState,
 } from '../protocol';
-import { ORIGIN, TILE_SIZE, cellToPixel, heightColor, pixelToCell } from '../view/grid';
+import type { Cell, Pixel } from '../view/grid';
+import { cellAt, cellToScreen, depthOfCell, topFace } from '../view/iso';
 import {
-  LEGEND_Y,
+  LEGEND_RECT,
   LOG_LINES,
   LOG_RECT,
   LOG_TEXT_POINT,
@@ -35,42 +38,61 @@ import {
   PANEL_BAR_HEIGHT,
   PANEL_BAR_OFFSET,
   PANEL_RECT,
-  STATUS_Y,
+  STATUS_RECT,
+  buttonIndexAt,
+  HUD_DEPTH,
+  RESULT_BUTTON_RECT,
   buttonRect,
   carouselSlotRect,
+  containsPoint,
+  hudRects,
   panelRowPoint,
 } from '../view/layout';
 import {
   CURRENT_TURN_COLOR,
-  FONT,
+  FONT_BODY,
   FONT_SIZE,
-  GRID_STROKE_COLOR,
+  FONT_TITLE,
+  HIGHLIGHT_ATTACK_ALPHA,
   HIGHLIGHT_ATTACK_COLOR,
+  HIGHLIGHT_MOVE_ALPHA,
   HIGHLIGHT_MOVE_COLOR,
   PANEL_STROKE,
-  SELECTED_COLOR,
+  STAMP_COLOR,
+  STAMP_WIDTH,
   TEXT_COLOR,
   TEXT_COLOR_ALERT,
   TEXT_COLOR_DISABLED,
-  cssColor,
-  labelColorOn,
 } from '../view/theme';
-import { Button, createPanel, createTurnChip, fillColorOf, initialOf } from './widgets';
+import { BoardTiles } from './BoardTiles';
+import { playEffect } from './effects';
+import { BODY_HEIGHT, UnitSprite, type Placement } from './units';
+import { Button, createPanel, createTurnChip } from './widgets';
 
 /** The side the person at the keyboard plays. */
 const HUMAN_TEAM: Team = 'A';
 
-/** Side of the unit rectangle drawn inside a tile. */
-const UNIT_SIZE = 36;
+/** The air between the result and the stamp around it. */
+const STAMP_PADDING = 16;
 
-/** How solid a highlighted cell is: enough to read, thin enough to leave the tile colour visible. */
-const HIGHLIGHT_ALPHA = 0.35;
+/** How far over its own cell a highlight is drawn, so the tile under it stays visible. */
+const HIGHLIGHT_DEPTH_STEP = 0.1;
 
 /** What the colours on the board mean, for a player who has not been told. Two lines of the column. */
-const LEGEND = 'Azul claro: você · Escuro: bot · Amarelo: selecionado\nRealce azul: movimento · Realce vermelho: ataque';
+const LEGEND = 'Azul-tinta: você · Vermelho: bot · Papel: selecionado\nRealce azul: movimento · Realce vermelho: ataque';
 
 /** The state carries no display name for a unit, so the log falls back to the id. */
 const UNIT_NAMES: UnitNames = {};
+
+/** What the presentation needs to know about a unit, so it never reads the whole state. */
+function snapshotOf(state: PublicState): Map<string, Snapshot> {
+  return new Map(
+    state.units.map((unit) => [
+      unit.id,
+      { position: unit.position, primaryClass: unit.primaryClass, magazine: unit.magazine },
+    ]),
+  );
+}
 
 /** The two buttons that act at once, without a board target. The other two arm a mode instead. */
 function immediateAction(id: ActionButton['id']): ClientAction | null {
@@ -96,15 +118,25 @@ export class MatchScene extends Phaser.Scene {
   /** True while waiting for a reconnection, so the first state that arrives can clear the notice. */
   private reconnecting = false;
 
-  private grid!: Phaser.GameObjects.Graphics;
-  private highlights!: Phaser.GameObjects.Graphics;
-  private units!: Phaser.GameObjects.Container;
+  /** One sprite per unit, kept for the whole match so an animation is never cut by a redraw. */
+  private sprites = new Map<string, UnitSprite>();
+  /** What the client knew of each unit when the last events arrived, for `presentationOf`. */
+  private snapshot = new Map<string, Snapshot>();
+
+  private tiles!: BoardTiles;
+  /** One graphic per highlighted cell, at the cell's own depth, rebuilt on every redraw. */
+  private highlights: Phaser.GameObjects.Graphics[] = [];
   private chips!: Phaser.GameObjects.Container;
   private panelRows!: Phaser.GameObjects.Container;
   private buttons: Button[] = [];
+  /** The model the drawn buttons came from, so a click resolves to the action the player sees. */
+  private buttonModel: ActionButton[] = [];
   private logText!: Phaser.GameObjects.Text;
   private status!: Phaser.GameObjects.Text;
   private result!: Phaser.GameObjects.Text;
+  /** Shown once the match is over, so the player can leave it. */
+  private wayOut!: Button;
+  private stamp!: Phaser.GameObjects.Graphics;
 
   constructor() {
     super('match');
@@ -119,66 +151,100 @@ export class MatchScene extends Phaser.Scene {
     this.finished = false;
     this.reconnecting = false;
     this.buttons = [];
+    this.buttonModel = [];
+    this.highlights = [];
+    this.sprites = new Map();
+    this.snapshot = new Map();
   }
 
   create(): void {
-    // Drawing order is the order the objects are added: the board, the highlight over it, the pieces,
-    // then the sidebar.
-    this.grid = this.add.graphics();
-    this.highlights = this.add.graphics();
-    this.units = this.add.container(0, 0);
+    // Drawing order is depth here, not the order things are added: the blocks carry the depth of
+    // their cell, the highlights a hair over their own cell, the units half a step further, and the
+    // whole HUD floats above all of it.
+    this.tiles = new BoardTiles(this, (cell) => this.levelAt(cell));
 
     // The frames are drawn once; the chips and the panel rows are rebuilt from the state instead.
-    createPanel(this, PANEL_RECT, 'Unidade');
-    createPanel(this, LOG_RECT, 'Registro');
-    this.chips = this.add.container(0, 0);
-    this.panelRows = this.add.container(0, 0);
+    createPanel(this, PANEL_RECT, 'Unidade').setDepth(HUD_DEPTH);
+    createPanel(this, LOG_RECT, 'Registro').setDepth(HUD_DEPTH);
+    this.chips = this.add.container(0, 0).setDepth(HUD_DEPTH);
+    this.panelRows = this.add.container(0, 0).setDepth(HUD_DEPTH);
 
-    this.logText = this.add.text(LOG_TEXT_POINT.x, LOG_TEXT_POINT.y, '', {
-      fontFamily: FONT,
-      fontSize: FONT_SIZE.log,
-      color: TEXT_COLOR,
-      lineSpacing: 4,
-    });
+    this.logText = this.add
+      .text(LOG_TEXT_POINT.x, LOG_TEXT_POINT.y, '', {
+        fontFamily: FONT_BODY,
+        fontSize: FONT_SIZE.log,
+        color: TEXT_COLOR,
+        lineSpacing: 4,
+      })
+      .setDepth(HUD_DEPTH);
 
-    this.add.text(ORIGIN.x, LEGEND_Y, LEGEND, {
-      fontFamily: FONT,
-      fontSize: FONT_SIZE.log,
-      color: TEXT_COLOR,
-    });
+    this.add
+      .text(LEGEND_RECT.x + PADDING, LEGEND_RECT.y + PADDING, LEGEND, {
+        fontFamily: FONT_BODY,
+        fontSize: FONT_SIZE.legend,
+        color: TEXT_COLOR,
+      })
+      .setDepth(HUD_DEPTH);
 
-    this.status = this.add.text(ORIGIN.x, STATUS_Y, '', {
-      fontFamily: FONT,
-      fontSize: FONT_SIZE.unit,
-      color: TEXT_COLOR_ALERT,
-    });
+    this.status = this.add
+      .text(STATUS_RECT.x + PADDING, STATUS_RECT.y, '', {
+        fontFamily: FONT_BODY,
+        fontSize: FONT_SIZE.unit,
+        color: TEXT_COLOR_ALERT,
+      })
+      .setDepth(HUD_DEPTH);
 
     this.result = this.add
       .text(this.scale.width / 2, this.scale.height / 2, '', {
-        fontFamily: FONT,
-        fontSize: '48px',
+        fontFamily: FONT_TITLE,
+        fontSize: FONT_SIZE.result,
         color: TEXT_COLOR,
       })
-      .setOrigin(0.5);
+      .setOrigin(0.5)
+      .setDepth(HUD_DEPTH + 1);
+
+    // The stamp is drawn over the result, so it is added after it and resized whenever it changes.
+    this.stamp = this.add.graphics().setDepth(HUD_DEPTH + 2);
 
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => this.handleClick(pointer));
 
     this.session.onState((message) => this.handleState(message));
-    this.session.onEvents((events) => {
-      for (const event of events) this.appendLog(describeEvent(event, UNIT_NAMES));
-    });
+    this.session.onEvents((events) => this.handleEvents(events));
     this.session.onRejected((message) => this.appendLog(describeRejection(message.reason)));
     this.session.onEnded((message) => this.handleEnded(message));
     this.session.onDrop(() => {
       void this.handleDrop();
     });
+
+    this.wayOut = new Button(this, RESULT_BUTTON_RECT, 'Voltar ao início').setDepth(HUD_DEPTH).setVisible(false);
   }
 
-  /** What the click means is decided by `resolveClick`, narrowed by `applyMode`; the server decides. */
+  /**
+   * The HUD is tested first and consumes the click: the action bar against the same rectangle that
+   * draws each button (DT-30), then any point inside any HUD rectangle, even where no control is, so
+   * a panel floating over a tile never lets a click through to the tile. Only what is left reaches
+   * the board, and what it means there is decided by `resolveClick`, narrowed by `applyMode`; the
+   * server decides the rest.
+   */
   private handleClick(pointer: Phaser.Input.Pointer): void {
+    const point = { x: pointer.x, y: pointer.y };
+
+    if (this.finished && containsPoint(RESULT_BUTTON_RECT, point)) {
+      this.leave();
+      return;
+    }
     if (this.finished || this.state === null) return;
 
-    const cell = pixelToCell({ x: pointer.x, y: pointer.y });
+    const buttonIndex = buttonIndexAt(point);
+    if (buttonIndex !== null) {
+      const button = this.buttonModel[buttonIndex];
+      if (button !== undefined && button.enabled) this.pressAction(button.id, button.mode);
+      return;
+    }
+
+    if (hudRects().some((rect) => containsPoint(rect, point))) return;
+
+    const cell = cellAt(point, (candidate) => this.levelAt(candidate));
     if (cell === null) return;
 
     const intent = applyMode(
@@ -221,6 +287,9 @@ export class MatchScene extends Phaser.Scene {
     }
 
     this.state = message.state;
+    // The state always comes after the events it caused, so what it says here is where the board
+    // ends up — and every event that arrives next is read against it.
+    this.snapshot = snapshotOf(message.state);
 
     // The acting unit is selected for the player, so the board and the panel are about the unit that
     // can actually act; the mode then falls back if the new turn has nothing left to do.
@@ -242,6 +311,88 @@ export class MatchScene extends Phaser.Scene {
     return this.state.units.find((unit) => unit.id === currentId);
   }
 
+  /** The height of a cell, as the state carries it. Flat until the first state arrives. */
+  private levelAt(cell: Cell): number {
+    const board = this.state?.board;
+    if (board === undefined) return 0;
+
+    return board.levels[cell.y * board.width + cell.x];
+  }
+
+  /** Where a unit's feet rest on a cell: the centre of its top face, lifted by the cell's level. */
+  private placementOf(cell: Cell): Placement {
+    return { cell, anchor: cellToScreen(cell, this.levelAt(cell)) };
+  }
+
+  /**
+   * Where an effect is thrown from or lands: the middle of the figure's body, so a shot leaves the
+   * body and not the feet. The sky column is the exception — it falls from above onto the tile, so
+   * it is aimed at the top face instead.
+   */
+  private effectPoint(sprite: UnitSprite, onTileTop: boolean): Pixel {
+    return { x: sprite.x, y: sprite.y - (onTileTop ? 0 : BODY_HEIGHT / 2) };
+  }
+
+  /**
+   * Plays the events of one accepted action, then writes them into the log. The snapshot is read
+   * for the cues and moved forward after them, so each event is read against the board it found.
+   */
+  private handleEvents(events: Event[]): void {
+    for (const event of events) {
+      for (const cue of presentationOf(event, this.snapshot)) this.play(cue);
+      this.advanceSnapshot(event);
+      this.appendLog(describeEvent(event, UNIT_NAMES));
+    }
+  }
+
+  private play(cue: Cue): void {
+    switch (cue.kind) {
+      case 'move':
+        this.sprites.get(cue.unitId)?.slideTo(this.placementOf(cue.from), this.placementOf(cue.to));
+        break;
+
+      case 'attack': {
+        const actor = this.sprites.get(cue.actorId);
+        const target = this.sprites.get(cue.targetId);
+        if (actor === undefined || target === undefined) break;
+
+        // The effect is thrown from where the two units are drawn, so it reads even mid-move.
+        const from = this.effectPoint(actor, false);
+        const to = this.effectPoint(target, cue.effect.kind === 'sky-column');
+        actor.playAttack(
+          { style: cue.style, hit: cue.hit, travelMs: cue.effect.travelMs },
+          this.time.now,
+          () => playEffect(this, cue.effect, from, to),
+        );
+        break;
+      }
+
+      case 'reload':
+        this.sprites.get(cue.unitId)?.playReload(cue.from, cue.to, this.time.now);
+        break;
+
+      case 'defeat':
+        this.sprites.get(cue.unitId)?.markDefeated();
+        break;
+
+      case 'remove':
+        this.sprites.get(cue.unitId)?.destroy();
+        this.sprites.delete(cue.unitId);
+        break;
+    }
+  }
+
+  /** What an event changes about the board, for the events that follow it in the same batch. */
+  private advanceSnapshot(event: Event): void {
+    if (event.type === 'moved') {
+      const unit = this.snapshot.get(event.actor);
+      if (unit !== undefined) this.snapshot.set(event.actor, { ...unit, position: event.to });
+      return;
+    }
+
+    if (event.type === 'corpse-removed') this.snapshot.delete(event.target);
+  }
+
   /** A rejected action changes nothing: the state, the selection and the armed mode stay as they were. */
   private appendLog(line: string): void {
     this.logLines.push(line);
@@ -261,23 +412,51 @@ export class MatchScene extends Phaser.Scene {
     if (await this.session.reconnect()) return;
 
     this.reconnecting = false;
-    this.finished = true;
+    this.finish();
     this.status.setText('Partida perdida');
     if (this.state) this.updateActionBar(this.state);
   }
 
-  private handleEnded(message: EndedMessage): void {
+  /** The match is over: clicks stop, and the way out appears. */
+  private finish(): void {
     this.finished = true;
+    this.wayOut.setVisible(true);
+  }
+
+  /** Back to the lobby. The session is closed first, so the room does not report the exit as a drop. */
+  private leave(): void {
+    this.session.close();
+    this.scene.start('lobby');
+  }
+
+  private handleEnded(message: EndedMessage): void {
+    this.finish();
     this.reconnecting = false;
     this.mode = 'inspect';
     this.selectedId = null;
     this.status.setText('');
     this.result.setText(message.winner === HUMAN_TEAM ? 'Vitória' : 'Derrota');
+    this.drawStamp();
     if (this.state) this.redraw(this.state);
   }
 
+  /** The stamp frame hugs whatever the result says, so it is redrawn rather than placed once. */
+  private drawStamp(): void {
+    this.stamp.clear();
+    if (this.result.text === '') return;
+
+    const bounds = this.result.getBounds();
+    this.stamp.lineStyle(STAMP_WIDTH, STAMP_COLOR, 1);
+    this.stamp.strokeRect(
+      bounds.x - STAMP_PADDING,
+      bounds.y - STAMP_PADDING,
+      bounds.width + 2 * STAMP_PADDING,
+      bounds.height + 2 * STAMP_PADDING,
+    );
+  }
+
   private redraw(state: PublicState): void {
-    this.drawGrid(state);
+    this.tiles.sync((cell) => this.levelAt(cell));
     this.drawHighlights(state);
     this.redrawUnits(state);
     this.redrawCarousel(state);
@@ -285,25 +464,15 @@ export class MatchScene extends Phaser.Scene {
     this.updateActionBar(state);
   }
 
-  private drawGrid(state: PublicState): void {
-    this.grid.clear();
-    for (let y = 0; y < state.board.height; y += 1) {
-      for (let x = 0; x < state.board.width; x += 1) {
-        const corner = cellToPixel({ x, y });
-        this.grid.fillStyle(heightColor(state.board.levels[y * state.board.width + x]), 1);
-        this.grid.fillRect(corner.x, corner.y, TILE_SIZE, TILE_SIZE);
-        this.grid.lineStyle(1, GRID_STROKE_COLOR, 1);
-        this.grid.strokeRect(corner.x, corner.y, TILE_SIZE, TILE_SIZE);
-      }
-    }
-  }
-
-  /** The cells the armed mode would act on, over the grid and under the pieces. */
+  /** The cells the armed mode would act on, drawn as the top face of each cell they cover. */
   private drawHighlights(state: PublicState): void {
-    this.highlights.clear();
+    for (const graphic of this.highlights) graphic.destroy();
+    this.highlights = [];
     if (this.mode === 'inspect') return;
 
-    const color = this.mode === 'move' ? HIGHLIGHT_MOVE_COLOR : HIGHLIGHT_ATTACK_COLOR;
+    const move = this.mode === 'move';
+    const color = move ? HIGHLIGHT_MOVE_COLOR : HIGHLIGHT_ATTACK_COLOR;
+    const alpha = move ? HIGHLIGHT_MOVE_ALPHA : HIGHLIGHT_ATTACK_ALPHA;
     const cells = highlightedCells({
       state,
       selectedId: this.selectedId,
@@ -311,38 +480,48 @@ export class MatchScene extends Phaser.Scene {
       humanTeam: HUMAN_TEAM,
     });
 
-    this.highlights.fillStyle(color, HIGHLIGHT_ALPHA);
-    this.highlights.lineStyle(2, color, 1);
     for (const cell of cells) {
-      const corner = cellToPixel(cell);
-      this.highlights.fillRect(corner.x, corner.y, TILE_SIZE, TILE_SIZE);
-      this.highlights.strokeRect(corner.x, corner.y, TILE_SIZE, TILE_SIZE);
+      const graphic = this.add.graphics().setDepth(depthOfCell(cell) + HIGHLIGHT_DEPTH_STEP);
+      const face = topFace(cell, this.levelAt(cell));
+
+      graphic.fillStyle(color, alpha);
+      graphic.fillPoints(face, true);
+      graphic.lineStyle(2, color, 1);
+      graphic.strokePoints(face, true, true);
+      this.highlights.push(graphic);
     }
   }
 
+  /**
+   * Brings the sprites in line with the state. A sprite is created once and then only synced, so an
+   * animation that is playing is never thrown away by a redraw that arrives in the middle of it.
+   */
   private redrawUnits(state: PublicState): void {
-    this.units.removeAll(true);
+    const inPlay = new Set<string>();
 
     for (const unit of state.units) {
-      const corner = cellToPixel(unit.position);
-      const centreX = corner.x + TILE_SIZE / 2;
-      const centreY = corner.y + TILE_SIZE / 2;
+      if (unit.permanentlyDead) continue;
+      inPlay.add(unit.id);
 
-      const fill = fillColorOf(unit);
-      const body = this.add.rectangle(centreX, centreY, UNIT_SIZE, UNIT_SIZE, fill);
-      if (unit.id === this.selectedId) body.setStrokeStyle(3, SELECTED_COLOR);
-
-      // The letter takes the colour that reads on the fill it sits on, so a piece is never a smudge.
-      const initial = this.add
-        .text(centreX, centreY, initialOf(unit), {
-          fontFamily: FONT,
-          fontSize: FONT_SIZE.unit,
-          color: cssColor(labelColorOn(fill)),
-        })
-        .setOrigin(0.5);
-
-      this.units.add([body, initial]);
+      let sprite = this.sprites.get(unit.id);
+      if (sprite === undefined) {
+        sprite = new UnitSprite(this, unit, unit.id === this.selectedId, this.placementOf(unit.position));
+        this.sprites.set(unit.id, sprite);
+      } else {
+        sprite.sync(unit, unit.id === this.selectedId, this.placementOf(unit.position));
+      }
     }
+
+    for (const id of [...this.sprites.keys()]) {
+      if (inPlay.has(id)) continue;
+      this.sprites.get(id)?.destroy();
+      this.sprites.delete(id);
+    }
+  }
+
+  /** One frame of every animation on the board. The scene decides nothing; the sprites advance. */
+  update(time: number): void {
+    for (const sprite of this.sprites.values()) sprite.tick(time);
   }
 
   /** One chip per unit still in play, in turn order, so the queue shrinks as units fall. */
@@ -365,12 +544,12 @@ export class MatchScene extends Phaser.Scene {
       const color = row.enabled ? TEXT_COLOR : TEXT_COLOR_DISABLED;
 
       const label = this.add.text(point.x, point.y, row.label, {
-        fontFamily: FONT,
+        fontFamily: FONT_BODY,
         fontSize: FONT_SIZE.log,
         color,
       });
       const value = this.add
-        .text(valueX, point.y, row.value, { fontFamily: FONT, fontSize: FONT_SIZE.log, color })
+        .text(valueX, point.y, row.value, { fontFamily: FONT_BODY, fontSize: FONT_SIZE.log, color })
         .setOrigin(1, 0);
       this.panelRows.add([label, value]);
 
@@ -390,13 +569,11 @@ export class MatchScene extends Phaser.Scene {
   /** Built once from the model, then only refreshed, because a button keeps its own visual state. */
   private updateActionBar(state: PublicState): void {
     const model = actionButtons(state, HUMAN_TEAM);
+    this.buttonModel = model;
 
     if (this.buttons.length === 0) {
       this.buttons = model.map(
-        (button, index) =>
-          new Button(this, buttonRect(index), button.label, () =>
-            this.pressAction(button.id, button.mode),
-          ),
+        (button, index) => new Button(this, buttonRect(index), button.label).setDepth(HUD_DEPTH),
       );
     }
 

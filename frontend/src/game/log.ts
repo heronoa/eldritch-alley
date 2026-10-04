@@ -64,6 +64,8 @@ export function describeRejection(reason: RejectReason): string {
       return 'Casa não adjacente';
     case 'game-over':
       return 'Partida encerrada';
+    case 'malformed-action':
+      return 'Ação inválida';
     default:
       return 'Ação recusada';
   }

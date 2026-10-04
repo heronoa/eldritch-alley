@@ -12,6 +12,7 @@ interface UnitSpec {
   magazine?: number | null;
   ammo?: number;
   defeated?: boolean;
+  permanentlyDead?: boolean;
 }
 
 function makeUnit(spec: UnitSpec): UnitState {
@@ -35,7 +36,7 @@ function makeUnit(spec: UnitSpec): UnitState {
     abilities: { activeSets: [null, null], reaction: null, movement: null, support: null },
     defeated: spec.defeated ?? false,
     ammo: spec.ammo ?? (magazine === null ? 0 : magazine),
-    permanentlyDead: false,
+    permanentlyDead: spec.permanentlyDead ?? false,
     corpseExpiresAtRound: null,
   };
 }
@@ -136,6 +137,27 @@ describe('resolveClick', () => {
     expect(resolveClick({ state, selectedId: 'A-sniper', cell: { x: 3, y: 0 }, humanTeam: 'A' })).toEqual({
       kind: 'none',
     });
+    expect(resolveClick({ state, selectedId: 'A-sniper', cell: { x: 1, y: 0 }, humanTeam: 'A' })).toEqual({
+      kind: 'none',
+    });
+  });
+
+  it('lets a unit move onto the tile of a body that was removed for good', () => {
+    const sniper = makeUnit({ id: 'A-sniper', team: 'A', at: { x: 0, y: 0 } });
+    const removed = makeUnit({ id: 'B-priest', team: 'B', at: { x: 1, y: 0 }, defeated: true, permanentlyDead: true });
+    const state = makeState([sniper, removed]);
+
+    expect(resolveClick({ state, selectedId: 'A-sniper', cell: { x: 1, y: 0 }, humanTeam: 'A' })).toEqual({
+      kind: 'send',
+      action: { type: 'move', to: { x: 1, y: 0 } },
+    });
+  });
+
+  it('keeps a fallen body that is not removed yet as an occupant of its tile', () => {
+    const sniper = makeUnit({ id: 'A-sniper', team: 'A', at: { x: 0, y: 0 } });
+    const body = makeUnit({ id: 'B-priest', team: 'B', at: { x: 1, y: 0 }, defeated: true, permanentlyDead: false });
+    const state = makeState([sniper, body]);
+
     expect(resolveClick({ state, selectedId: 'A-sniper', cell: { x: 1, y: 0 }, humanTeam: 'A' })).toEqual({
       kind: 'none',
     });
