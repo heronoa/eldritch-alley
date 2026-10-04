@@ -3,7 +3,7 @@
 **Milestone:** m1-logic
 **Parent feature:** [map-variety.index.md](./map-variety.index.md)
 **Created on:** 2026-10-04
-**Status:** pendente
+**Status:** concluído em 2026-10-04
 
 ---
 
@@ -59,9 +59,11 @@ Make the isometric projection and the tile palette independent of the board size
 The three rescaled values keep the prototype's 2:1 diamond and the 4:2:1 ratio between tile width, tile
 height and a level step, so the isometric angle and the sense of height do not change — only the scale.
 
-A 10×10 board then measures `boardBounds({ width: 10, height: 10 })` = `{ x: 320, y: 200, width: 640,
-height: 368 }`: the west corner exactly at the right edge of the left panel column, the east corner at the
-left edge of the right column, the south corner of the tallest block at y 568, inside the carousel-to-action-bar
+A 10×10 board then measures `boardBounds({ width: 10, height: 10 })` = `{ x: 320, y: 152, width: 640,
+height: 416 }`: the west corner at x 320, **4 px clear** of the left panel column, which ends at x 316
+(`PANEL_RECT`, DT-50), and the east corner at x 960, 4 px clear of the right column at 964. The box now
+starts at y 152, not `TOP_Y`: it has to hold a wall standing on the top corner too, so its north edge is
+`TOP_Y − MAX_LEVEL * HZ`. Its south edge is y 568, so the whole board stays inside the carousel-to-action-bar
 band (96..648) with room to spare.
 
 `cellsFrontToBack(size)` becomes a function taking `{ width, height }`; the module-level
@@ -71,8 +73,10 @@ internal sweeps (top faces, then blocks) run over it. `topFace`, `cellToScreen`,
 
 #### 4.3 `boardBounds`
 
-`boardBounds(size)` takes the board it measures. Its north edge stays `TOP_Y`, its south edge is the south
-corner of the last cell plus half a tile plus `MAX_LEVEL * HZ`.
+`boardBounds(size)` takes the board it measures. Its north edge is `TOP_Y − MAX_LEVEL * HZ` (a wall on the
+top corner reaches higher than the flat board's vertex — the 8×8 board never exposed this because nothing
+raised sat at its north corner), and its south edge is the south corner of the last cell plus half a tile
+plus `MAX_LEVEL * HZ`.
 
 ### 5. Tests planned
 
@@ -101,7 +105,7 @@ corner of the last cell plus half a tile plus `MAX_LEVEL * HZ`.
       one.
 
 **`layout.test.ts`**
-- [ ] `boardBounds({ width: 10, height: 10 })` equals `{ x: 320, y: 200, width: 640, height: 368 }`.
+- [ ] `boardBounds({ width: 10, height: 10 })` equals `{ x: 320, y: 152, width: 640, height: 416 }`.
 - [ ] The board does not overlap the carousel or the action bar, and every cell of a 10×10 board is drawn
       inside the board's own box (the projection and the box agree).
 - [ ] `boardBounds` grows with the size it is given (8×8 is strictly smaller than 10×10), so the box is not
@@ -132,3 +136,14 @@ corner of the last cell plus half a tile plus `MAX_LEVEL * HZ`.
 - Everything Phaser: `BoardTiles` and `MatchScene` keep hard-coding their own iteration until M2.
 - The map data itself, which is M3's.
 - `shade` and the `SHADE_*` factors, which the board no longer uses for its faces but keeps for its tests.
+
+### 10. Divergências na execução (2026-10-04)
+
+- **`BOARD_WIDTH`/`BOARD_HEIGHT` ficaram em `grid.ts`.** O plano pedia removê-las, mas `scenes/BoardTiles.ts`
+  (arquivo do M2) ainda itera com elas. São duas constantes a menos para o M2 apagar quando `BoardTiles`
+  passar a receber o tabuleiro.
+- **Uma linha fora do escopo: `scenes/MatchScene.ts:247`** passou a ser
+  `cellAt(point, this.state.board, …)`. A mudança de assinatura de `cellAt` quebrava a compilação, e a
+  guarda da linha 236 já garante `this.state !== null`. O M2 reestrutura essa chamada de qualquer forma.
+- **`cellsFrontToBack` não ficou exportada:** nada fora de `iso.ts` a usa.
+- `MAX_LEVEL` foi exportado de `grid.ts` e é o que `boardBounds` usa para a borda norte da caixa.

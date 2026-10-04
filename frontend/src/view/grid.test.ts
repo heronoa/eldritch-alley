@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { heightColor } from './grid';
+import { MAX_LEVEL, heightColor } from './grid';
 import { BG_COLOR, FACE_COLORS } from './theme';
 
-const BOARD_LEVELS = [0, 1, 2];
+/** Every level the board can carry, from the low ground up to a wall. */
+const BOARD_LEVELS = [0, 1, 2, 3];
 
 describe('heightColor', () => {
   it('gives a distinct colour to each level', () => {
-    expect(BOARD_LEVELS.map(heightColor)).toEqual([0x23283a, 0x30364a, 0x3f4152]);
+    expect(BOARD_LEVELS.map(heightColor)).toEqual([0x23283a, 0x30364a, 0x3f4152, 0x1a1e2c]);
     expect(new Set(BOARD_LEVELS.map(heightColor)).size).toBe(BOARD_LEVELS.length);
   });
 
@@ -25,8 +26,13 @@ describe('heightColor', () => {
     }
   });
 
+  it('names the tallest level the board can carry', () => {
+    expect(MAX_LEVEL).toBe(BOARD_LEVELS[BOARD_LEVELS.length - 1]);
+    expect(() => heightColor(MAX_LEVEL)).not.toThrow();
+  });
+
   it('refuses a level that is not on the board', () => {
-    expect(() => heightColor(3)).toThrow(RangeError);
+    expect(() => heightColor(MAX_LEVEL + 1)).toThrow(RangeError);
     expect(() => heightColor(-1)).toThrow(RangeError);
   });
 });

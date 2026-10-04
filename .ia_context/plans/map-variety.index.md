@@ -1,7 +1,7 @@
 # Index — Three prototype maps, one drawn at random per match
 
 **Created on:** 2026-10-04
-**Branch:** `feat/visual-identity` (this plan ships in the same branch and the same MR as the visual identity feature)
+**Branch:** `feat/map-variaty` (the visual identity shipped in its own MR, #8, before this one)
 **Source:** `.ia_context/prototypes/eldritch-alley-map-prototype/` (the three 10×10 maps `street`, `park` and `roof`)
 
 ## Goal
@@ -59,7 +59,7 @@ The owner chose the three values below after the M3 review; they are fixed for t
 
 | # | Plan | Status | PR |
 |---|------|--------|----|
-| 1 | [map-variety-m1-logic.plan.md](./map-variety-m1-logic.plan.md): size-driven projection and picking, four-tone palette (no Phaser) | [ ] pendente | — |
+| 1 | [map-variety-m1-logic.plan.md](./map-variety-m1-logic.plan.md): size-driven projection and picking, four-tone palette (no Phaser) | [x] concluído | — |
 | 2 | [map-variety-m2-integration.plan.md](./map-variety-m2-integration.plan.md): the client draws the board the state carries | [ ] pendente | — |
 | 3 | [map-variety-m3-server.plan.md](./map-variety-m3-server.plan.md): three 10×10 maps, spawns by size, one drawn at random per match (DT-32 first) | [ ] pendente | — |
 | 4 | [map-variety-m4-design.plan.md](./map-variety-m4-design.plan.md): design pass by screenshot, owner approval | [ ] pendente | — |

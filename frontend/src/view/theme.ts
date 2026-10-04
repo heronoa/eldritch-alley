@@ -76,7 +76,7 @@ export interface FaceColors {
 }
 
 /**
- * The faces of a block, by level: the prototype's asphalt, slab and plaza tiles.
+ * The faces of a block, by level: the prototype's asphalt, slab, plaza and building tiles.
  *
  * The sides are the prototype's own values — a single shading factor does not reproduce them, because
  * its faces are not one factor of its tops. The tops repeat `heightColor`, which is what the board
@@ -86,6 +86,7 @@ export const FACE_COLORS: FaceColors[] = [
   { top: 0x23283a, left: 0x171b28, right: 0x11141f },
   { top: 0x30364a, left: 0x212536, right: 0x1a1d2b },
   { top: 0x3f4152, left: 0x2b2d39, right: 0x22242e },
+  { top: 0x1a1e2c, left: 0x141826, right: 0x0f121c },
 ];
 
 /** The frame stamped around the result of a finished match. Decoration: it carries no information. */

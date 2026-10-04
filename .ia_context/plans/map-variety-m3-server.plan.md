@@ -15,8 +15,8 @@ random seed per match so the map varies. Everything the client needs already tra
 ### 2. Prerequisites
 
 - M2 merged (the client draws whatever board the state carries).
-- **DT-32 fixed first** (section 7, step 1): its recorded trigger is "before the next change to
-  `backend/game-server`", and the new map tests cannot run without it.
+- The suite runs: `backend/game-server/vitest.config.mts` exists, so DT-32 is already closed and the new map
+  tests can be run. Only confirmation is needed (section 7, step 1).
 
 ### 3. Files
 
@@ -136,15 +136,18 @@ On 10×10 that is (0,0) and (9,9). The order still matches `CLASS_ORDER`, so the
 
 **`map.test.ts`** (new), for each map in `MAPS`:
 
-- [ ] **I1 — walls are unreachable:** no level-3 cell is orthogonally adjacent to a level-2 cell.
-- [ ] **I1b — the gap is unreachable:** on every map, a level-0 cell that has any orthogonal neighbour at
-      level 1 or 2 is walkable ground (water, street), and no cell that the port calls a chasm breaks the
-      rule — asserted as: on `roof`, every neighbour of the gap column is level 2, and `(6,4)` is the only
-      level-2 cell in that column.
+> **Neighbours mean the eight of Chebyshev distance 1, diagonals included** (DT-48): the engine accepts a
+> diagonal step (`distance` is Chebyshev, `actions.ts:96`), so a level-2 cell diagonal to a level-3 wall is
+> a way onto the wall, and a flood fill that only walks orthogonally reports a map as split when the engine
+> says it is joined. Every invariant below is written on that neighbourhood.
+
+- [ ] **I1 — walls are unreachable:** no level-3 cell has a level-2 cell among its eight neighbours.
+- [ ] **I1b — the gap is unreachable:** on `roof`, every one of the eight neighbours of a gap cell is level 2
+      (so the gap is a two-level drop from every side), and `(6,4)` is the column's only level-2 cell.
 - [ ] **I2 — spawns are legal:** the six spawn cells are in bounds and at level 1, and the two clusters are
       distinct.
-- [ ] **I3 — no orphans:** a flood fill from `(0,0)` over steps with `|Δlevel| ≤ 1` reaches every walkable
-      cell (level ≤ 2) and every other spawn.
+- [ ] **I3 — no orphans:** a flood fill from `(0,0)` over the eight neighbours, stepping only where
+      `|Δlevel| ≤ 1`, reaches every walkable cell (level ≤ 2) and every other spawn.
 - [ ] **I4 — the palette holds:** every level is 0..3, the board is `width × height` with
       `levels.length === width * height`, and `validateBoard` accepts it.
 - [ ] The three `id`s are `street`, `park`, `roof` and no two boards are equal.

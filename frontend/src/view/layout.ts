@@ -4,7 +4,7 @@
 // The HUD floats over the board instead of sitting beside it, so the rectangles are placed from the
 // edges of the canvas and the board keeps the middle. Every point inside one of them belongs to the
 // HUD, which is what lets a panel cover a tile without a click reaching the tile.
-import { BOARD_HEIGHT, BOARD_WIDTH, type Pixel } from './grid';
+import { MAX_LEVEL, type BoardSize, type Pixel } from './grid';
 import { HZ, TILE_H, TILE_W, TOP_Y, cellToScreen } from './iso';
 
 /** A rectangle on the canvas. */
@@ -22,13 +22,11 @@ export const CANVAS_HEIGHT = 720;
 export const PADDING = 16;
 
 /**
- * Where the HUD is drawn: over every tile (14) and every unit (14.5) of an 8x8 board, so a panel
- * floating over the board is never covered by it. The result and its stamp sit over the panels.
+ * Where the HUD is drawn: over every tile and every unit the board can hold — a 10x10 board puts its
+ * deepest cell at 18 and its unit at 18.5 — so a panel floating over the board is never covered by
+ * it. The result and its stamp sit over the panels.
  */
 export const HUD_DEPTH = 100;
-
-/** The widest level the board can reach, which is what the board's lowest block is drawn for. */
-const HIGHEST_LEVEL = 2;
 
 /** The carousel and the action bar share one column, centred on the canvas. */
 const CENTRED_X = 248;
@@ -101,14 +99,18 @@ export const PANEL_TITLE_POINT: Pixel = { x: PANEL_RECT.x + PADDING, y: PANEL_RE
 
 /**
  * The box that holds every top face and every block of the board, drawn at the highest level the
- * board can reach: the west corner of the leftmost cell to the east corner of the rightmost one,
- * and the north corner of the top cell down past the base of the tallest block.
+ * board can reach: the west corner of the leftmost cell to the east corner of the rightmost one, and
+ * the north corner of the top cell down past the base of the tallest block.
+ *
+ * Its north edge sits above the flat board's vertex, because a wall standing on the top corner rises
+ * `MAX_LEVEL` steps over it.
  */
-export function boardBounds(): Rect {
-  const north = TOP_Y;
-  const west = cellToScreen({ x: 0, y: BOARD_HEIGHT - 1 }, 0).x - TILE_W / 2;
-  const east = cellToScreen({ x: BOARD_WIDTH - 1, y: 0 }, 0).x + TILE_W / 2;
-  const south = cellToScreen({ x: BOARD_WIDTH - 1, y: BOARD_HEIGHT - 1 }, 0).y + TILE_H / 2 + HIGHEST_LEVEL * HZ;
+export function boardBounds(size: BoardSize): Rect {
+  const north = TOP_Y - MAX_LEVEL * HZ;
+  const west = cellToScreen({ x: 0, y: size.height - 1 }, 0).x - TILE_W / 2;
+  const east = cellToScreen({ x: size.width - 1, y: 0 }, 0).x + TILE_W / 2;
+  const south =
+    cellToScreen({ x: size.width - 1, y: size.height - 1 }, 0).y + TILE_H / 2 + MAX_LEVEL * HZ;
 
   return { x: west, y: north, width: east - west, height: south - north };
 }

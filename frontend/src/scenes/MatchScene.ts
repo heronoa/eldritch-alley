@@ -244,7 +244,7 @@ export class MatchScene extends Phaser.Scene {
 
     if (hudRects().some((rect) => containsPoint(rect, point))) return;
 
-    const cell = cellAt(point, (candidate) => this.levelAt(candidate));
+    const cell = cellAt(point, this.state.board, (candidate) => this.levelAt(candidate));
     if (cell === null) return;
 
     const intent = applyMode(

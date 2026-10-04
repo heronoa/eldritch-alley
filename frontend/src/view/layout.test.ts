@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { MAX_LEVEL, type Cell } from './grid';
+import { HZ, TILE_H, cellToScreen, topFace } from './iso';
 import {
   ACTION_BAR_RECT,
   ACTION_BUTTON,
@@ -29,6 +31,18 @@ const CAROUSEL_SLOTS = 6;
 const ACTION_BUTTONS = 4;
 /** The six pieces of the HUD, in the order `hudRects` returns them. */
 const HUD_NAMES = ['carousel', 'action bar', 'panel', 'log', 'legend', 'status'];
+
+/** The board the client draws now: the prototype's 10x10, a size the state carries. */
+const BOARD_SIZE = { width: 10, height: 10 };
+
+/** Every cell of that board, in reading order. */
+function everyCell(): Cell[] {
+  const cells: Cell[] = [];
+  for (let y = 0; y < BOARD_SIZE.height; y += 1) {
+    for (let x = 0; x < BOARD_SIZE.width; x += 1) cells.push({ x, y });
+  }
+  return cells;
+}
 
 function right(rect: Rect): number {
   return rect.x + rect.width;
@@ -83,14 +97,54 @@ describe('layout', () => {
   });
 
   it('measures the board as the box every block of it fits in', () => {
-    expect(boardBounds()).toEqual({ x: 320, y: 200, width: 640, height: 360 });
+    // North of TOP_Y, because a wall standing on the top corner rises MAX_LEVEL * HZ above the flat
+    // board's vertex, and south past the base of the tallest block on the front corner.
+    expect(boardBounds(BOARD_SIZE)).toEqual({ x: 320, y: 152, width: 640, height: 416 });
   });
 
   it('leaves the board clear of the carousel and the action bar', () => {
-    const board = boardBounds();
+    const board = boardBounds(BOARD_SIZE);
 
     expect(overlaps(board, CAROUSEL_RECT)).toBe(false);
     expect(overlaps(board, ACTION_BAR_RECT)).toBe(false);
+  });
+
+  it('keeps the board clear of the columns the panels sit in', () => {
+    // The panels float over the board, so the board has to fit the gap between the two columns.
+    const board = boardBounds(BOARD_SIZE);
+
+    expect(right(PANEL_RECT)).toBeLessThanOrEqual(board.x);
+    expect(right(board)).toBeLessThanOrEqual(LOG_RECT.x);
+  });
+
+  it('draws every cell of a 10x10 board inside the box that measures it', () => {
+    const board = boardBounds(BOARD_SIZE);
+
+    for (const cell of everyCell()) {
+      // The top face at the lowest and the highest level the board can have: a cell drawn at any
+      // level between them is inside both.
+      for (const level of [0, MAX_LEVEL]) {
+        for (const corner of topFace(cell, level)) {
+          const where = `${cell.x},${cell.y} at ${level}`;
+          expect(corner.x, where).toBeGreaterThanOrEqual(board.x);
+          expect(corner.x, where).toBeLessThanOrEqual(right(board));
+          expect(corner.y, where).toBeGreaterThanOrEqual(board.y);
+          expect(corner.y, where).toBeLessThanOrEqual(bottom(board));
+        }
+      }
+
+      // And the base of a block standing on that cell, which is as low as the board reaches.
+      const base = cellToScreen(cell, 0).y + TILE_H / 2 + MAX_LEVEL * HZ;
+      expect(base, `${cell.x},${cell.y} base`).toBeLessThanOrEqual(bottom(board));
+    }
+  });
+
+  it('grows with the size it is given', () => {
+    const small = boardBounds({ width: 8, height: 8 });
+    const large = boardBounds(BOARD_SIZE);
+
+    expect(small.width).toBeLessThan(large.width);
+    expect(small.height).toBeLessThan(large.height);
   });
 
   it('fits four buttons inside the action bar', () => {

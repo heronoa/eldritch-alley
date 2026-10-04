@@ -35,8 +35,8 @@ const OUTLINE_FLOOR = 7;
 /** How visible the line drawn just inside a panel has to stay. It is decoration, but not invisible. */
 const INNER_LINE_FLOOR = 1.2;
 
-/** The three heights the board draws. */
-const BOARD_LEVELS = [0, 1, 2];
+/** The four heights the board draws, the wall included. */
+const BOARD_LEVELS = [0, 1, 2, 3];
 
 /** The lightest tile a panel can end up over, which is the worst case for the text on it. */
 const LIGHTEST_HEIGHT = heightColor(2);
@@ -133,9 +133,15 @@ describe('overlay contrast', () => {
 
     expect(contrastRatio(line, PANEL_FILL)).toBeGreaterThanOrEqual(INNER_LINE_FLOOR);
   });
+
+  it('keeps the lightest tile a panel can cover where the worst case says it is', () => {
+    // The wall is the darkest tone of the four, so the copy over a panel is still measured against
+    // level 2 and the cases above keep meaning what they meant.
+    expect(luminance(heightColor(3))).toBeLessThan(luminance(LIGHTEST_HEIGHT));
+  });
 });
 
-// The faces of a block, level by level: the prototype's tiles for asphalt, slab and plaza.
+// The faces of a block, level by level: the prototype's tiles for asphalt, slab, plaza and building.
 describe('face colours', () => {
   it('gives every level a lighter top and two darker sides', () => {
     for (const [level, face] of FACE_COLORS.entries()) {
@@ -144,11 +150,17 @@ describe('face colours', () => {
     }
   });
 
-  it('draws the three levels in the prototype’s tones', () => {
+  it('draws the four levels in the prototype’s tones', () => {
     expect(FACE_COLORS).toEqual([
       { top: 0x23283a, left: 0x171b28, right: 0x11141f },
       { top: 0x30364a, left: 0x212536, right: 0x1a1d2b },
       { top: 0x3f4152, left: 0x2b2d39, right: 0x22242e },
+      { top: 0x1a1e2c, left: 0x141826, right: 0x0f121c },
     ]);
+  });
+
+  it('covers every level the board can carry', () => {
+    // A level without a row here would be drawn by `BoardTiles` as an undefined face.
+    expect(FACE_COLORS).toHaveLength(BOARD_LEVELS.length);
   });
 });

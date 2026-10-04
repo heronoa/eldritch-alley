@@ -1,23 +1,24 @@
 // The isometric projection of the board: where a cell is drawn, which cell a point belongs to, the
 // order things are drawn in, and how a face is shaded. Plain arithmetic, no Phaser.
 //
-// The board is a diamond: cell (0, 0) is the top vertex, (7, 7) the bottom one. A cell's level lifts
-// its top face by `HZ` per level, and the block under it is drawn as its side faces, which is what
-// makes a raised cell read as a block instead of a differently coloured tile.
-import { BOARD_HEIGHT, BOARD_WIDTH, type Cell, type Pixel } from './grid';
+// The board is a diamond: cell (0, 0) is the top vertex and the far corner of the last diagonal the
+// bottom one, whatever size the state says the board is. A cell's level lifts its top face by `HZ` per
+// level, and the block under it is drawn as its side faces, which is what makes a raised cell read as
+// a block instead of a differently coloured tile.
+import type { BoardSize, Cell, Pixel } from './grid';
 
 /** Width of the top face of a tile, in canvas pixels. */
-export const TILE_W = 80;
+export const TILE_W = 64;
 
 /** Height of the top face of a tile, in canvas pixels. */
-export const TILE_H = 40;
+export const TILE_H = 32;
 
 /** How far one level lifts a top face. */
-export const HZ = 20;
+export const HZ = 16;
 
 /**
- * Draw order of the attack effects: above every piece of the board (the highest is a unit on (7, 7),
- * at 14.5), and below the HUD, which is drawn at 100.
+ * Draw order of the attack effects: above every piece of the board — the deepest of the maps the
+ * server ships puts a unit on (9, 9), at 18.5 — and below the HUD, which is drawn at 100.
  */
 export const EFFECT_DEPTH = 20;
 
@@ -51,17 +52,17 @@ export function topFace(cell: Cell, level: number): [Pixel, Pixel, Pixel, Pixel]
 }
 
 /**
- * Every cell, from the front of the board to the back: the largest `x + y` first, which is the cell
+ * Every cell of a board, from the front of it to the back: the largest `x + y` first, which is the cell
  * nearest the viewer. Cells on the same diagonal touch but never cover each other, so their order
  * among themselves only has to be stable; it runs left to right.
  */
-const CELLS_FRONT_TO_BACK: Cell[] = (() => {
+function cellsFrontToBack(size: BoardSize): Cell[] {
   const cells: Cell[] = [];
-  for (let y = 0; y < BOARD_HEIGHT; y += 1) {
-    for (let x = 0; x < BOARD_WIDTH; x += 1) cells.push({ x, y });
+  for (let y = 0; y < size.height; y += 1) {
+    for (let x = 0; x < size.width; x += 1) cells.push({ x, y });
   }
   return cells.sort((a, b) => b.x + b.y - (a.x + a.y) || a.x - b.x);
-})();
+}
 
 /** Whether a point is inside the diamond of a top face centred on `centre`. */
 function insideTopFace(point: Pixel, centre: Pixel): boolean {
@@ -86,18 +87,20 @@ function insideBlock(point: Pixel, cell: Cell, level: number): boolean {
 }
 
 /**
- * The cell under a point, or null. `levelAt` gives each cell's level.
+ * The cell of `size` under a point, or null. `levelAt` gives each cell's level.
  *
  * A top face is what the player aims at, so every one of them is tested before any block: a click on
  * a raised cell's top belongs to that cell even where a flat cell behind it happens to reach the
  * same pixel. Only a point that no top face claims can fall on a block's side, and then the nearest
- * block wins.
+ * block wins. A point outside the board the state carries is on nothing at all.
  */
-export function cellAt(point: Pixel, levelAt: (cell: Cell) => number): Cell | null {
-  for (const cell of CELLS_FRONT_TO_BACK) {
+export function cellAt(point: Pixel, size: BoardSize, levelAt: (cell: Cell) => number): Cell | null {
+  const cells = cellsFrontToBack(size);
+
+  for (const cell of cells) {
     if (insideTopFace(point, cellToScreen(cell, levelAt(cell)))) return cell;
   }
-  for (const cell of CELLS_FRONT_TO_BACK) {
+  for (const cell of cells) {
     if (insideBlock(point, cell, levelAt(cell))) return cell;
   }
   return null;
