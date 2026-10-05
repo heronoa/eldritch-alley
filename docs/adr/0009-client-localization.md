@@ -1,6 +1,6 @@
 # 0009. Client-side localization without a library
 
-**Status:** Proposed
+**Status:** Accepted
 
 ## Context
 
