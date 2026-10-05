@@ -3,7 +3,7 @@
 **Milestone:** m1-logic
 **Parent feature:** [title-screen.index.md](./title-screen.index.md)
 **Created on:** 2026-10-04
-**Status:** pendente
+**Status:** concluído em 2026-10-04, aprovado pelo dono
 
 ---
 
@@ -47,7 +47,8 @@ Not touched: the scenes, `main.ts`, `index.html`, `backend/`.
 #### 4.1 City data (`city-data.ts`)
 
 - `TILE_ROWS: readonly string[]`: 16 strings of 16 characters. Letters as the prototype: `B` building, `a` asphalt, `z` crosswalk, `s` sidewalk, `g` grass.
-- `HEIGHT_ROWS: readonly number[][]`: 16×16, values `0..6`. Non-building cells are `0`.
+- `HEIGHT_ROWS: readonly number[][]`: 16×16, values `0..8`. Non-building cells are `0`. The prototype's
+  `4 + (r % 5)` reaches eight floors, so the range is `0..8` and not the `0..6` an earlier draft said.
 - `PROPS: readonly Prop[]` with `Prop = { kind: 'lamp' | 'car' | 'tree' | 'leak'; x: number; y: number; color?: string; vertical?: boolean }`. Exactly the prototype's list: 8 lamps, 4 cars, 4 trees, 2 leaks.
 - Generation rule (for the record, the script is not in the repo): tiles and heights come from the prototype's loop, with the same crossings, the same formula `(x * 73 + y * 151) % 17` for building heights, and the same square-of-low-buildings rule.
 - Checksum test: the sum of all heights is the number the prototype's formula gives, and the number of `B` cells is the one the formula gives. The executor records both numbers in the test.
@@ -161,7 +162,7 @@ export function motionPolicy(reduced: boolean): MotionPolicy;
 
 **`city-data.test.ts`**
 - [ ] 16 rows, each of 16 characters; every character is one of `B a z s g`.
-- [ ] 16 rows of 16 numbers, each `0..6`; a non-building cell has height `0`.
+- [ ] 16 rows of 16 numbers, each `0..8`; a non-building cell has height `0`.
 - [ ] `PROPS` has 8 lamps, 4 cars, 4 trees, 2 leaks.
 - [ ] Checksum: sum of heights and count of `B` equal the values recorded from the prototype formula.
 

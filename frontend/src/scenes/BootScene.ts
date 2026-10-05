@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { FONT_TITLE, FONT_SIZE, TEXT_COLOR } from '../view/theme';
+import type { Session } from '../net/session';
 
 /** Frame size of both sheets: one column is one pose, one row is one class. */
 const FRAME = { frameWidth: 16, frameHeight: 24 };
@@ -10,13 +10,17 @@ const FRAME = { frameWidth: 16, frameHeight: 24 };
  */
 const FONT_WAIT_MS = 2000;
 
-/** The title is held just long enough to be read, whatever the fonts did. */
-const TITLE_MS = 1000;
-
-// Entry scene. It loads the art and the type, then hands over to the lobby.
+// Entry scene of the match. It loads the art and the type, then hands the session to the match.
 export class BootScene extends Phaser.Scene {
+  /** The session the title confirmed. The match owns it from `create` on. */
+  private session!: Session;
+
   constructor() {
     super('boot');
+  }
+
+  init(data: { session: Session }): void {
+    this.session = data.session;
   }
 
   preload(): void {
@@ -24,25 +28,19 @@ export class BootScene extends Phaser.Scene {
     this.load.spritesheet('unit-enemy', 'sprites/spritesheet-enemy.png', FRAME);
   }
 
-  create() {
+  create(): void {
+    // The boot has one job, and the session is the whole of it. Started without one, it would hand
+    // the match an empty session and the screen would stay black; better to say so here.
+    if (this.session === undefined) {
+      throw new Error('the boot scene was started without a session');
+    }
     void this.handOver();
-    this.add
-      .text(this.scale.width / 2, this.scale.height / 2, 'Eldritch Alley: Tactics', {
-        fontFamily: FONT_TITLE,
-        fontSize: FONT_SIZE.title,
-        color: TEXT_COLOR,
-      })
-      .setOrigin(0.5);
   }
 
-  /** Waits for the fonts and the title together, then starts the lobby. */
+  /** Waits for the fonts, then starts the match with the session it was given. */
   private async handOver(): Promise<void> {
-    await Promise.all([this.waitForFonts(), this.wait(TITLE_MS)]);
-    this.scene.start('lobby');
-  }
-
-  private wait(ms: number): Promise<void> {
-    return new Promise((resolve) => this.time.delayedCall(ms, resolve));
+    await this.waitForFonts();
+    this.scene.start('match', { session: this.session });
   }
 
   /**

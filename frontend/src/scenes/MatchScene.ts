@@ -415,10 +415,16 @@ export class MatchScene extends Phaser.Scene {
     this.pushHud();
   }
 
-  /** Back to the lobby. The session is closed first, so the room does not report the exit as a drop. */
+  /**
+   * Back to the title. The session is closed first, so the room does not report the exit as a drop,
+   * and then the game goes: the canvas and the scenes are the match, and the title is a page of its
+   * own, so there is nothing left of the match to hand over. Phaser destroys the game on the next
+   * frame, which is what makes this safe from inside a click; `main.ts` hears the `DESTROY` and gives
+   * the screen back to the title.
+   */
   private leave(): void {
     this.session.close();
-    this.scene.start('lobby');
+    this.game.destroy(true);
   }
 
   private handleEnded(message: EndedMessage): void {
