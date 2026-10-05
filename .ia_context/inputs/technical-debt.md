@@ -94,15 +94,6 @@ Planned features are not debt: they live in [backlog.md](./backlog.md).
 - **Trigger:** the next change to `battle-room.test.ts`.
 - **Evidence:** `backend/game-server/src/battle-room.test.ts:75-80` (the test that expects `room full` prints it in the output).
 
-### DT-68 · A second tab during a match reports the wrong reason
-- **Category:** UX (client)
-- **Risk if untreated:** a player who opens a second tab is told "Servidor indisponível", which points at the server instead of at the tab they left open. They retry against a server that is answering perfectly well, and the message never tells them what to close.
-- **Effort:** P
-- **Trigger:** before the next playtest.
-- **Evidence:** `frontend/src/net/session.ts` (`open()` tries `reconnect()`, gets `false` with no token, and falls through to `connect()`); `backend/game-server/src/battle-room.ts:105-111` (`onJoin` is the only admission guard, and throws `Error('room full')` for a second session); `frontend/src/title/title.ts` (`press()` catches every failure the same way, so `renderFlow` renders `title.unavailable`). The matchmaker offers the occupied room because `findOneRoomAvailable` (`@colyseus/core`, `build/MatchMaker.cjs:248`) filters only on `{ locked, name, private, ...getFilterOptions() }` — capacity is not a criterion. The room is also still held by a **finished** match, because the client only leaves on "Voltar ao início" (`frontend/src/scenes/MatchScene.ts:197-198,426`), so the same wrong line appears there.
-- **Suggested fix:** [new-tab-during-match.plan.md](../plans/new-tab-during-match.plan.md) — the client reads the refusal and shows a line that names the other tab. Routing the second tab into its own battle was offered and rejected by the owner. Letting it into the existing match, in progress or finished, needs player identity on the game server, and is tracked with the identity ADR instead.
-- **Do not "fix" this by setting `maxClients` on the room.** It looks like the proper repair and makes it worse: `Room._reserveSeat` (`@colyseus/core`, `build/Room.cjs:1333`) would return `false`, `reserveSeatFor` would raise `SeatReservationError`, and `joinOrCreate` would retry five times against the same room (`build/MatchMaker.cjs:167`) before failing with a Colyseus error. The message reaching the client would stop being `room full`, so any client-side reading of it would break silently. The admission guard stays in `onJoin`.
-
 ---
 
 ## Closed

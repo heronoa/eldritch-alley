@@ -3,7 +3,7 @@
 **Milestone:** — (single frontend plan: one new pure module, one flow event, markup, CSS)
 **Parent debts:** [DT-68](../inputs/technical-debt.md) (a second tab during a match reports the wrong reason)
 **Created on:** 2026-10-05
-**Status:** implemented on 2026-10-05; the eight browser checks of section 6 have not been run yet, so DT-68 is still open in [technical-debt.md](../inputs/technical-debt.md) and its "Suggested fix" pointer has **not** been moved. Frontend suite 399/399 in 38 files, `npm run build` green. Two notes on the plan's own text are recorded in section 4.
+**Status:** implemented on 2026-10-05 and approved by the owner in the browser the same day; DT-68 is closed in [technical-debt-closed.md](../inputs/technical-debt-closed.md). Frontend suite 399/399 in 38 files, `npm run build` green. Three notes on the plan's own text are recorded in section 4.
 
 ---
 
@@ -106,7 +106,7 @@ Answered by the owner on 2026-10-05.
 | `frontend/src/title/title.css` | modify | Drops `.alert`; adds `.notice`, `.notice-card`, `.notice-heading`, `.notice-body`, `.notice-close` |
 | `frontend/src/title/contrast.test.ts` | modify | Holds the three new colour pairs, and holds the panel to `--game` and the bar to the button's red |
 | `frontend/src/title/title.ts` | modify | Drops `alertLine` and `failureLine`; renders the notice; focus, Escape and the Tab rule; `handOver` names `'load-failed'` |
-| `.ia_context/inputs/technical-debt.md` | modify | On completion: DT-68's "Suggested fix" pointer moves from `new-tab-during-match.plan.md` to this plan, whose checks supersede that plan's |
+| `.ia_context/inputs/technical-debt.md` | modify | On completion: DT-68 leaves the open list — the row above said only its pointer moved, but the item closes in the same step, and every closed item before it was removed from this file |
 | `.ia_context/inputs/technical-debt-closed.md` | modify | On completion: closes DT-68 with its resolution |
 
 `frontend/src/net/join-failure.ts` is **not** changed: it answers what a caught join error means, and
@@ -117,7 +117,7 @@ type is reused, not extended.
 left as it is apart from a pointer note, because its subject (the wording of the second-tab refusal)
 is now this plan's subject.
 
-Two notes on the text above, made when it was implemented:
+Two notes on the text above, made when it was implemented, and a third made when it closed:
 
 - **The manual check "switch language with the card up" cannot be performed.** `.notice` is a fixed
   backdrop over the whole page and the Tab rule keeps the focus inside the card, so the `.lang`
@@ -129,6 +129,11 @@ Two notes on the text above, made when it was implemented:
 - **The notice sits below the match, on purpose.** It is `z-index: 1` where `#game` is `z-index: 2`, so
   a notice left up by a bug is covered the moment a match takes the screen, instead of floating over a
   board. Above the title and its stamp, which carry no `z-index`. Recorded in `title.css`.
+- **DT-68 was removed from `technical-debt.md`, not re-pointed.** The row above read "its Suggested fix
+  pointer moves"; the item closes in the same step, and `technical-debt-closed.md` is where the file
+  sends closed items — DT-12, DT-40, DT-47 and DT-60 all left the open list the same way. The
+  `maxClients` warning that lived in DT-68's own entry is carried into the closure row, so it is not
+  lost with the entry.
 
 ---
 
@@ -219,21 +224,22 @@ Automated:
       cases under "the failure notice contrast matrix". 10/10.
 - [x] `session.test.ts`, `join-failure.test.ts` — unchanged. — untouched, 20/20 and 3/3.
 
-Manual, in the browser (`npm run dev`):
+Manual, in the browser (`npm run dev`) — **approved by the owner on 2026-10-05**, except the item marked
+below, which the page cannot reach:
 
-- [ ] Start a match, open a second tab, press the button there: the card says "ACESSO RECUSADO" and
+- [x] Start a match, open a second tab, press the button there: the card says "ACESSO RECUSADO" and
       "Você já tem uma partida aberta em outra aba", and it is not the quiet line.
-- [ ] Back in the first tab, the match is still there and still playable.
-- [ ] Let a match end, keep the result screen open, open a second tab and press: the same card.
-- [ ] With the server down, press: "ACESSO RECUSADO" with "Servidor indisponível", not the occupied
+- [x] Back in the first tab, the match is still there and still playable.
+- [x] Let a match end, keep the result screen open, open a second tab and press: the same card.
+- [x] With the server down, press: "ACESSO RECUSADO" with "Servidor indisponível", not the occupied
       sentence — the mapping did not swallow the reason.
-- [ ] Press Fechar: the card goes, no line is left, and Enter starts a fresh match.
-- [ ] With the card up: Escape closes it, Tab never leaves the card, and the focus is back on the
+- [x] Press Fechar: the card goes, no line is left, and Enter starts a fresh match.
+- [x] With the card up: Escape closes it, Tab never leaves the card, and the focus is back on the
       call to action afterwards.
-- [ ] Switch language with the card up: the card is written again in the other language, and the
-      focus is not moved. — **not performable as written**: the card covers the switcher. See the note
-      in section 4; the code path is `render` → `renderNotice`, which every language change takes.
-- [ ] Block the match's chunk in DevTools (request blocking on `main-*.js` against `npm run
+- [ ] ~~Switch language with the card up: the card is written again in the other language, and the
+      focus is not moved.~~ — **not performable as written**: the card covers the switcher. See the
+      note in section 4; the code path is `render` → `renderNotice`, which every language change takes.
+- [x] Block the match's chunk in DevTools (request blocking on `main-*.js` against `npm run
       preview`, or `/src/main.ts` against `npm run dev`) and press: "FALHA AO CARREGAR" with its own
       sentence, and the button works again afterwards.
 

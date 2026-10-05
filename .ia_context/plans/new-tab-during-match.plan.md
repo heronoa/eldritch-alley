@@ -5,6 +5,8 @@
 **Created on:** 2026-10-05
 **Status:** implemented on 2026-10-05; the four browser checks of section 6 have not been run yet, so DT-68 is still open in [technical-debt.md](../inputs/technical-debt.md). Frontend suite 385/385 in 37 files, `npm run build` green, `battle-room.test.ts` 9/9. Two divergences from the plan's own text are recorded in section 4.
 
+> **Superseded on 2026-10-05 by [title-error-notice.plan.md](./title-error-notice.plan.md).** The owner saw the `.alert` line in the browser and asked for a modal instead, so this plan's screen was replaced the same day: the wording it added survives as the notice's body, and its four browser checks were never run because the card's own checks took their place. DT-68 is closed by that plan. Nothing here is rewritten — this note is the only change.
+
 ---
 
 ### 1. Objective
