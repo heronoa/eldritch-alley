@@ -11,27 +11,33 @@
 ### 1. What this MR delivers
 
 A player who reloads the page during a match can return to that match from the title screen, instead of
-seeing "Server unavailable". The title now tries to resume the stored seat first (`Session.open()`), and
-falls back to a new room only when the server refuses the resume. A token the server refuses is removed. A refusal is recognised by the SDK error code together with the server's
-words, because a Cloudflare Tunnel timeout uses the same codes (522 and 524) with other words, and a network
-failure keeps the token, since the seat may still be held. A second tab during a match is now refused with
-a modal that names the reason, instead of the generic "Server unavailable" line; the server's refusal is
-unchanged. The match's draw order (board, highlights, units, overlay, effects) is one tested table, so an
-effect drawn under the board fails a test without a Phaser harness. The branch also carries the closures of
-DT-12, DT-40, DT-47, DT-60 and DT-68, and the lessons for the features closed this week.
+seeing "Server unavailable". The title first tries to resume the stored seat (`Session.open()`), and falls
+back to a new room only when the server refuses the resume. A token the server refuses is removed, so the next
+load does not try it again. A refusal is recognised by the SDK error code together with the server's own words:
+a Cloudflare Tunnel timeout uses the same codes (522 and 524) with other words, so a timeout keeps the token.
+A dropped connection keeps it too, since the seat may still be held.
+
+A second tab during a match is refused with a modal that names the reason ("You already have a match open in
+another tab"), instead of the generic "Server unavailable" line. The server's refusal itself is unchanged.
+
+The match's draw order (board, highlights, units, overlay, effects) is one tested table, so an effect drawn
+under the board fails a test without a Phaser harness. The branch also carries the closures of DT-12, DT-40,
+DT-47, DT-60 and DT-68, and the lessons for the features closed this week.
 
 Divergences from the approved plans, named explicitly:
-- **DT-60:** the debt's suggested fix cleared the stored token when the server refused it. The change follows it,
-  narrowed: only a refusal recognised by its words removes the token (the first plan kept it; the owner asked for
-  the removal, and the words keep a tunnel timeout from being taken for a refusal).
-- **DT-68:** the plan `new-tab-during-match` put the message in the existing `alert` line. The owner asked
-  for a modal the same day, so `title-error-notice` replaced that look. The wording of the first plan survives
-  as the notice's body. The first plan is marked superseded.
+- **DT-60:** the first plan kept a refused token, following section 3 of that plan. The debt's suggested fix
+  removes it, and the owner asked for that. The change follows the suggested fix, narrowed: only a refusal
+  recognised by its words removes the token, so a tunnel timeout is never taken for a refusal.
+- **DT-68:** the plan `new-tab-during-match` put the message in the existing `alert` line. The owner asked for a
+  modal the same day, so `title-error-notice` replaced that look. The wording of the first plan survives as the
+  notice's body, and the first plan is marked superseded.
 - **Contrast:** the title's contrast matrix records two known gaps instead of meeting the plan's 4.5:1 floor:
-  the footer at about 4.02:1 and the ink on the hovered button at about 4.15:1. Raising them changes the
-  approved look, so the owner decides.
-- **Manual checks:** the four browser checks of `new-tab-during-match` and the reload checks of DT-60 were run
-  by the owner on 2026-10-05. The plans' checkboxes were not ticked one by one; their status lines record the run.
+  the footer at about 4.02:1 and the ink on the hovered button at about 4.15:1. Raising them changes the approved
+  look, so the owner decides.
+- **Manual checks:** the owner ran the reload checks and the four browser checks of `new-tab-during-match` on
+  2026-10-05. The reload checks ran before the token-removal rule (section 2, `session.ts`) was written, so **the
+  refusal path needs one more reload check** against a real expired seat. The plans' checkboxes were not ticked
+  one by one; their status lines record the runs.
 
 ---
 
@@ -39,7 +45,8 @@ Divergences from the approved plans, named explicitly:
 
 | File | What changed | Why it matters |
 |------|--------------|----------------|
-| `frontend/src/net/session.ts` | `open()` tries `reconnect()` first, then `connect()` | A reload during a match returns to the seat instead of landing on `room full` |
+| `frontend/src/net/session.ts` | `open()` tries `reconnect()` first, then `connect()`. `reconnect()` removes the token on a recognised refusal only | A reload during a match returns to the seat. An expired seat is not retried on every load |
+| `frontend/src/net/session.test.ts` | Cases for resume, join, refusal (removes), tunnel timeout and dropped connection (keeps) | The removal rule is pinned on both sides |
 | `frontend/src/title/title.ts` | `press()` calls `open()`; the failure notice replaces the alert line; focus, Escape and Tab handling | The player sees the right reason and can dismiss it |
 | `frontend/src/title/connect-flow.ts` | `failed` always carries a reason; `dismiss` event | A failure cannot reach the screen without an explanation |
 | `frontend/src/title/notice.ts` | Pure mapping from reason to heading and body | Refusal and load failure have separate copy in both languages |
@@ -54,8 +61,12 @@ Divergences from the approved plans, named explicitly:
 | `.ia_context/inputs/*`, bundle commit `f071a7c` | Documentation closures of DT-12 and DT-40 only | The bundle code change itself is already on `develop` (`4c9b6a7`) |
 | `.ia_context/` | Plans and descriptions of closed features removed; lessons added; debt files updated | Housekeeping. The knowledge is in `project-lessons/`, and the removed files are in git history |
 
-Verification at the head of this branch: `vitest run` 403/403 in 38 files; `tsc --noEmit` clean. Backend
+**Verification at the head of this branch:** `vitest run` 403/403 in 38 files; `tsc --noEmit` clean. Backend
 tests were not re-run for this description; the only backend change is a comment.
+
+**Not yet verified:** the exact text Cloudflare Tunnel sends for a 522 or 524, as the SDK receives it. The SDK
+takes the message from the response body, or from the status text for a non-JSON body. The rule relies on that
+text not matching the server's phrases. This is expected, but it was not observed on the live tunnel.
 
 ---
 
@@ -63,7 +74,7 @@ tests were not re-run for this description; the only backend change is a comment
 
 - A second tab during a match is **refused**, not routed to its own battle or let into the existing match. The
   owner rejected both routes. Once PvP has player identity, "room full" will mean "another player is in this
-  battle", and the notice's wording must be revisited then (the plan that adds identity owns that).
+  battle", and the notice's wording and the token rule must be revisited then. The plan that adds identity owns that.
 - Scene-level tests with Phaser (DT-41). The depth work tests the table and the wiring, not the rendered scene.
 - DT-66 (the `room full` error printed by the server suite) stays open.
 
@@ -73,8 +84,9 @@ tests were not re-run for this description; the only backend change is a comment
 
 - **This MR has several subjects.** Reconnection, the failure notice, the depth table and the `.ia_context`
   housekeeping are in one branch. CLAUDE.md asks for focused diffs, and debt DT-51 records the same concern.
-  If the reviewer prefers, the branch can be split into: (a) reconnection and bundle closures, (b) the notice
-  and its closure of DT-68, (c) the depth table, (d) housekeeping. The commits already follow that order.
-- The removed `.ia_context/descriptions/` files are the descriptions of earlier MRs. They remain in git history
-  and in the MRs on GitHub.
-- The contrast gaps and the DT-60 token decision are deliberate and recorded in their tests and closures.
+  If the reviewer prefers, the branch can be split into: (a) reconnection and bundle closures, (b) the notice and
+  its closure of DT-68, (c) the depth table, (d) housekeeping. The commits already follow that order, except the
+  token-removal change in `session.ts`, which is not yet committed.
+- The descriptions of earlier MRs are removed in this branch. They remain in git history and in the MRs on GitHub.
+  The two files for this MR are the only ones in `.ia_context/descriptions/` that describe it.
+- The contrast gaps and the token rule are deliberate, and recorded in their tests and closures.
