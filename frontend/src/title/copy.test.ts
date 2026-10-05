@@ -51,6 +51,10 @@ describe('the copy of the title', () => {
     expect(copy.granted).toBe('PARTIDA AUTORIZADA');
     expect(copy.unavailable).toBe('Servidor indisponível');
     expect(copy.occupied).toBe('Você já tem uma partida aberta em outra aba');
+    expect(copy.noticeRefused).toBe('ACESSO RECUSADO');
+    expect(copy.noticeLoadFailed).toBe('FALHA AO CARREGAR');
+    expect(copy.loadFailed).toBe('Não foi possível carregar a partida');
+    expect(copy.noticeClose).toBe('Fechar');
     expect(copy.language).toBe('Idioma');
   });
 
@@ -69,6 +73,10 @@ describe('the copy of the title', () => {
     expect(copy.granted).toBe('MATCH AUTHORIZED');
     expect(copy.unavailable).toBe('Server unavailable');
     expect(copy.occupied).toBe('You already have a match open in another tab');
+    expect(copy.noticeRefused).toBe('ACCESS REFUSED');
+    expect(copy.noticeLoadFailed).toBe('FAILED TO LOAD');
+    expect(copy.loadFailed).toBe('The match could not be loaded');
+    expect(copy.noticeClose).toBe('Close');
     expect(copy.footerVersion).toBe('v0.1');
     expect(copy.footerPlace).toBe('Belém · the small hours');
     expect(copy.language).toBe('Language');

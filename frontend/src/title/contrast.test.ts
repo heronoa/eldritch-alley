@@ -27,10 +27,13 @@ const night = token('night');
 const ink = token('ink');
 const muted = token('muted');
 const stamp = token('stamp');
+const game = token('game');
 const cta = literal('.cta', 'background');
 const ctaHover = literal('.cta:hover:enabled', 'background');
 const ctaText = literal('.cta', 'color');
 const footer = literal('footer', 'color');
+const noticeBar = literal('.notice-heading', 'background');
+const noticePanel = literal('.notice-card', 'background');
 
 describe('the title screen contrast matrix', () => {
   it('keeps the ink readable on the night background at 7:1', () => {
@@ -65,5 +68,29 @@ describe('the title screen contrast matrix', () => {
   // so a change to the footer colour shows up here.
   it('records the footer colour on the night background, which is below 4.5:1', () => {
     expect(contrastRatio(footer, night)).toBeCloseTo(4.02, 2);
+  });
+});
+
+describe('the failure notice contrast matrix', () => {
+  // The bar is the button's red and not `--accent`: the ink on `--accent` is 3.90, under the 4.5 a 12px
+  // line needs. The value is pinned so a palette edit that quietly revisits this has to say so.
+  it('keeps the heading readable on the bar', () => {
+    expect(contrastRatio(ink, noticeBar)).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio(ink, noticeBar)).toBeCloseTo(4.88, 2);
+  });
+
+  // The panel is opaque on purpose, so the sentence's contrast does not depend on what the city behind it
+  // happens to be drawing. That is what lets this be a flat 14:1 instead of a worst case over the canvas.
+  it('keeps the sentence well past 7:1 on the panel it sits on', () => {
+    expect(contrastRatio(ink, noticePanel)).toBeGreaterThanOrEqual(7);
+    expect(contrastRatio(ink, noticePanel)).toBeCloseTo(14.12, 2);
+  });
+
+  // The two colours the notice borrows, held to the things they are borrowed from: the bar is the button's
+  // red, so the warning and the action are one red, and the panel is the game's own background. A palette
+  // edit therefore cannot leave the notice behind without failing here.
+  it('holds the bar to the button red, and the panel to the game background', () => {
+    expect(noticeBar).toBe(cta);
+    expect(noticePanel).toBe(game);
   });
 });

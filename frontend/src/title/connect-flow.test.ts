@@ -1,7 +1,7 @@
 // Title screen M1 — the call to action as a state machine: the press, the server's answer, the
 // failure, the retry, and the wait for the stamp to land.
 import { describe, expect, it } from 'vitest';
-import { canTransition, next, type Flow } from './connect-flow';
+import { canTransition, failureReason, next, type Flow } from './connect-flow';
 
 const IDLE: Flow = { state: 'idle', stampStartedAt: null, failure: null };
 
@@ -82,6 +82,54 @@ describe('the reason a failure carries', () => {
     expect(pressed().failure).toBeNull();
     expect(next(pressed(), 'connected', 1500).failure).toBeNull();
     expect(IDLE.failure).toBeNull();
+  });
+
+  it('names the failed download the title diagnoses by itself', () => {
+    expect(next(pressed(), 'failed', 1500, 'load-failed').failure).toBe('load-failed');
+  });
+});
+
+describe('failureReason', () => {
+  it('answers the reason the notice shows', () => {
+    expect(failureReason(next(pressed(), 'failed', 1500, 'occupied'))).toBe('occupied');
+    expect(failureReason(next(pressed(), 'failed', 1500, 'load-failed'))).toBe('load-failed');
+  });
+
+  it('answers nothing to show in every other state', () => {
+    expect(failureReason(IDLE)).toBeNull();
+    expect(failureReason(pressed())).toBeNull();
+    expect(failureReason(next(pressed(), 'connected', 1500))).toBeNull();
+  });
+});
+
+describe('dismiss', () => {
+  it('puts a failed flow back to idle, with nothing left to show', () => {
+    const failed = next(pressed(), 'failed', 1500, 'occupied');
+
+    expect(next(failed, 'dismiss', 2000)).toEqual({
+      state: 'idle',
+      stampStartedAt: null,
+      failure: null,
+    });
+  });
+
+  it('is ignored by every state that did not fail', () => {
+    const connecting = pressed();
+    const ready = next(pressed(), 'connected', 1500);
+
+    expect(next(connecting, 'dismiss', 2000)).toBe(connecting);
+    expect(next(IDLE, 'dismiss', 2000)).toBe(IDLE);
+    expect(next(ready, 'dismiss', 2000)).toBe(ready);
+  });
+
+  it('leaves the retry path alone, which is still a press', () => {
+    const failed = next(pressed(), 'failed', 1500, 'occupied');
+
+    expect(next(failed, 'press', 2000)).toEqual({
+      state: 'connecting',
+      stampStartedAt: 2000,
+      failure: null,
+    });
   });
 });
 

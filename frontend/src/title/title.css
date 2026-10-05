@@ -205,14 +205,63 @@ h1 {
   outline-offset: 2px;
 }
 
-/* What went wrong, under the call to action. Empty when there is nothing to say. */
-.alert {
-  margin: 14px 0 0;
-  min-height: 1em;
-  font-size: 12px;
-  letter-spacing: 0.06em;
-  color: var(--stamp);
+/* What went wrong, over the title. It is the whole screen when it is up: the backdrop takes the
+   clicks so nothing behind it answers, and it is `z-index: 1` on purpose — above the title and its
+   stamp, below `#game`. A notice left up by a bug is therefore covered the moment a match takes the
+   screen, instead of floating over a board. */
+.notice {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(5, 7, 15, 0.72);
 }
+
+/* `display: grid` above would otherwise win over the `hidden` attribute. */
+.notice[hidden] {
+  display: none;
+}
+
+/* The card is opaque, and that is the point: its contrast does not depend on what the city behind it
+   happens to be drawing, so it does not need the pool of night `.lang` had to grow. The values are
+   the game's own background and the call to action's own red, both held there by `contrast.test.ts`
+   — the notice borrows the two colours rather than owning a third red of its own. */
+.notice-card {
+  width: min(420px, 100%);
+  background: #0b0e18;
+  border: 2px solid #e07a6f;
+  box-shadow: 6px 6px 0 rgba(0, 0, 0, 0.45);
+}
+
+/* The bar that names the failure. Not `--accent`: the ink on it is 3.90, under the 4.5 this text
+   needs, and Special Elite has no bold weight for the large-text exemption. On the button's red it is
+   4.88, so the warning and the action are one red. */
+.notice-heading {
+  margin: 0;
+  padding: 8px 16px;
+  font: 600 12px/1.4 var(--body);
+  letter-spacing: 0.16em;
+  background: #a8322a;
+  color: var(--ink);
+}
+
+.notice-body {
+  margin: 0;
+  padding: 20px 16px 0;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+/* The close button wears `.cta`: the notice's button is the title's button, with its border, its hard
+   shadow and its press. Only the place it sits in changes. */
+.notice-close {
+  display: block;
+  margin: 20px 16px 20px auto;
+}
+
 
 /* The stamp the call to action slams down: it falls in over 180 ms and leaves 1.6 s later, which is
    the clock `stamp.ts` keeps. `title.ts` only turns the class on and off. */

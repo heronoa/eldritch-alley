@@ -3,7 +3,7 @@
 **Milestone:** — (single frontend plan: one new pure module, one flow event, markup, CSS)
 **Parent debts:** [DT-68](../inputs/technical-debt.md) (a second tab during a match reports the wrong reason)
 **Created on:** 2026-10-05
-**Status:** pending
+**Status:** implemented on 2026-10-05; the eight browser checks of section 6 have not been run yet, so DT-68 is still open in [technical-debt.md](../inputs/technical-debt.md) and its "Suggested fix" pointer has **not** been moved. Frontend suite 399/399 in 38 files, `npm run build` green. Two notes on the plan's own text are recorded in section 4.
 
 ---
 
@@ -117,6 +117,19 @@ type is reused, not extended.
 left as it is apart from a pointer note, because its subject (the wording of the second-tab refusal)
 is now this plan's subject.
 
+Two notes on the text above, made when it was implemented:
+
+- **The manual check "switch language with the card up" cannot be performed.** `.notice` is a fixed
+  backdrop over the whole page and the Tab rule keeps the focus inside the card, so the `.lang`
+  switcher is out of reach while the card is up — which is what a modal is. The behaviour the check was
+  after is still there, and still one line: `switchLanguage` calls `render`, which calls
+  `renderNotice(copy)`, so a language change rewrites the card, and `wasOpen` is what keeps the focus
+  from moving. It just cannot be reached by hand. Making it reachable means lifting the switcher above
+  the backdrop, which is its own decision and is not taken here.
+- **The notice sits below the match, on purpose.** It is `z-index: 1` where `#game` is `z-index: 2`, so
+  a notice left up by a bug is covered the moment a match takes the screen, instead of floating over a
+  board. Above the title and its stamp, which carry no `z-index`. Recorded in `title.css`.
+
 ---
 
 ### 5. Contracts
@@ -180,22 +193,31 @@ is now this plan's subject.
 
 Automated:
 
-- [ ] `notice.test.ts` — each of the three reasons answers a heading and a body, and `occupied` and
+- [x] `notice.test.ts` — each of the three reasons answers a heading and a body, and `occupied` and
       `unavailable` answer the *same* heading while `load-failed` answers a different one; the three
       lines are non-empty in both locales; the mapping reads the copy it was handed (the same reason
-      in the two locales answers the two languages); it does not mutate the copy it was given.
-- [ ] `connect-flow.test.ts` — `dismiss` from `failed` answers `idle` with no reason; `dismiss` is
+      in the two locales answers the two languages); it does not mutate the copy it was given. — 5
+      cases: "answers a heading, a body and a close label for every reason", "gives the two refused
+      seats one heading, and the failed download its own", "takes the body of each reason from its own
+      line", "reads the copy it was handed, so one reason answers in the language on screen", "leaves
+      the copy it was handed alone". 5/5.
+- [x] `connect-flow.test.ts` — `dismiss` from `failed` answers `idle` with no reason; `dismiss` is
       ignored in the other three states, returning the same object; `press` from `failed` still
       answers `connecting` (the retry path is unchanged); `failureReason` answers `null` in the three
-      non-failed states and the reason in `failed`; the existing transitions are unchanged.
-- [ ] `catalog.test.ts` — both catalogs carry the four new keys, each pinned to its exact string, so
-      changing the wording is a deliberate edit.
-- [ ] `copy.test.ts` — the four new lines are exposed in both locales, pinned.
-- [ ] `contrast.test.ts` — `--ink` on the bar's red is at least 4.5 and is measured at 4.88; `--ink`
+      non-failed states and the reason in `failed`; the existing transitions are unchanged. — 6 new
+      cases: one under "the reason a failure carries" (`load-failed`), two under a new `failureReason`
+      block, three under a new `dismiss` block. 19/19.
+- [x] `catalog.test.ts` — both catalogs carry the four new keys, each pinned to its exact string, so
+      changing the wording is a deliberate edit. — four lines in each of the two title blocks. 18/18.
+- [x] `copy.test.ts` — the four new lines are exposed in both locales, pinned. — four lines in each
+      locale block; the "has a string for every line of the screen" case already walks the whole
+      interface, so a field added without a catalog entry fails there too. 6/6.
+- [x] `contrast.test.ts` — `--ink` on the bar's red is at least 4.5 and is measured at 4.88; `--ink`
       on the panel's background is at least 7 and is measured at 14.12; the bar's red **is** the
       button's red and the panel's background **is** `--game`, held together the way `grid.test.ts`
-      holds the board's two colour tables, so a palette edit cannot leave the notice behind.
-- [ ] `session.test.ts`, `join-failure.test.ts` — unchanged.
+      holds the board's two colour tables, so a palette edit cannot leave the notice behind. — three
+      cases under "the failure notice contrast matrix". 10/10.
+- [x] `session.test.ts`, `join-failure.test.ts` — unchanged. — untouched, 20/20 and 3/3.
 
 Manual, in the browser (`npm run dev`):
 
@@ -209,7 +231,8 @@ Manual, in the browser (`npm run dev`):
 - [ ] With the card up: Escape closes it, Tab never leaves the card, and the focus is back on the
       call to action afterwards.
 - [ ] Switch language with the card up: the card is written again in the other language, and the
-      focus is not moved.
+      focus is not moved. — **not performable as written**: the card covers the switcher. See the note
+      in section 4; the code path is `render` → `renderNotice`, which every language change takes.
 - [ ] Block the match's chunk in DevTools (request blocking on `main-*.js` against `npm run
       preview`, or `/src/main.ts` against `npm run dev`) and press: "FALHA AO CARREGAR" with its own
       sentence, and the button works again afterwards.
