@@ -3,18 +3,21 @@
 // Every pair the player has to read is measured here rather than argued about, so a later change of
 // one colour has to come back through this file. Two floors are in play: the WCAG AA floor for body
 // text, and the AAA floor for the outlines, which are what separate a unit from the tile under it —
-// the fills themselves are allowed to sit below 3:1 against a height, as section 4.1 of the M3 plan
+// the fills themselves are allowed to sit below 3:1 against a tile top, as section 4.1 of the M3 plan
 // records.
+//
+// Since map fidelity M2 the board is drawn with the prototype's own tiles, so the ground the marker
+// and the panels are measured against is the palette of `prototype-palette.ts`, letter by letter.
 import { describe, expect, it } from 'vitest';
+import { TILE_PALETTE } from '../maps/prototype-palette';
+import { PROTOTYPE_MAPS } from '../maps/prototype-maps';
 import { contrastRatio, luminance } from './contrast';
-import { heightColor } from './grid';
 import { PANEL_ALPHA } from './layout';
 import {
   BG_COLOR,
   BUTTON_FILL,
   BUTTON_FILL_SELECTED,
   CORPSE_OUTLINE_COLOR,
-  FACE_COLORS,
   INK_COLOR,
   PANEL_FILL,
   PANEL_INNER_ALPHA,
@@ -35,16 +38,25 @@ const OUTLINE_FLOOR = 7;
 /** How visible the line drawn just inside a panel has to stay. It is decoration, but not invisible. */
 const INNER_LINE_FLOOR = 1.2;
 
-/** The four heights the board draws, the wall included. */
-const BOARD_LEVELS = [0, 1, 2, 3];
-
-/** The lightest tile a panel can end up over, which is the worst case for the text on it. */
-const LIGHTEST_HEIGHT = heightColor(2);
+/** Every tile the three maps draw, which is every ground a unit or a panel can stand on. */
+const LETTERS_IN_USE: readonly string[] = [
+  ...new Set(PROTOTYPE_MAPS.flatMap((map) => [...map.tiles.join('')])),
+].sort();
 
 /** The text colours are CSS strings; a ratio is measured on the 24-bit number. */
 function hex(color: string): number {
   return Number.parseInt(color.slice(1), 16);
 }
+
+/** The top face of a tile, as the 24-bit number the contrast helpers measure. */
+function topOf(letter: string): number {
+  return hex(TILE_PALETTE[letter].top);
+}
+
+/** The lightest tile a panel can end up over, which is the worst case for the text on it. */
+const LIGHTEST_TOP = LETTERS_IN_USE.map(topOf).reduce((lightest, top) =>
+  luminance(top) > luminance(lightest) ? top : lightest,
+);
 
 /**
  * The colour a player sees when `fill` is drawn at `alpha` over `back`, channel by channel: what
@@ -93,19 +105,19 @@ describe('text contrast', () => {
 });
 
 describe('outline contrast', () => {
-  it('keeps the paper marker legible on every height of the board', () => {
-    for (const level of BOARD_LEVELS) {
-      expect(contrastRatio(PAPER_COLOR, heightColor(level)), `level ${level}`).toBeGreaterThanOrEqual(
+  it('keeps the paper marker legible on every tile the three maps draw', () => {
+    for (const letter of LETTERS_IN_USE) {
+      expect(contrastRatio(PAPER_COLOR, topOf(letter)), `${letter} ${TILE_PALETTE[letter].top}`).toBeGreaterThanOrEqual(
         OUTLINE_FLOOR,
       );
     }
   });
 
-  it('keeps the outline of a fallen unit legible on every height of the board', () => {
-    for (const level of BOARD_LEVELS) {
+  it('keeps the outline of a fallen unit legible on every tile the three maps draw', () => {
+    for (const letter of LETTERS_IN_USE) {
       expect(
-        contrastRatio(CORPSE_OUTLINE_COLOR, heightColor(level)),
-        `level ${level}`,
+        contrastRatio(CORPSE_OUTLINE_COLOR, topOf(letter)),
+        `${letter} ${TILE_PALETTE[letter].top}`,
       ).toBeGreaterThanOrEqual(OUTLINE_FLOOR);
     }
   });
@@ -119,7 +131,7 @@ describe('overlay contrast', () => {
   });
 
   it('keeps panel copy readable over the lightest tile a panel can cover', () => {
-    expect(contrastRatio(hex(TEXT_COLOR), panelOver(LIGHTEST_HEIGHT))).toBeGreaterThanOrEqual(BODY_FLOOR);
+    expect(contrastRatio(hex(TEXT_COLOR), panelOver(LIGHTEST_TOP))).toBeGreaterThanOrEqual(BODY_FLOOR);
   });
 
   it('keeps a disabled row readable over the panel', () => {
@@ -134,33 +146,13 @@ describe('overlay contrast', () => {
     expect(contrastRatio(line, PANEL_FILL)).toBeGreaterThanOrEqual(INNER_LINE_FLOOR);
   });
 
-  it('keeps the lightest tile a panel can cover where the worst case says it is', () => {
-    // The wall is the darkest tone of the four, so the copy over a panel is still measured against
-    // level 2 and the cases above keep meaning what they meant.
-    expect(luminance(heightColor(3))).toBeLessThan(luminance(LIGHTEST_HEIGHT));
-  });
-});
-
-// The faces of a block, level by level: the prototype's tiles for asphalt, slab, plaza and building.
-describe('face colours', () => {
-  it('gives every level a lighter top and two darker sides', () => {
-    for (const [level, face] of FACE_COLORS.entries()) {
-      expect(luminance(face.left), `level ${level} left`).toBeLessThan(luminance(face.top));
-      expect(luminance(face.right), `level ${level} right`).toBeLessThan(luminance(face.top));
+  it('measures against the lightest tile the three maps actually draw', () => {
+    // The cases above keep meaning what they meant: the constant is the lightest of the letters in
+    // use, so no tile of any of the three maps is lighter than the worst case measured here.
+    for (const letter of LETTERS_IN_USE) {
+      expect(luminance(topOf(letter)), `${letter} ${TILE_PALETTE[letter].top}`).toBeLessThanOrEqual(
+        luminance(LIGHTEST_TOP),
+      );
     }
-  });
-
-  it('draws the four levels in the prototype’s tones', () => {
-    expect(FACE_COLORS).toEqual([
-      { top: 0x23283a, left: 0x171b28, right: 0x11141f },
-      { top: 0x30364a, left: 0x212536, right: 0x1a1d2b },
-      { top: 0x3f4152, left: 0x2b2d39, right: 0x22242e },
-      { top: 0x1a1e2c, left: 0x141826, right: 0x0f121c },
-    ]);
-  });
-
-  it('covers every level the board can carry', () => {
-    // A level without a row here would be drawn by `BoardTiles` as an undefined face.
-    expect(FACE_COLORS).toHaveLength(BOARD_LEVELS.length);
   });
 });

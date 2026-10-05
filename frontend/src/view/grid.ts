@@ -1,8 +1,10 @@
-// The height levels of the board and the two shapes the projection speaks in. Plain arithmetic, no
-// Phaser.
+// The two shapes the projection speaks in, and the one value that is not a level. Plain arithmetic,
+// no Phaser.
 //
 // Where a cell is drawn on the canvas is `iso.ts`'s business: the board is isometric, so a cell has no
-// top-left corner to speak of.
+// top-left corner to speak of. How high a cell is, is the map's business: since map fidelity M1 the
+// heights are the prototype's own, 0 to 11 with a gap here and there, and they live as data in
+// `maps/prototype-maps.ts` — there is no palette of four tones to keep in step any more.
 
 /** A cell of the board. */
 export interface Cell {
@@ -22,28 +24,10 @@ export interface BoardSize {
   height: number;
 }
 
-/** The tallest level the board can carry: the building mass a map is walled with. */
-export const MAX_LEVEL = 3;
-
 /**
- * The colour of the top face of a tile at a given height. Levels are data; 0 to 3 exist.
- *
- * The four tones are the tile tops of the prototype — asphalt, slab, plaza and building — kept dark
- * enough that the paper outline of a unit's marker clears 7:1 on all of them
- * (`theme.contrast.test.ts`). The wall is the darkest of the four on purpose: it has to read as mass,
- * not as another kind of ground.
+ * The height of a cell with no floor: the gap between the rooftops, where the street runs twenty-odd
+ * levels below the deck. No map reaches it, so it never equals a real level, and it is what the
+ * projection and the board's bounds skip: nothing stands on a cell without a floor, and nothing picks
+ * one either.
  */
-export function heightColor(level: number): number {
-  switch (level) {
-    case 0:
-      return 0x23283a;
-    case 1:
-      return 0x30364a;
-    case 2:
-      return 0x3f4152;
-    case 3:
-      return 0x1a1e2c;
-    default:
-      throw new RangeError(`unknown height level: ${level}`);
-  }
-}
+export const NO_FLOOR = Number.NEGATIVE_INFINITY;

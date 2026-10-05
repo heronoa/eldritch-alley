@@ -16,10 +16,10 @@ import { unitPanel } from '../game/panel';
 import { presentationOf, type Cue, type Snapshot } from '../game/presentation';
 import { resolveClick } from '../game/selection';
 import { turnOrder } from '../game/turn-order';
+import { terrainOf, type Terrain } from '../maps/terrain';
 import { Session } from '../net/session';
 import {
   PROTOCOL_VERSION,
-  type Board,
   type ClientAction,
   type EndedMessage,
   type Event,
@@ -28,7 +28,7 @@ import {
   type Team,
   type UnitState,
 } from '../protocol';
-import type { Cell, Pixel } from '../view/grid';
+import { NO_FLOOR, type Cell, type Pixel } from '../view/grid';
 import { cellAt, cellToScreen, depthOfCell, topFace } from '../view/iso';
 import {
   LEGEND_RECT,
@@ -65,8 +65,8 @@ import {
   TEXT_COLOR_ALERT,
   TEXT_COLOR_DISABLED,
 } from '../view/theme';
-import { BoardTiles } from './BoardTiles';
 import { playEffect } from './effects';
+import { MapView } from './map/MapView';
 import { BODY_HEIGHT, UnitSprite, type Placement } from './units';
 import { Button, createPanel, createTurnChip } from './widgets';
 
@@ -124,8 +124,9 @@ export class MatchScene extends Phaser.Scene {
   /** What the client knew of each unit when the last events arrived, for `presentationOf`. */
   private snapshot = new Map<string, Snapshot>();
 
-  /** Built from the first board the state carries: the size is not known before it arrives. */
-  private tiles: BoardTiles | null = null;
+  /** Built from the first state the map id names: the map is not known before it arrives. */
+  private map: Terrain | null = null;
+  private mapView: MapView | null = null;
   /** One graphic per highlighted cell, at the cell's own depth, rebuilt on every redraw. */
   private highlights: Phaser.GameObjects.Graphics[] = [];
   private chips!: Phaser.GameObjects.Container;
@@ -155,18 +156,18 @@ export class MatchScene extends Phaser.Scene {
     this.buttons = [];
     this.buttonModel = [];
     this.highlights = [];
-    this.tiles = null;
+    this.map = null;
+    this.mapView = null;
     this.sprites = new Map();
     this.snapshot = new Map();
   }
 
   create(): void {
-    // Drawing order is depth here, not the order things are added: the blocks carry the depth of
-    // their cell, the highlights a hair over their own cell, the units half a step further, and the
+    // Drawing order is depth here, not the order things are added: the map carries the depth of each
+    // of its cells, the highlights a hair over their own cell, the units half a step further, and the
     // whole HUD floats above all of it.
     //
-    // The tiles are not here: the size of the board is only known once the state arrives, and
-    // `handleState` builds them then.
+    // The map is not here: it is only known once the state names it, and `handleState` builds it then.
 
     // The frames are drawn once; the chips and the panel rows are rebuilt from the state instead.
     createPanel(this, PANEL_RECT, 'Unidade').setDepth(HUD_DEPTH);
@@ -213,6 +214,14 @@ export class MatchScene extends Phaser.Scene {
 
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => this.handleClick(pointer));
 
+    // The map's canvases are textures of the game, not objects of this scene: leaving without taking
+    // them out would pile a hundred of them up on the next match.
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.mapView?.destroy();
+      this.mapView = null;
+      this.map = null;
+    });
+
     this.session.onState((message) => this.handleState(message));
     this.session.onEvents((events) => this.handleEvents(events));
     this.session.onRejected((message) => this.appendLog(describeRejection(message.reason)));
@@ -249,7 +258,14 @@ export class MatchScene extends Phaser.Scene {
 
     if (hudRects().some((rect) => containsPoint(rect, point))) return;
 
-    const cell = cellAt(point, this.state.board, (candidate) => this.levelAt(candidate));
+    // The board the state carries says how big it is; what each cell is drawn at comes from the map,
+    // lift included, so a click lands on the cell the player aimed at.
+    const cell = cellAt(
+      point,
+      this.state.board,
+      (candidate) => this.levelAt(candidate),
+      this.lift,
+    );
     if (cell === null) return;
 
     const intent = applyMode(
@@ -295,7 +311,7 @@ export class MatchScene extends Phaser.Scene {
     // The state always comes after the events it caused, so what it says here is where the board
     // ends up — and every event that arrives next is read against it.
     this.snapshot = snapshotOf(message.state);
-    this.ensureTiles(message.state.board);
+    this.ensureMap(message.mapId);
 
     // The acting unit is selected for the player, so the board and the panel are about the unit that
     // can actually act; the mode then falls back if the new turn has nothing left to do.
@@ -312,15 +328,15 @@ export class MatchScene extends Phaser.Scene {
   }
 
   /**
-   * Builds the tiles from the board the state carries, once. A room always sends the same board, so a
-   * differing size only happens on a re-join; rebuilding is the cheap correct answer and it costs one
-   * comparison per state.
+   * Builds the map the state names, once. A room always plays on the same map, so a different id only
+   * happens on a re-join; rebuilding is the cheap correct answer and it costs one comparison per state.
    */
-  private ensureTiles(board: Board): void {
-    if (this.tiles !== null && this.tiles.fits(board)) return;
+  private ensureMap(mapId: StateMessage['mapId']): void {
+    if (this.map !== null && this.map.id === mapId) return;
 
-    this.tiles?.destroy();
-    this.tiles = new BoardTiles(this, board, (cell) => this.levelAt(cell));
+    this.mapView?.destroy();
+    this.map = terrainOf(mapId);
+    this.mapView = new MapView(this, this.map);
   }
 
   private actor(): UnitState | undefined {
@@ -329,17 +345,22 @@ export class MatchScene extends Phaser.Scene {
     return this.state.units.find((unit) => unit.id === currentId);
   }
 
-  /** The height of a cell, as the state carries it. Flat until the first state arrives. */
+  /**
+   * The height of a cell, as the map the state names has it: the client draws the prototype's own
+   * relief rather than a board it is sent cell by cell. A cell with no floor has no height at all.
+   */
   private levelAt(cell: Cell): number {
-    const board = this.state?.board;
-    if (board === undefined) return 0;
+    return this.map?.levelAt(cell) ?? NO_FLOOR;
+  }
 
-    return board.levels[cell.y * board.width + cell.x];
+  /** How far the whole board is lifted off the floor, which only the roof map is. Zero before the map. */
+  private get lift(): number {
+    return this.map?.lift ?? 0;
   }
 
   /** Where a unit's feet rest on a cell: the centre of its top face, lifted by the cell's level. */
   private placementOf(cell: Cell): Placement {
-    return { cell, anchor: cellToScreen(cell, this.levelAt(cell)) };
+    return { cell, anchor: cellToScreen(cell, this.levelAt(cell), this.lift) };
   }
 
   /**
@@ -474,7 +495,6 @@ export class MatchScene extends Phaser.Scene {
   }
 
   private redraw(state: PublicState): void {
-    this.tiles?.sync((cell) => this.levelAt(cell));
     this.drawHighlights(state);
     this.redrawUnits(state);
     this.redrawCarousel(state);
@@ -499,8 +519,12 @@ export class MatchScene extends Phaser.Scene {
     });
 
     for (const cell of cells) {
+      const level = this.levelAt(cell);
+      // A gap has no top face to wash: nothing is aimed at it and no rule ever offers it.
+      if (level === NO_FLOOR) continue;
+
       const graphic = this.add.graphics().setDepth(depthOfCell(cell) + HIGHLIGHT_DEPTH_STEP);
-      const face = topFace(cell, this.levelAt(cell));
+      const face = topFace(cell, level, this.lift);
 
       graphic.fillStyle(color, alpha);
       graphic.fillPoints(face, true);
@@ -539,6 +563,7 @@ export class MatchScene extends Phaser.Scene {
 
   /** One frame of every animation on the board. The scene decides nothing; the sprites advance. */
   update(time: number): void {
+    this.mapView?.update(time);
     for (const sprite of this.sprites.values()) sprite.tick(time);
   }
 

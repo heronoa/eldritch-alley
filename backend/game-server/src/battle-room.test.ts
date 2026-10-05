@@ -3,7 +3,7 @@ import { boot, type ColyseusTestServer } from '@colyseus/testing';
 import { newMatch, type Event, type PublicState, type Team } from '@eldritch-alley/engine';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { BattleRoom, resolveHumanAction } from './battle-room';
-import { createMatchSetup, MATCH_SEED } from './map';
+import { MAPS, MATCH_SEED, createMatchSetup, mapIndex } from './map';
 import { MESSAGE, PROTOCOL_VERSION, ROOM_NAME, type StateMessage } from './protocol';
 
 /** Every test file boots its own server, so each one needs a port of its own. */
@@ -152,6 +152,22 @@ describe('BattleRoom', () => {
     for (const unit of message.state.units) {
       expect(unit.maxHealth).toBeGreaterThan(0);
     }
+
+    await human.leave(true);
+  }, 20_000);
+
+  it('names the map of the match in every state message', async () => {
+    const room = await server.createRoom<BattleRoom>(ROOM_NAME);
+    const human = await server.connectTo(room);
+    human.reconnection.enabled = false;
+
+    const message = (await human.waitForMessage(MESSAGE.state, 5_000)) as StateMessage;
+
+    // The board itself is no longer enough to draw a map: the client reads the terrain of the id it
+    // is sent, so the id has to travel with the state that carries the seed it was drawn from.
+    expect(PROTOCOL_VERSION).toBe(3);
+    expect(message.version).toBe(3);
+    expect(message.mapId).toBe(MAPS[mapIndex(message.state.seed)].id);
 
     await human.leave(true);
   }, 20_000);

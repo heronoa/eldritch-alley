@@ -1,9 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import type { Cell } from './grid';
-import { HUD_DEPTH } from './layout';
+import { terrainOf } from '../maps/terrain';
+import { PROTOTYPE_MAPS } from '../maps/prototype-maps';
+import { NO_FLOOR, type Cell } from './grid';
+import {
+  ACTION_BAR_RECT,
+  CAROUSEL_RECT,
+  HUD_DEPTH,
+  LOG_RECT,
+  PANEL_RECT,
+} from './layout';
 import {
   EFFECT_DEPTH,
   HZ,
+  PIXEL,
   SHADE_LEFT,
   SHADE_RIGHT,
   TILE_H,
@@ -19,8 +28,11 @@ import {
 /** The board the client draws now: the prototype's 10x10, a size the state carries. */
 const SIZE = { width: 10, height: 10 };
 
-/** Every level the board can carry, the wall included. */
-const LEVELS = [0, 1, 2, 3];
+/**
+ * Every level the prototype's relief reaches, from the street the rooftop looks down on to the
+ * tallest roof. The board is no longer a four-tone one: heights are the prototype's own.
+ */
+const BOARD_LEVELS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
 
 /** Every cell of a board, in reading order. */
 function everyCell(size = SIZE): Cell[] {
@@ -35,7 +47,7 @@ function everyCell(size = SIZE): Cell[] {
 const flat = () => 0;
 
 describe('cellToScreen', () => {
-  it('reproduces the checked values of the plan at the new scale', () => {
+  it('reproduces the checked values of the plan at 2x', () => {
     expect(cellToScreen({ x: 0, y: 0 }, 0)).toEqual({ x: 640, y: 216 });
     expect(cellToScreen({ x: 9, y: 0 }, 0)).toEqual({ x: 928, y: 360 });
     expect(cellToScreen({ x: 0, y: 9 }, 0)).toEqual({ x: 352, y: 360 });
@@ -44,9 +56,31 @@ describe('cellToScreen', () => {
     expect(cellToScreen({ x: 3, y: 3 }, 2)).toEqual({ x: 640, y: 280 });
   });
 
+  it('draws the prototype at twice its own resolution', () => {
+    // The prototype's tile is 32x16 with a height step of 8, and the look is pixel art scaled by a
+    // whole number: everything the projection speaks in is that number times the prototype's.
+    expect(PIXEL).toBe(2);
+    expect(TILE_W).toBe(32 * PIXEL);
+    expect(TILE_H).toBe(16 * PIXEL);
+    expect(HZ).toBe(8 * PIXEL);
+  });
+
+  it('pins the corner of the rooftop at its own height and its own lift', () => {
+    // (0,0) of `roof` is 8 levels up, and the whole map is lowered by the prototype's 40: 80 of the
+    // 640 canvas pixels the board is wide.
+    expect(cellToScreen({ x: 0, y: 0 }, 8, 40)).toEqual({ x: 640, y: 168 });
+  });
+
+  it('lowers the whole map by the lift it is given, one canvas pixel per prototype pixel', () => {
+    const flatAt = cellToScreen({ x: 3, y: 3 }, 0, 0);
+    const lifted = cellToScreen({ x: 3, y: 3 }, 0, 40);
+
+    expect(lifted).toEqual({ x: flatAt.x, y: flatAt.y + 40 * PIXEL });
+  });
+
   it('lifts the centre one height step per level', () => {
     for (const cell of everyCell()) {
-      for (const level of LEVELS.slice(0, -1)) {
+      for (const level of BOARD_LEVELS.slice(0, -1)) {
         const lower = cellToScreen(cell, level);
         const higher = cellToScreen(cell, level + 1);
         expect(higher.x, `${cell.x},${cell.y} at ${level}`).toBe(lower.x);
@@ -81,11 +115,17 @@ describe('topFace', () => {
       expect(centre.x - w.x, where).toBe(TILE_W / 2);
     }
   });
+
+  it('follows the centre when the map is lifted', () => {
+    const [n] = topFace({ x: 3, y: 3 }, 0, 40);
+
+    expect(n.y).toBe(topFace({ x: 3, y: 3 }, 0)[0].y + 40 * PIXEL);
+  });
 });
 
 describe('cellAt', () => {
-  it('is the inverse of cellToScreen for every cell, at every level', () => {
-    for (const level of LEVELS) {
+  it('is the inverse of cellToScreen for every cell, at every level of the relief', () => {
+    for (const level of BOARD_LEVELS) {
       const levelAt = () => level;
       for (const cell of everyCell()) {
         expect(cellAt(cellToScreen(cell, level), SIZE, levelAt), `${cell.x},${cell.y} at ${level}`).toEqual(
@@ -96,16 +136,21 @@ describe('cellAt', () => {
   });
 
   it('finds the cell under a point four pixels inside each corner of its top face', () => {
-    for (const cell of everyCell()) {
-      const [n, e, s, w] = topFace(cell, 0);
-      const inside = [
-        { x: n.x, y: n.y + 4 },
-        { x: e.x - 4, y: e.y },
-        { x: s.x, y: s.y - 4 },
-        { x: w.x + 4, y: w.y },
-      ];
-      for (const point of inside) {
-        expect(cellAt(point, SIZE, flat), `${cell.x},${cell.y} at ${point.x},${point.y}`).toEqual(cell);
+    for (const level of [0, 5, 11]) {
+      for (const cell of everyCell()) {
+        const [n, e, s, w] = topFace(cell, level);
+        const inside = [
+          { x: n.x, y: n.y + 4 },
+          { x: e.x - 4, y: e.y },
+          { x: s.x, y: s.y - 4 },
+          { x: w.x + 4, y: w.y },
+        ];
+        for (const point of inside) {
+          expect(
+            cellAt(point, SIZE, () => level),
+            `${cell.x},${cell.y} at level ${level}, point ${point.x},${point.y}`,
+          ).toEqual(cell);
+        }
       }
     }
   });
@@ -130,11 +175,11 @@ describe('cellAt', () => {
     expect(cellAt({ x: 664, y: 312 }, SIZE, levelAt)).toEqual({ x: 3, y: 3 });
   });
 
-  it('picks the side face of a level-3 wall, higher up than a level-2 block reaches', () => {
-    // A four-tone board has to pick as well as a three-tone one. The wall's right face starts one HZ
-    // higher than the same block at level 2, and the point sits in that extra band.
-    const levelAt = (cell: Cell) => (cell.x === 3 && cell.y === 3 ? 3 : 0);
-    expect(cellAt({ x: 664, y: 310 }, SIZE, levelAt)).toEqual({ x: 3, y: 3 });
+  it('picks the side face of the tallest block, higher up than a low one reaches', () => {
+    // The rooftop's relief goes up to 11, so a block can stand eleven steps above the ground and its
+    // side face has to stay pickable all the way down.
+    const levelAt = (cell: Cell) => (cell.x === 3 && cell.y === 3 ? 11 : 0);
+    expect(cellAt({ x: 664, y: 312 }, SIZE, levelAt)).toEqual({ x: 3, y: 3 });
   });
 
   it('stops at the edge of the board it is given', () => {
@@ -143,6 +188,69 @@ describe('cellAt', () => {
 
     expect(cellAt(centreOfCorner, SIZE, flat)).toEqual({ x: 9, y: 9 });
     expect(cellAt(centreOfCorner, { width: 8, height: 8 }, flat)).toBeNull();
+  });
+
+  it('never answers with a gap, wherever on the map it is asked', () => {
+    // A gap has no floor: the rooftop's column of `v` is the street seen from above, twenty-odd
+    // levels below the deck, and nothing can stand on it. `terrainOf` answers NO_FLOOR for those
+    // cells, and the projection skips them — at their own centre included.
+    const roof = terrainOf('roof');
+    let asked = 0;
+
+    for (let y = 96; y <= 648; y += 4) {
+      for (let x = 320; x <= 960; x += 4) {
+        const cell = cellAt({ x, y }, roof.size, roof.levelAt, roof.lift);
+        asked += 1;
+        if (cell) expect(roof.isVoid(cell), `${cell.x},${cell.y} from ${x},${y}`).toBe(false);
+      }
+    }
+
+    expect(asked).toBeGreaterThan(1000);
+  });
+
+  it('does not answer with the gap cell at its own centre either', () => {
+    const roof = terrainOf('roof');
+
+    for (const cell of everyCell()) {
+      if (!roof.isVoid(cell)) continue;
+
+      // Where the gap's top face would have been drawn had it a floor at all: the lowest the map
+      // reaches. Whatever the click lands on there, it is not the hole itself.
+      const centre = cellToScreen(cell, 0, roof.lift);
+      expect(cellAt(centre, roof.size, roof.levelAt, roof.lift), `${cell.x},${cell.y}`).not.toEqual(cell);
+    }
+  });
+
+  it('reads the level of a gap as no floor at all', () => {
+    const roof = terrainOf('roof');
+
+    expect(roof.isVoid({ x: 6, y: 0 })).toBe(true);
+    expect(roof.levelAt({ x: 6, y: 0 })).toBe(NO_FLOOR);
+    expect(roof.levelAt({ x: 0, y: 0 })).toBe(8);
+  });
+});
+
+describe('the board fits the space the HUD leaves', () => {
+  it('keeps every top face of every map between the carousel and the action bar', () => {
+    // The box the projection draws the play area in: the carousel's bottom edge above it, the action
+    // bar's top edge below, and the two columns of panels beside it. The blocks' side faces run
+    // further down than their tops on purpose — the prototype's facades dive behind its HUD too —
+    // so what has to fit is what the player aims at.
+    for (const map of PROTOTYPE_MAPS) {
+      const terrain = terrainOf(map.id);
+
+      for (const cell of everyCell()) {
+        if (terrain.isVoid(cell)) continue;
+
+        for (const corner of topFace(cell, terrain.levelAt(cell), terrain.lift)) {
+          const where = `${map.id} ${cell.x},${cell.y} at ${corner.x},${corner.y}`;
+          expect(corner.y, where).toBeGreaterThanOrEqual(CAROUSEL_RECT.y + CAROUSEL_RECT.height);
+          expect(corner.y, where).toBeLessThanOrEqual(ACTION_BAR_RECT.y);
+          expect(corner.x, where).toBeGreaterThanOrEqual(PANEL_RECT.x + PANEL_RECT.width);
+          expect(corner.x, where).toBeLessThanOrEqual(LOG_RECT.x);
+        }
+      }
+    }
   });
 });
 

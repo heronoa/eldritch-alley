@@ -17,7 +17,7 @@ import {
 } from '@eldritch-alley/engine';
 import { isClientAction } from './action-shape';
 import { chooseBotAction } from './bot';
-import { createMatchSetup } from './map';
+import { createMatchSetup, mapFor, type MapId } from './map';
 import {
   MESSAGE,
   PROTOCOL_VERSION,
@@ -91,10 +91,14 @@ export class BattleRoom extends Room {
   winner: Team | null = null;
 
   private match!: MatchState;
+  /** Which map the match was built on: the client is told, because it draws the terrain of the id. */
+  private mapId!: MapId;
   private humanSessionId: string | null = null;
 
   onCreate(): void {
-    this.match = newMatch(createMatchSetup(randomSeed()));
+    const setup = createMatchSetup(randomSeed());
+    this.match = newMatch(setup);
+    this.mapId = mapFor(setup.seed).id;
     this.onMessage<ClientAction>(MESSAGE.action, (client, action) => this.handleAction(client, action));
   }
 
@@ -197,6 +201,6 @@ export class BattleRoom extends Room {
   }
 
   private stateMessage(): StateMessage {
-    return { version: PROTOCOL_VERSION, state: publicState(this.match) };
+    return { version: PROTOCOL_VERSION, mapId: this.mapId, state: publicState(this.match) };
   }
 }

@@ -1,6 +1,7 @@
 # Index — Three prototype maps, one drawn at random per match
 
 **Created on:** 2026-10-04
+**Status:** partially delivered; superseded by [map-fidelity.index.md](./map-fidelity.index.md). The four-tone maps do not match the prototype's look (no tile colours, props, sky or exact heights), so this feature is not closed.
 **Branch:** `feat/map-variaty` (the visual identity shipped in its own MR, #8, before this one)
 **Source:** `.ia_context/prototypes/eldritch-alley-map-prototype/` (the three 10×10 maps `street`, `park` and `roof`)
 

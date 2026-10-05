@@ -1,27 +1,21 @@
-// The map data of the match server: the three boards, where each squad lands, and the seed that picks
-// one. The engine has no blocked tiles, so a map is authored to the palette — level 3 is a wall only
-// because nothing can step up to it — and these invariants are what holds a hand-authored grid to that.
+// The map data of the match server: the three prototype maps, where each squad lands, and the seed
+// that picks one.
 //
-// Neighbours here are the eight of Chebyshev distance 1, diagonals included (DT-48): the engine accepts
-// a diagonal step, so a level-2 cell diagonal to a level-3 wall is a way onto the wall.
+// Since map-fidelity M1 the heights are the prototype's own (0 to 11, or -10 for a gap), so what a
+// unit can reach is decided by the engine's step rule alone (|Δ| ≤ 1): there is no wall level any
+// more, and no palette to author a map to. The invariants this file used to assert — a wall out of
+// reach of the raised ground, the roof's gap ringed by level 2 — described the four-tone compression
+// that milestone removes, so they are replaced by the flood fill below, which asks the same question
+// of the real relief.
+//
+// Neighbours here are the eight of Chebyshev distance 1, diagonals included (DT-48): the engine
+// accepts a diagonal step, so the flood has to allow one too.
 import { describe, expect, it } from 'vitest';
 import { newMatch, type Board, type Position } from '@eldritch-alley/engine';
-import { MAPS, MATCH_SEED, createMatchSetup, mapIndex, spawnsFor } from './map';
+import { MAPS, MATCH_SEED, boardOf, createMatchSetup, mapIndex, type MapId } from './map';
+import { PROTOTYPE_MAPS, type PrototypeMap } from './maps/prototype-maps';
 
-/** The level of a wall: the only cell a unit can never stand on. */
-const WALL = 3;
-
-/**
- * The cells a map cuts off on purpose, keyed by id. A chasm cannot be a wall — a level-3 cell has to
- * stay out of reach of level 2 — so the roof's gap is level 0 ringed by level 2: a two-level drop
- * nothing can step into, crossed by the plank alone. Every other walkable cell has to be reachable.
- */
-const CUT_OFF: Record<string, readonly Position[]> = {
-  street: [],
-  park: [],
-  roof: [0, 1, 2, 3, 5, 6, 7, 8, 9].map((y) => ({ x: 6, y })),
-};
-
+/** How a cell is named in a failure message, and how a set of cells is keyed. */
 const key = (cell: Position): string => `${cell.x},${cell.y}`;
 
 /** Every cell of a board, in reading order. */
@@ -56,13 +50,24 @@ function neighboursOf(board: Board, cell: Position): Position[] {
   return found;
 }
 
-/** Every cell a unit could stand on. A wall is not one of them. */
-function walkableOf(board: Board): Position[] {
-  return everyCell(board).filter((cell) => levelOf(board, cell) < WALL);
+/** The prototype map behind an id: the heights and the void value the board has already lost. */
+function prototypeOf(id: MapId): PrototypeMap {
+  const map = PROTOTYPE_MAPS.find((candidate) => candidate.id === id);
+  if (map === undefined) throw new Error(`no prototype map: ${id}`);
+  return map;
 }
 
-/** Every cell a unit can walk to from `start`, stepping at most one level at a time. */
-function reachedFrom(board: Board, start: Position): Set<string> {
+/**
+ * Whether a cell is a gap. The maps without one carry `void: NaN`, which matches no cell — so this
+ * is false everywhere on them, which is what they mean.
+ */
+function isVoid(map: PrototypeMap, cell: Position): boolean {
+  return map.heights[cell.y][cell.x] === map.void;
+}
+
+/** Every cell a unit can walk to from `start`: one level at a time, and never into a gap. */
+function reachedFrom(map: PrototypeMap, start: Position): Set<string> {
+  const board = boardOf(map);
   const reached = new Set([key(start)]);
   const queue: Position[] = [start];
 
@@ -72,6 +77,7 @@ function reachedFrom(board: Board, start: Position): Set<string> {
 
     for (const next of neighboursOf(board, cell)) {
       if (reached.has(key(next))) continue;
+      if (isVoid(map, next)) continue;
       if (Math.abs(levelOf(board, next) - levelOf(board, cell)) > 1) continue;
 
       reached.add(key(next));
@@ -82,21 +88,77 @@ function reachedFrom(board: Board, start: Position): Set<string> {
   return reached;
 }
 
+/** The cells of one row, from `x0` to `x1` inclusive. */
+function row(y: number, x0: number, x1: number): Position[] {
+  return Array.from({ length: x1 - x0 + 1 }, (_, index) => ({ x: x0 + index, y }));
+}
+
+/** The cells of one column, from `y0` to `y1` inclusive. */
+function column(x: number, y0: number, y1: number): Position[] {
+  return Array.from({ length: y1 - y0 + 1 }, (_, index) => ({ x, y: y0 + index }));
+}
+
+/** A group of cells the relief cuts off, and why — the reason is what the owner reviews in M3. */
+interface Unreachable {
+  readonly reason: string;
+  readonly cells: readonly Position[];
+}
+
+/**
+ * The cells a map cuts off from the play area, with the reason, for the owner to review (section 6 of
+ * the plan). The test below checks this list is exact: a cell not here has to be reachable, and a
+ * cell here has to be unreachable. The prototype blocks these cells by tile letter; this game has no
+ * blocked tiles, so a cell is out of play only when the step rule cannot climb to it.
+ */
+const KNOWN_UNREACHABLE: Readonly<Record<MapId, readonly Unreachable[]>> = {
+  street: [
+    {
+      reason: 'the building mass around the street: 3 to 7 levels above the road it fronts',
+      cells: [
+        ...row(0, 0, 9),
+        ...row(1, 0, 0), ...row(1, 9, 9),
+        ...row(2, 0, 0), ...row(2, 9, 9),
+        ...row(3, 0, 0), ...row(3, 9, 9),
+        ...row(4, 0, 0), ...row(4, 9, 9),
+        ...row(5, 0, 3),
+        ...row(6, 0, 2),
+        ...row(7, 0, 3),
+        ...row(8, 0, 3),
+        ...row(9, 0, 2),
+      ],
+    },
+  ],
+  park: [
+    {
+      reason: 'the buildings on the park border: 4 to 6 levels above the grass',
+      cells: [...column(0, 0, 9), ...row(0, 1, 9)],
+    },
+  ],
+  roof: [
+    {
+      reason: 'the neighbour roof across the gap: level 11, five and six levels above everything it touches',
+      cells: [...row(0, 7, 9), ...row(1, 7, 9)],
+    },
+  ],
+};
+
 describe.each(MAPS)('the $id map', (map) => {
   const board = map.board;
-  const spawns = spawnsFor(board);
-  const cutOff = new Set(CUT_OFF[map.id].map(key));
+  const prototype = prototypeOf(map.id);
+  const spawns = map.spawns;
+  const unreachable = new Set(KNOWN_UNREACHABLE[map.id].flatMap((group) => group.cells.map(key)));
 
-  it('I4 — holds one of the four palette levels per cell', () => {
-    expect(board.levels).toHaveLength(board.width * board.height);
+  it('is the prototype relief on a 10x10 board, the gap levelled to the board floor', () => {
+    expect(board.width).toBe(10);
+    expect(board.height).toBe(10);
 
     for (const cell of everyCell(board)) {
-      expect(levelOf(board, cell), key(cell)).toBeGreaterThanOrEqual(0);
-      expect(levelOf(board, cell), key(cell)).toBeLessThanOrEqual(WALL);
+      const height = prototype.heights[cell.y][cell.x];
+      expect(levelOf(board, cell), key(cell)).toBe(isVoid(prototype, cell) ? 0 : height);
     }
   });
 
-  it('I4 — is a board the engine takes, spawns included', () => {
+  it('is a board the engine takes, spawns included', () => {
     // `validateBoard` is private to the engine, so `newMatch` is the public door to it; it also checks
     // that every spawn is inside the board.
     const seed = MAPS.indexOf(map);
@@ -105,38 +167,29 @@ describe.each(MAPS)('the $id map', (map) => {
     expect(() => newMatch(createMatchSetup(seed))).not.toThrow();
   });
 
-  it('I1 — keeps every wall out of reach of the raised ground', () => {
-    // Read from the raised ground, which is where the hazard is: a unit on a level-2 cell could step onto
-    // a wall next to it. A wall beside a wall is just the mass being more than one cell wide.
+  it('keeps the gap out of reach, so nothing walks into it', () => {
     for (const cell of everyCell(board)) {
-      if (levelOf(board, cell) !== WALL - 1) continue;
+      if (!isVoid(prototype, cell)) continue;
 
       for (const next of neighboursOf(board, cell)) {
-        expect(levelOf(board, next), `${key(cell)} -> ${key(next)}`).toBeLessThan(WALL);
+        if (isVoid(prototype, next)) continue;
+        // A gap is the floor of the board, so a cell of ground beside it is more than one level up
+        // and the step rule refuses the step. A void cell touching a ground cell at one level would
+        // be a way in, and a way in is a map that plays wrong rather than a map that looks wrong.
+        expect(Math.abs(levelOf(board, next) - levelOf(board, cell)), `${key(next)} -> ${key(cell)}`).toBeGreaterThan(1);
       }
     }
   });
 
-  it('I1b — leaves no way into the cells it cuts off', () => {
-    for (const cell of CUT_OFF[map.id]) {
-      expect(levelOf(board, cell), key(cell)).toBe(0);
-
-      for (const next of neighboursOf(board, cell)) {
-        if (cutOff.has(key(next))) continue;
-        expect(levelOf(board, next), `${key(cell)} -> ${key(next)}`).toBe(2);
-      }
-    }
-  });
-
-  it('I2 — lands both squads on legal ground, apart from each other', () => {
+  it('lands both squads on ground the relief allows, apart from each other', () => {
     for (const [team, cells] of Object.entries(spawns)) {
       expect(cells, team).toHaveLength(3);
 
       for (const cell of cells) {
         const where = `${team} ${key(cell)}`;
         expect(inside(board, cell), where).toBe(true);
-        expect(levelOf(board, cell), where).toBe(1);
-        expect(cutOff.has(key(cell)), where).toBe(false);
+        expect(isVoid(prototype, cell), where).toBe(false);
+        expect(unreachable.has(key(cell)), where).toBe(false);
       }
     }
 
@@ -144,46 +197,25 @@ describe.each(MAPS)('the $id map', (map) => {
     expect(new Set(all).size).toBe(all.length);
   });
 
-  it('I3 — leaves no walkable cell orphaned', () => {
-    const reached = reachedFrom(board, spawns.A[0]);
-
-    for (const cell of walkableOf(board)) {
-      if (cutOff.has(key(cell))) continue;
-      expect(reached.has(key(cell)), `${key(cell)} cannot be reached`).toBe(true);
-    }
-  });
-
-  it('I3 — lets the two squads meet', () => {
-    const reached = reachedFrom(board, spawns.A[0]);
+  it('lets the two squads meet', () => {
+    const reached = reachedFrom(prototype, spawns.A[0]);
 
     for (const cell of spawns.B) {
       expect(reached.has(key(cell)), `${key(cell)} cannot be reached from A`).toBe(true);
     }
   });
-});
 
-describe('the roof chasm', () => {
-  it('is the column x = 6 at level 0, crossed by the plank at (6,4) alone', () => {
-    const roof = MAPS.find((map) => map.id === 'roof');
-    expect(roof).toBeDefined();
-    if (roof === undefined) return;
+  it('leaves no cell orphaned, apart from the ones the owner reviews', () => {
+    const reached = reachedFrom(prototype, spawns.A[0]);
 
-    const column = everyCell(roof.board).filter((cell) => cell.x === 6);
-    expect(column).toHaveLength(roof.board.height);
+    for (const cell of everyCell(board)) {
+      if (isVoid(prototype, cell)) continue;
 
-    const gap = column.filter((cell) => levelOf(roof.board, cell) === 0).map(key);
-    const planks = column.filter((cell) => levelOf(roof.board, cell) === 2).map(key);
-    expect(gap).toEqual(CUT_OFF.roof.map((cell) => key(cell)).sort());
-    expect(planks).toEqual(['6,4']);
-  });
-
-  it('has no wall at all, because its relief is one continuous ramp', () => {
-    const roof = MAPS.find((map) => map.id === 'roof');
-    expect(roof).toBeDefined();
-    if (roof === undefined) return;
-
-    for (const cell of everyCell(roof.board)) {
-      expect(levelOf(roof.board, cell), key(cell)).toBeLessThan(WALL);
+      const listed = unreachable.has(key(cell));
+      expect(
+        reached.has(key(cell)),
+        `${key(cell)} is ${listed ? 'listed as unreachable but is' : 'not listed and is not'} reachable`,
+      ).toBe(!listed);
     }
   });
 });
@@ -215,13 +247,12 @@ describe('the map set', () => {
     expect(setup.teams[1]).toHaveLength(3);
   });
 
-  it('lands each squad where its board says', () => {
+  it('lands each squad where its prototype map says', () => {
     for (const map of MAPS) {
-      const spawns = spawnsFor(map.board);
       const setup = createMatchSetup(MAPS.indexOf(map));
 
-      expect(setup.teams[0].map((unit) => unit.position)).toEqual(spawns.A);
-      expect(setup.teams[1].map((unit) => unit.position)).toEqual(spawns.B);
+      expect(setup.teams[0].map((unit) => unit.position)).toEqual(map.spawns.A);
+      expect(setup.teams[1].map((unit) => unit.position)).toEqual(map.spawns.B);
     }
   });
 });

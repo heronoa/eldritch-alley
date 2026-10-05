@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_LEVEL, type Cell } from './grid';
-import { HZ, TILE_H, cellToScreen, topFace } from './iso';
+import { terrainOf } from '../maps/terrain';
+import { PROTOTYPE_MAPS } from '../maps/prototype-maps';
+import type { Cell } from './grid';
+import { topFace } from './iso';
 import {
   ACTION_BAR_RECT,
   ACTION_BUTTON,
@@ -96,52 +98,68 @@ describe('layout', () => {
     ]);
   });
 
-  it('measures the board as the box every block of it fits in', () => {
-    // North of TOP_Y, because a wall standing on the top corner rises MAX_LEVEL * HZ above the flat
-    // board's vertex, and south past the base of the tallest block on the front corner.
-    expect(boardBounds(BOARD_SIZE)).toEqual({ x: 320, y: 152, width: 640, height: 416 });
+  it('measures a flat board as the box its top faces fill', () => {
+    // The west corner of the leftmost cell to the east corner of the rightmost, and the top vertex
+    // of the first cell down to the front corner of the last.
+    expect(boardBounds(BOARD_SIZE, () => 0)).toEqual({ x: 320, y: 200, width: 640, height: 320 });
   });
 
-  it('leaves the board clear of the carousel and the action bar', () => {
-    const board = boardBounds(BOARD_SIZE);
+  it('measures each map as the box of its own relief', () => {
+    // The street's tallest cells are the buildings of its first row, six and seven levels up; its
+    // lowest ground is the parking lot in front, at zero. The box is the relief, not a level range.
+    const street = terrainOf('street');
 
-    expect(overlaps(board, CAROUSEL_RECT)).toBe(false);
-    expect(overlaps(board, ACTION_BAR_RECT)).toBe(false);
+    expect(boardBounds(BOARD_SIZE, street.levelAt, street.lift)).toEqual({
+      x: 320,
+      y: 104,
+      width: 640,
+      height: 416,
+    });
   });
 
-  it('keeps the board clear of the columns the panels sit in', () => {
-    // The panels float over the board, so the board has to fit the gap between the two columns.
-    const board = boardBounds(BOARD_SIZE);
+  it('holds every top face of every map', () => {
+    for (const map of PROTOTYPE_MAPS) {
+      const terrain = terrainOf(map.id);
+      const board = boardBounds(BOARD_SIZE, terrain.levelAt, terrain.lift);
 
-    expect(right(PANEL_RECT)).toBeLessThanOrEqual(board.x);
-    expect(right(board)).toBeLessThanOrEqual(LOG_RECT.x);
-  });
+      for (const cell of everyCell()) {
+        if (terrain.isVoid(cell)) continue;
 
-  it('draws every cell of a 10x10 board inside the box that measures it', () => {
-    const board = boardBounds(BOARD_SIZE);
-
-    for (const cell of everyCell()) {
-      // The top face at the lowest and the highest level the board can have: a cell drawn at any
-      // level between them is inside both.
-      for (const level of [0, MAX_LEVEL]) {
-        for (const corner of topFace(cell, level)) {
-          const where = `${cell.x},${cell.y} at ${level}`;
+        for (const corner of topFace(cell, terrain.levelAt(cell), terrain.lift)) {
+          const where = `${map.id} ${cell.x},${cell.y}`;
           expect(corner.x, where).toBeGreaterThanOrEqual(board.x);
           expect(corner.x, where).toBeLessThanOrEqual(right(board));
           expect(corner.y, where).toBeGreaterThanOrEqual(board.y);
           expect(corner.y, where).toBeLessThanOrEqual(bottom(board));
         }
       }
+    }
+  });
 
-      // And the base of a block standing on that cell, which is as low as the board reaches.
-      const base = cellToScreen(cell, 0).y + TILE_H / 2 + MAX_LEVEL * HZ;
-      expect(base, `${cell.x},${cell.y} base`).toBeLessThanOrEqual(bottom(board));
+  it('leaves every map clear of the carousel and the action bar', () => {
+    for (const map of PROTOTYPE_MAPS) {
+      const terrain = terrainOf(map.id);
+      const board = boardBounds(BOARD_SIZE, terrain.levelAt, terrain.lift);
+
+      expect(overlaps(board, CAROUSEL_RECT), map.id).toBe(false);
+      expect(overlaps(board, ACTION_BAR_RECT), map.id).toBe(false);
+    }
+  });
+
+  it('keeps every map clear of the columns the panels sit in', () => {
+    // The panels float over the board, so the board has to fit the gap between the two columns.
+    for (const map of PROTOTYPE_MAPS) {
+      const terrain = terrainOf(map.id);
+      const board = boardBounds(BOARD_SIZE, terrain.levelAt, terrain.lift);
+
+      expect(right(PANEL_RECT), map.id).toBeLessThanOrEqual(board.x);
+      expect(right(board), map.id).toBeLessThanOrEqual(LOG_RECT.x);
     }
   });
 
   it('grows with the size it is given', () => {
-    const small = boardBounds({ width: 8, height: 8 });
-    const large = boardBounds(BOARD_SIZE);
+    const small = boardBounds({ width: 8, height: 8 }, () => 0);
+    const large = boardBounds(BOARD_SIZE, () => 0);
 
     expect(small.width).toBeLessThan(large.width);
     expect(small.height).toBeLessThan(large.height);

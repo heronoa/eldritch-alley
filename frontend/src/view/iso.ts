@@ -5,16 +5,24 @@
 // bottom one, whatever size the state says the board is. A cell's level lifts its top face by `HZ` per
 // level, and the block under it is drawn as its side faces, which is what makes a raised cell read as
 // a block instead of a differently coloured tile.
-import type { BoardSize, Cell, Pixel } from './grid';
+//
+// Since map fidelity M2 the numbers are the prototype's own, at `PIXEL` times their size: its tile is
+// 32x16 with a height step of 8, and everything the client draws is that drawing scaled by a whole
+// number, so no edge is ever half a pixel wide. `lift` is the prototype's other unit — how far it
+// lowers a whole map — and it is passed in by the map, never invented here.
+import { NO_FLOOR, type BoardSize, type Cell, type Pixel } from './grid';
 
-/** Width of the top face of a tile, in canvas pixels. */
-export const TILE_W = 64;
+/** How much bigger than the prototype's own pixels a canvas pixel of the board is. */
+export const PIXEL = 2;
 
-/** Height of the top face of a tile, in canvas pixels. */
-export const TILE_H = 32;
+/** Width of the top face of a tile, in canvas pixels: the prototype's 32. */
+export const TILE_W = 32 * PIXEL;
 
-/** How far one level lifts a top face. */
-export const HZ = 16;
+/** Height of the top face of a tile, in canvas pixels: the prototype's 16. */
+export const TILE_H = 16 * PIXEL;
+
+/** How far one level lifts a top face: the prototype's 8. */
+export const HZ = 8 * PIXEL;
 
 /**
  * Draw order of the attack effects: above every piece of the board — the deepest of the maps the
@@ -32,17 +40,20 @@ export const TOP_Y = 200;
 export const SHADE_LEFT = 0.72;
 export const SHADE_RIGHT = 0.5;
 
-/** Centre of the top face of a cell at a level, in canvas pixels. */
-export function cellToScreen(cell: Cell, level: number): Pixel {
+/**
+ * Centre of the top face of a cell at a level, in canvas pixels. `lift` is the map's own, in the
+ * prototype's pixels, so a lifted map is lowered as a whole rather than cell by cell.
+ */
+export function cellToScreen(cell: Cell, level: number, lift = 0): Pixel {
   return {
     x: CX + ((cell.x - cell.y) * TILE_W) / 2,
-    y: TOP_Y + ((cell.x + cell.y + 1) * TILE_H) / 2 - level * HZ,
+    y: TOP_Y + ((cell.x + cell.y + 1) * TILE_H) / 2 - level * HZ + lift * PIXEL,
   };
 }
 
 /** The four corners of a top face: N, E, S and W, clockwise from the top. */
-export function topFace(cell: Cell, level: number): [Pixel, Pixel, Pixel, Pixel] {
-  const { x, y } = cellToScreen(cell, level);
+export function topFace(cell: Cell, level: number, lift = 0): [Pixel, Pixel, Pixel, Pixel] {
+  const { x, y } = cellToScreen(cell, level, lift);
   return [
     { x, y: y - TILE_H / 2 },
     { x: x + TILE_W / 2, y },
@@ -76,8 +87,8 @@ function insideTopFace(point: Pixel, centre: Pixel): boolean {
  * the height of the block plus the half tile of the base. Sweeping a diamond down a segment widens
  * it by what it loses in the sideways direction, which is the closed form below.
  */
-function insideBlock(point: Pixel, cell: Cell, level: number): boolean {
-  const centre = cellToScreen(cell, level);
+function insideBlock(point: Pixel, cell: Cell, level: number, lift: number): boolean {
+  const centre = cellToScreen(cell, level, lift);
   const dx = Math.abs(point.x - centre.x) / (TILE_W / 2);
   if (dx > 1) return false;
 
@@ -87,21 +98,31 @@ function insideBlock(point: Pixel, cell: Cell, level: number): boolean {
 }
 
 /**
- * The cell of `size` under a point, or null. `levelAt` gives each cell's level.
+ * The cell of `size` under a point, or null. `levelAt` gives each cell's level, and a cell it answers
+ * `NO_FLOOR` for is skipped outright: a gap has nothing to stand on and nothing to aim at.
  *
  * A top face is what the player aims at, so every one of them is tested before any block: a click on
  * a raised cell's top belongs to that cell even where a flat cell behind it happens to reach the
  * same pixel. Only a point that no top face claims can fall on a block's side, and then the nearest
  * block wins. A point outside the board the state carries is on nothing at all.
  */
-export function cellAt(point: Pixel, size: BoardSize, levelAt: (cell: Cell) => number): Cell | null {
-  const cells = cellsFrontToBack(size);
+export function cellAt(
+  point: Pixel,
+  size: BoardSize,
+  levelAt: (cell: Cell) => number,
+  lift = 0,
+): Cell | null {
+  // Only the cells with a floor are ever tested, and each is asked its level once: a gap is neither a
+  // top face to aim at nor a block to fall on.
+  const floors = cellsFrontToBack(size)
+    .map((cell) => ({ cell, level: levelAt(cell) }))
+    .filter(({ level }) => level !== NO_FLOOR);
 
-  for (const cell of cells) {
-    if (insideTopFace(point, cellToScreen(cell, levelAt(cell)))) return cell;
+  for (const { cell, level } of floors) {
+    if (insideTopFace(point, cellToScreen(cell, level, lift))) return cell;
   }
-  for (const cell of cells) {
-    if (insideBlock(point, cell, levelAt(cell))) return cell;
+  for (const { cell, level } of floors) {
+    if (insideBlock(point, cell, level, lift)) return cell;
   }
   return null;
 }
