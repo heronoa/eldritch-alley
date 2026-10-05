@@ -13,7 +13,8 @@ COPY package.json package-lock.json tsconfig.base.json ./
 COPY backend/engine/package.json backend/engine/
 COPY backend/game-server/package.json backend/game-server/
 COPY backend/platform-api/package.json backend/platform-api/
-RUN npm ci -w backend/${SERVICE} -w backend/engine
+# RUN npm ci -w backend/${SERVICE} -w backend/engine
+RUN npm ci --include-workspace-root -w backend/${SERVICE} -w backend/engine
 
 COPY backend backend
 RUN npm run build -w backend/${SERVICE}
