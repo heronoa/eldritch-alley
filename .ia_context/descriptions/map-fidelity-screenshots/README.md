@@ -1,7 +1,7 @@
 # Map fidelity M3 — a match on each of the three maps
 
 Screenshots of a real match, taken at its start, one per map, for the comparison of
-[`map-fidelity-m3-validation.plan.md`](../../plans/map-fidelity-m3-validation.plan.md) §4.
+`map-fidelity-m3-validation.plan.md` (plan removed on 2026-10-05) §4.
 
 **Taken on:** 2026-10-04, branch `feat/map-variaty`, at 1280×720 (the canvas's native size).
 
