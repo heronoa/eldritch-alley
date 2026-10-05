@@ -34,8 +34,8 @@ owner's words: "o mapa do jogo tem que ser idêntico ao mapa do protótipo".
 
 | # | Plan | Status | PR |
 |---|------|--------|----|
-| 1 | [map-fidelity-m1-data.plan.md](./map-fidelity-m1-data.plan.md): the map data from the prototype, the protocol carries the map id, the copies agree, the spawns stay reachable | [x] concluído (aplicado junto com o M2) | — |
-| 2 | [map-fidelity-m2-renderer.plan.md](./map-fidelity-m2-renderer.plan.md): the prototype's drawing on the client, scaled 2×, with the match's units and HUD on top | [ ] pendente | — |
+| 1 | [map-fidelity-m1-data.plan.md](./map-fidelity-m1-data.plan.md): the map data from the prototype, the protocol carries the map id, the copies agree, the spawns stay reachable | [x] concluído | — |
+| 2 | [map-fidelity-m2-renderer.plan.md](./map-fidelity-m2-renderer.plan.md): the prototype's drawing on the client, scaled 2×, with the match's units and HUD on top | [x] concluído (entregue; revisão em .ia_context/descriptions e revisão do deepseek) | — |
 | 3 | [map-fidelity-m3-validation.plan.md](./map-fidelity-m3-validation.plan.md): comparison with the prototype's screenshots, the owner's approval | [ ] pendente | — |
 
 ## Dependency notes

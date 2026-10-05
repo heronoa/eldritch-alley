@@ -6,6 +6,9 @@
 // that side's own suite.
 import { describe, expect, it } from 'vitest';
 import { PROTOTYPE_MAPS, PROTOTYPE_TILE_LETTERS, type PrototypeMapId } from './prototype-maps';
+// The server's copy of the same data. Comparing the two directly, not only their constants, is what catches
+// an edit that changes one copy and leaves the other alone (DT-62).
+import * as serverCopy from '../../../backend/game-server/src/maps/prototype-maps';
 
 /** What the generator recorded for one map. */
 interface Checksum {
@@ -137,5 +140,10 @@ describe('the map set', () => {
     expect(PROTOTYPE_MAPS.map((map) => map.lift)).toEqual([0, 0, 40]);
     // Only the rooftop has a gap, and its value is the prototype's own.
     expect(PROTOTYPE_MAPS.map((map) => map.void)).toEqual([Number.NaN, Number.NaN, -10]);
+  });
+
+  it('is the same data as the server\'s copy, map by map and field by field', () => {
+    expect(PROTOTYPE_MAPS).toEqual(serverCopy.PROTOTYPE_MAPS);
+    expect(PROTOTYPE_TILE_LETTERS).toEqual(serverCopy.PROTOTYPE_TILE_LETTERS);
   });
 });

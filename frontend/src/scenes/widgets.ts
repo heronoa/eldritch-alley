@@ -26,8 +26,6 @@ import {
   TEXT_COLOR,
   TEXT_COLOR_DISABLED,
   TEXT_COLOR_ON_LIGHT,
-  cssColor,
-  labelColorOn,
 } from '../view/theme';
 
 /** Sniper, wizard, priest — the first letter of the class names a unit everywhere it is drawn. */

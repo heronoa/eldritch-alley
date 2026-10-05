@@ -117,14 +117,20 @@ Planned features are not debt: they live in [backlog.md](./backlog.md).
 - **Trigger:** before the next playtest.
 - **Evidence:** `frontend/src/scenes/LobbyScene.ts` (`startMatch` calls only `session.connect()`, which joins or creates a room); `frontend/src/net/session.ts` (`reconnect()` reads the token from `sessionStorage` but only `MatchScene.handleDrop` calls it); `backend/game-server/src/battle-room.ts` (`onJoin` throws `room full` for a second human; `onReconnect` sends the state). **Suspected, not yet reproduced:** `connect()` lands in the old room and fails on `room full`, which is why the lobby shows "Servidor indisponível".
 - **Suggested fix:** the lobby tries `session.reconnect()` first when a token is stored, and falls back to `connect()` only when the token is missing or stale. A stale token is cleared, so it is not tried again.
-
-### DT-61 · `cellAt` lets a hidden top face beat the visible side of a wall
-- **Category:** Architecture (design)
-- **Risk if untreated:** a click on the side face of a wall resolves to a cell hidden behind it, so with a move armed the player can order a move to a cell they cannot see. Measured on the street map: the pixel (592, 320) is painted `#0f121c`, the right face of the wall at (3, 5), and `cellAt` answers `(3, 4)`, the level-0 road behind it. Two of the three cases the picking rule promises hold (a wall's top face, and the drawn part of a flat cell behind a tall block); this one does not.
+- **Reproduced again on 2026-10-04:** in a measurement run, three page loads in a row did not start a match after the first one, while the first did. The lobby never reconnected, which is the cause this item describes.
+### DT-64 · Memory and texture cost of one canvas per cell is not measured
+- **Category:** Performance
+- **Risk if untreated:** a long match may slow down or use more memory than expected, with no signal until the player feels it.
+- **Effort:** M
+- **Trigger:** if a measurement in a long match shows high cost.
+- **Evidence:** `frontend/src/scenes/map/MapView.ts` (one canvas and one texture per cell, plus the animated layers). Suspected, not measured.
+- **Measured on 2026-10-04**, headless Chrome 150 against the production build, one valid match: 134 canvases created for the match, about 7.3 Mpx, so about 29 MB of canvas memory (estimate: 4 bytes per pixel). JS heap 6 MB, unchanged after 20 s idle. Frame rate 13 fps during the match, but Chrome ran without a GPU (`--disable-gpu`), so that number does not describe a real browser. **Still open:** the next three matches in the same run did not start (see DT-60), so growth across matches is not measured yet.
+### DT-66 · The "room full" error is printed by the server test suite
+- **Category:** Testing
+- **Risk if untreated:** expected log noise can hide a real server error.
 - **Effort:** P
-- **Trigger:** the next change to `frontend/src/view/iso.ts`.
-- **Evidence:** `frontend/src/view/iso.ts` (`cellAt` tests every top face before any block, so an occluded top face wins); `frontend/src/view/iso.test.ts:128` — the side-face test says its point was chosen "low enough that no flat top face behind the block reaches it", so the suite routes around the hole instead of pinning it. Found by the M4 design pass on 2026-10-04 (`.ia_context/plans/map-variety-m4-design.plan.md`, section 10); pre-existing, and reachable in play only since the maps brought 51 wall cells whose faces front onto flat ground.
-- **Suggested fix:** walk the cells front to back once and, for each, test its top face and then only the side faces it actually shows — the ones where it stands above the neighbour it faces. The four cases already pinned in `iso.test.ts` (the flat-board corners, a raised top over a flat cell behind it, and both side-face points) have to stay green.
+- **Trigger:** the next change to `battle-room.test.ts`.
+- **Evidence:** `backend/game-server/src/battle-room.test.ts:75-80` (the test that expects `room full` prints it in the output).
 
 ---
 

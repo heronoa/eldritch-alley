@@ -3,7 +3,7 @@
 Screenshots of a real match, taken at its start, one per map, for the comparison of
 [`map-fidelity-m3-validation.plan.md`](../../plans/map-fidelity-m3-validation.plan.md) §4.
 
-**Taken on:** 2026-10-04, branch `feat/map-variety`, at 1280×720 (the canvas's native size).
+**Taken on:** 2026-10-04, branch `feat/map-variaty`, at 1280×720 (the canvas's native size).
 
 | Capture | Prototype screenshot it is compared with | Prototype map |
 |---|---|---|

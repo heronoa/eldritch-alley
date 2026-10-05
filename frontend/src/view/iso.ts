@@ -75,17 +75,11 @@ function cellsFrontToBack(size: BoardSize): Cell[] {
   return cells.sort((a, b) => b.x + b.y - (a.x + a.y) || a.x - b.x);
 }
 
-/** Whether a point is inside the diamond of a top face centred on `centre`. */
-function insideTopFace(point: Pixel, centre: Pixel): boolean {
-  const dx = Math.abs(point.x - centre.x) / (TILE_W / 2);
-  const dy = Math.abs(point.y - centre.y) / (TILE_H / 2);
-  return dx + dy <= 1;
-}
-
 /**
- * Whether a point is inside the silhouette of a cell's block: its top face swept straight down by
- * the height of the block plus the half tile of the base. Sweeping a diamond down a segment widens
- * it by what it loses in the sideways direction, which is the closed form below.
+ * Whether a point is inside the silhouette of a cell: its top face swept straight down by the height
+ * of its block, so the lowest edge is the ground diamond's. A flat cell's silhouette is its top face.
+ * Sweeping a diamond down a segment widens it by what it loses in the sideways direction, which is the
+ * closed form below.
  */
 function insideBlock(point: Pixel, cell: Cell, level: number, lift: number): boolean {
   const centre = cellToScreen(cell, level, lift);
@@ -93,7 +87,7 @@ function insideBlock(point: Pixel, cell: Cell, level: number, lift: number): boo
   if (dx > 1) return false;
 
   const slack = (1 - dx) * (TILE_H / 2);
-  const drop = level * HZ + TILE_H / 2;
+  const drop = level * HZ;
   return point.y >= centre.y - slack && point.y <= centre.y + drop + slack;
 }
 
@@ -101,10 +95,9 @@ function insideBlock(point: Pixel, cell: Cell, level: number, lift: number): boo
  * The cell of `size` under a point, or null. `levelAt` gives each cell's level, and a cell it answers
  * `NO_FLOOR` for is skipped outright: a gap has nothing to stand on and nothing to aim at.
  *
- * A top face is what the player aims at, so every one of them is tested before any block: a click on
- * a raised cell's top belongs to that cell even where a flat cell behind it happens to reach the
- * same pixel. Only a point that no top face claims can fall on a block's side, and then the nearest
- * block wins. A point outside the board the state carries is on nothing at all.
+ * Cells are tested in the order they are drawn over one another, so a click lands on the cell the
+ * player sees: a wall's side face belongs to the wall, not to the flat cell hidden behind it (DT-61).
+ * A point outside the board the state carries is on nothing at all.
  */
 export function cellAt(
   point: Pixel,
@@ -118,9 +111,7 @@ export function cellAt(
     .map((cell) => ({ cell, level: levelAt(cell) }))
     .filter(({ level }) => level !== NO_FLOOR);
 
-  for (const { cell, level } of floors) {
-    if (insideTopFace(point, cellToScreen(cell, level, lift))) return cell;
-  }
+  // Front to back, the first silhouette that holds the point is the one drawn over the others there.
   for (const { cell, level } of floors) {
     if (insideBlock(point, cell, level, lift)) return cell;
   }

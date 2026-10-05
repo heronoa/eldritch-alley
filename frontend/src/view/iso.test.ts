@@ -295,4 +295,25 @@ describe('shade', () => {
     expect(EFFECT_DEPTH).toBeGreaterThan(depthOfUnit(deepest));
     expect(EFFECT_DEPTH).toBeLessThan(HUD_DEPTH);
   });
+
+  // DT-61: a wall's side face is the wall's, even where a flat cell behind it reaches the same pixel.
+  it('gives a wall\'s side face to the wall, not to the flat cell hidden behind it', () => {
+    const size = { width: 10, height: 10 };
+    const levels = (cell: Cell) => (cell.x === 5 && cell.y === 5 ? 3 : 0);
+    const wall = cellToScreen({ x: 5, y: 5 }, 3, 0);
+    const ground = cellToScreen({ x: 5, y: 5 }, 0, 0);
+    const sideFace = { x: wall.x + 20, y: (wall.y + ground.y) / 2 + 8 };
+
+    expect(cellAt(sideFace, size, levels)).toEqual({ x: 5, y: 5 });
+  });
+
+  it('keeps the top of a wall for the wall, and a flat cell in front of it for that cell', () => {
+    const size = { width: 10, height: 10 };
+    const levels = (cell: Cell) => (cell.x === 5 && cell.y === 5 ? 3 : 0);
+    const wall = cellToScreen({ x: 5, y: 5 }, 3, 0);
+    const front = cellToScreen({ x: 6, y: 6 }, 0, 0);
+
+    expect(cellAt({ x: wall.x, y: wall.y }, size, levels)).toEqual({ x: 5, y: 5 });
+    expect(cellAt({ x: front.x, y: front.y }, size, levels)).toEqual({ x: 6, y: 6 });
+  });
 });
