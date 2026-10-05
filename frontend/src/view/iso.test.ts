@@ -5,12 +5,10 @@ import { NO_FLOOR, type Cell } from './grid';
 import {
   ACTION_BAR_RECT,
   CAROUSEL_RECT,
-  HUD_DEPTH,
   LOG_RECT,
   PANEL_RECT,
 } from './layout';
 import {
-  EFFECT_DEPTH,
   HZ,
   PIXEL,
   SHADE_LEFT,
@@ -285,15 +283,6 @@ describe('shade', () => {
     // The light in the prototype comes from the left, so the left face keeps more of the top colour.
     expect(SHADE_LEFT).toBeGreaterThan(SHADE_RIGHT);
     expect(SHADE_RIGHT).toBeGreaterThan(0);
-  });
-
-  it('draws the effects above every piece of the board and below the HUD', () => {
-    // A 10x10 board reaches 18.5 at its far corner, four steps deeper than the 8x8 board this
-    // constant was chosen for. The margin is checked here so a bigger board fails loudly.
-    const deepest = { x: SIZE.width - 1, y: SIZE.height - 1 };
-
-    expect(EFFECT_DEPTH).toBeGreaterThan(depthOfUnit(deepest));
-    expect(EFFECT_DEPTH).toBeLessThan(HUD_DEPTH);
   });
 
   // DT-61: a wall's side face is the wall's, even where a flat cell behind it reaches the same pixel.

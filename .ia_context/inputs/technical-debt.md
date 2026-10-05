@@ -59,19 +59,11 @@ Planned features are not debt: they live in [backlog.md](./backlog.md).
 - **Trigger:** only if a measurement in a real match shows a cost.
 - **Evidence:** `frontend/src/scenes/MatchScene.ts:453-454` destroys the previous highlights, and `:468` creates a new `Graphics` for each highlighted cell.
 
-### DT-47 · No test of the scene's depth order
-- **Status:** Partly done: the constant test (effects above the board, below the HUD) is in `iso.test.ts`. The scene-level test is still open.
-- **Category:** Testing
-- **Risk if untreated:** a regression like DT-44 comes back without any failing test. `iso.test.ts` covers the depth values of the module, but not that every effect, unit and HUD object sits in the right layer.
-- **Effort:** M
-- **Trigger:** together with the fix of DT-44.
-- **Evidence:** `frontend/src/view/iso.test.ts` (depth functions only); no test imports `MatchScene` or `effects.ts`.
-
 ### DT-41 · The match scene has no automated test
 - **Category:** Testing
 - **Risk if untreated:** regressions in `MatchScene`, `units.ts` and `effects.ts` appear only in the browser, by hand.
 - **Effort:** M
-- **Trigger:** the first change to those files after this entry; first step is DT-47.
+- **Trigger:** the first change to those files after this entry; first step was DT-47, now closed (the depth table in `view/depth.ts`).
 - **Evidence:** `frontend/src/scenes/MatchScene.ts`, `units.ts`, `effects.ts`; the Node suites only cover the pure modules they call.
 
 ### DT-43 · `README-license-section.md` sits loose at the repository root

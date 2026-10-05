@@ -24,12 +24,6 @@ export const TILE_H = 16 * PIXEL;
 /** How far one level lifts a top face: the prototype's 8. */
 export const HZ = 8 * PIXEL;
 
-/**
- * Draw order of the attack effects: above every piece of the board — the deepest of the maps the
- * server ships puts a unit on (9, 9), at 18.5 — and below the HUD, which is drawn at 100.
- */
-export const EFFECT_DEPTH = 20;
-
 /** Canvas x of the vertical axis the board is centred on. */
 export const CX = 640;
 
