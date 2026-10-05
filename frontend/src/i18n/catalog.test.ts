@@ -36,6 +36,7 @@ describe('the pt-BR catalog', () => {
     expect(ptBR['title.hint']).toBe('ou pressione Enter');
     expect(ptBR['title.granted']).toBe('PARTIDA AUTORIZADA');
     expect(ptBR['title.unavailable']).toBe('Servidor indisponível');
+    expect(ptBR['title.occupied']).toBe('Você já tem uma partida aberta em outra aba');
     expect(ptBR['title.footerVersion']).toBe('v0.1');
     expect(ptBR['title.footerPlace']).toBe('Belém · madrugada');
     expect(ptBR['title.language']).toBe('Idioma');
@@ -69,6 +70,7 @@ describe('the en-US catalog', () => {
     expect(enUS['title.hint']).toBe('or press Enter');
     expect(enUS['title.granted']).toBe('MATCH AUTHORIZED');
     expect(enUS['title.unavailable']).toBe('Server unavailable');
+    expect(enUS['title.occupied']).toBe('You already have a match open in another tab');
     expect(enUS['title.footerVersion']).toBe('v0.1');
     expect(enUS['title.footerPlace']).toBe('Belém · the small hours');
     expect(enUS['title.language']).toBe('Language');

@@ -8,6 +8,7 @@
 // here is the DOM.
 import { gameServerEndpoint } from '../config';
 import { getLocale, saveLocale, setLocale, type Locale } from '../i18n';
+import { joinFailure, type JoinFailure } from '../net/join-failure';
 import { Session } from '../net/session';
 import { createCity, type CityView } from './city-render';
 import { canTransition, next, type Flow } from './connect-flow';
@@ -78,7 +79,15 @@ function renderFlow(copy: TitleCopy): void {
 
   cta.disabled = !answers;
   cta.textContent = answers ? copy.cta : copy.ctaBusy;
-  alertLine.textContent = flow.state === 'failed' ? copy.unavailable : '';
+  alertLine.textContent = flow.state === 'failed' ? failureLine(flow.failure, copy) : '';
+}
+
+/**
+ * What the screen says about a failure. A seat another session holds is not a server that failed to
+ * answer, so it gets its own line; everything else keeps the one the screen already had.
+ */
+function failureLine(failure: JoinFailure | null, copy: TitleCopy): string {
+  return failure === 'occupied' ? copy.occupied : copy.unavailable;
 }
 
 /** The switcher: what it is called, and which of its buttons is the language on screen. */
@@ -125,7 +134,7 @@ const endpoint = gameServerEndpoint(import.meta.env);
  * The call to action as the page loads it: nothing pressed, nothing announced. Kept as one value so
  * the title can be put back in this state when a match ends and the title owns the screen again.
  */
-const IDLE: Flow = { state: 'idle', stampStartedAt: null };
+const IDLE: Flow = { state: 'idle', stampStartedAt: null, failure: null };
 
 /** Where the call to action is: idle, waiting for the server, confirmed, or back with an error. */
 let flow: Flow = IDLE;
@@ -223,7 +232,8 @@ function handOver(): void {
       // The match could not be downloaded: the session is released and the title is usable again.
       // The flow is set by hand, because `next` answers nothing from `ready`.
       confirmed.close();
-      flow = { state: 'failed', stampStartedAt: null };
+      // No reason to name: nothing asked the server for a seat here.
+      flow = { state: 'failed', stampStartedAt: null, failure: null };
       onScreen = true;
       renderControls();
       city?.start();
@@ -231,9 +241,13 @@ function handOver(): void {
   );
 }
 
-/** The server did not answer: the stamp goes, the reason shows, and the button comes back. */
-function fail(): void {
-  flow = next(flow, 'failed', performance.now());
+/**
+ * The session did not open: the stamp goes, the reason shows, and the button comes back. The reason
+ * is read from the error, so a seat another tab holds is told apart from a server that did not
+ * answer.
+ */
+function fail(error: unknown): void {
+  flow = next(flow, 'failed', performance.now(), joinFailure(error));
   stopStamp();
   renderControls();
 }
@@ -278,10 +292,10 @@ async function press(): Promise<void> {
   try {
     // Resumes the match this page was in before a reload, when there is one to resume.
     await opening.open();
-  } catch {
+  } catch (error) {
     // A session that never reached a room is worth dropping, so a retry starts from nothing.
     opening.close();
-    fail();
+    fail(error);
     return;
   }
 

@@ -3,7 +3,7 @@
 **Milestone:** — (single frontend plan, no server change, no protocol change)
 **Parent debts:** [DT-68](../inputs/technical-debt.md) (a second tab during a match reports the wrong reason)
 **Created on:** 2026-10-05
-**Status:** pending
+**Status:** implemented on 2026-10-05; the four browser checks of section 6 have not been run yet, so DT-68 is still open in [technical-debt.md](../inputs/technical-debt.md). Frontend suite 385/385 in 37 files, `npm run build` green, `battle-room.test.ts` 9/9. Two divergences from the plan's own text are recorded in section 4.
 
 ---
 
@@ -66,6 +66,11 @@ Answered by the owner on 2026-10-05.
 
 `frontend/src/net/session.ts` is **not** changed: `open()` already lets the error out of `connect()` unchanged, and `session.test.ts` already covers that with "throws the join error when the resumption fails and the new room does too".
 
+Two corrections to the table above, made when it was implemented:
+
+- **`copy.test.ts` has no catalog stub.** The table said its stub would gain the key; the file reads the real catalog through `setLocale`, as it already did for `title.unavailable`. The line is therefore pinned there directly, in both locales — the same duplication `catalog.test.ts` carries on purpose, and the idiom this file already had.
+- **`backend/game-server/src/battle-room.test.ts` is missing from the table** but is asked for by section 6. It gained a comment, no assertion: the case already asserts the string, and the comment records that `join-failure.ts` is what reads it. Nothing else in `backend/` changed.
+
 `backend/` is **not** changed. The protocol is **not** changed.
 
 ---
@@ -98,12 +103,14 @@ Answered by the owner on 2026-10-05.
 
 Automated:
 
-- [ ] `join-failure.test.ts` — an `Error` carrying the room's message answers `'occupied'`; an `Error` carrying anything else answers `'unavailable'`; a non-`Error` value (a string, `null`, `undefined`) answers `'unavailable'` without throwing.
-- [ ] `connect-flow.test.ts` — a failure carries the reason it was given; a failure with no reason carries `'unavailable'`; a press from `failed` returns to `connecting` and clears the reason; the existing transitions are unchanged.
-- [ ] `catalog.test.ts` — both catalogs carry `title.occupied`, each pinned to its exact string, so changing the wording is a deliberate edit.
-- [ ] `copy.test.ts` — `titleCopy()` exposes `occupied` alongside `unavailable`.
-- [ ] `session.test.ts` — unchanged. The existing "throws the join error when the resumption fails and the new room does too" is what guarantees the classification has an error to read.
-- [ ] Pin the other side of the contract: `battle-room.test.ts` already asserts the thrown message with `/room full/`. Leave it as the record of the string the client depends on, and say so in a comment — if it is ever reworded, this plan's warning stops working.
+- [x] `join-failure.test.ts` — an `Error` carrying the room's message answers `'occupied'`; an `Error` carrying anything else answers `'unavailable'`; a non-`Error` value (a string, `null`, `undefined`) answers `'unavailable'` without throwing. — 3 cases: "reads the room's own refusal as an occupied seat", "reads every other error as the server being unavailable", "reads a value that is not an error at all, and never throws"
+- [x] `connect-flow.test.ts` — a failure carries the reason it was given; a failure with no reason carries `'unavailable'`; a press from `failed` returns to `connecting` and clears the reason; the existing transitions are unchanged. — 4 new cases under "the reason a failure carries"; the 9 existing ones now carry `failure: null` in their literals. 13/13.
+- [x] `catalog.test.ts` — both catalogs carry `title.occupied`, each pinned to its exact string, so changing the wording is a deliberate edit. — one line in each of the two title blocks. 18/18.
+- [x] `copy.test.ts` — `titleCopy()` exposes `occupied` alongside `unavailable`. — one line in each locale block. 6/6.
+- [x] `session.test.ts` — unchanged. The existing "throws the join error when the resumption fails and the new room does too" is what guarantees the classification has an error to read. — untouched, 20/20.
+- [x] Pin the other side of the contract: `battle-room.test.ts` already asserts the thrown message with `/room full/`. Leave it as the record of the string the client depends on, and say so in a comment — if it is ever reworded, this plan's warning stops working. — a comment above the case names `join-failure.ts` as the reader and the failure mode. 9/9.
+
+The client half of that string was also confirmed before it was trusted: `onJoin`'s `Error('room full')` is **rethrown unchanged** by `wrapTryCatch` (`@colyseus/core`, `utils/Utils.cjs:118`, `rethrow = true`), propagates out of `connectClientToRoom` (`Transport.cjs:161`), and the transport puts it on the wire as `client.error(e.code, e.message)` (`@colyseus/ws-transport`, `WebSocketTransport.cjs:227-243`). The message therefore arrives verbatim, and because the thrown value is a plain `Error` its `code` arrives `undefined` — which is what ruled out the code-based variant of D1 without a server change.
 
 Manual, in the browser (`npm run dev`):
 

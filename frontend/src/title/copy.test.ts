@@ -50,6 +50,7 @@ describe('the copy of the title', () => {
     expect(copy.hint).toBe('ou pressione Enter');
     expect(copy.granted).toBe('PARTIDA AUTORIZADA');
     expect(copy.unavailable).toBe('Servidor indisponível');
+    expect(copy.occupied).toBe('Você já tem uma partida aberta em outra aba');
     expect(copy.language).toBe('Idioma');
   });
 
@@ -67,6 +68,7 @@ describe('the copy of the title', () => {
     expect(copy.hint).toBe('or press Enter');
     expect(copy.granted).toBe('MATCH AUTHORIZED');
     expect(copy.unavailable).toBe('Server unavailable');
+    expect(copy.occupied).toBe('You already have a match open in another tab');
     expect(copy.footerVersion).toBe('v0.1');
     expect(copy.footerPlace).toBe('Belém · the small hours');
     expect(copy.language).toBe('Language');

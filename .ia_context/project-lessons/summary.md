@@ -20,6 +20,8 @@ debugging notes. One file per feature in [`lessons/`](./lessons/).
 | [title-screen.lesson.md](./lessons/title-screen.lesson.md) | `#architecture` `#testing` `#process` | Before building an entry screen with animation and a network connection, or writing a contrast matrix. |
 | [map-variety.lesson.md](./lessons/map-variety.lesson.md) | `#determinism` `#protocol` `#process` | Before writing a feature whose definition of done is its own deliverables, or a random choice in match setup. |
 | [map-fidelity.lesson.md](./lessons/map-fidelity.lesson.md) | `#protocol` `#architecture` `#testing` | Before sharing terrain data between client and server, or writing a reachability rule for a grid. |
+| [m2a.lesson.md](./lessons/m2a.lesson.md) | `#protocol` `#architecture` `#process` | Before writing a server that keeps an engine state private, a reconnection window, or a view whose visual reference is still open. |
+| [debt-quick-wins.lesson.md](./lessons/debt-quick-wins.lesson.md) | `#testing` `#process` `#protocol` | Before picking quick fixes from a debt list, or trusting a green run whose suites may not all have run. |
 | [map-zoom.lesson.md](./lessons/map-zoom.lesson.md) | `#architecture` `#testing` `#process` | Before zooming a Phaser board that has an overlay, or deciding which coordinate space an input uses. |
 | [debt-and-reaction-rules.lesson.md](./lessons/debt-and-reaction-rules.lesson.md) | `#architecture` `#process` `#types` | Before writing a plan of game rules, or changing an approved layer for a later rule. |
 

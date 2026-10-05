@@ -34,6 +34,8 @@ export interface TitleCopy {
   readonly granted: string;
   /** What the screen says when the server does not answer. */
   readonly unavailable: string;
+  /** What the screen says when the room refused the seat because another session holds it. */
+  readonly occupied: string;
   /** The version in the footer. The prototype's word for itself does not ship. */
   readonly footerVersion: string;
   /** Where the story is set. */
@@ -55,6 +57,7 @@ export function titleCopy(): TitleCopy {
     hint: t('title.hint'),
     granted: t('title.granted'),
     unavailable: t('title.unavailable'),
+    occupied: t('title.occupied'),
     footerVersion: t('title.footerVersion'),
     footerPlace: t('title.footerPlace'),
     language: t('title.language'),

@@ -25,6 +25,9 @@ export const ptBR = {
   'title.hint': 'ou pressione Enter',
   'title.granted': 'PARTIDA AUTORIZADA',
   'title.unavailable': 'Servidor indisponível',
+  // The room refused the seat: another tab of this browser holds the match. Says so instead of
+  // blaming the server, which is answering. See `frontend/src/net/join-failure.ts`.
+  'title.occupied': 'Você já tem uma partida aberta em outra aba',
   'title.footerVersion': 'v0.1',
   'title.footerPlace': 'Belém · madrugada',
   // What the switcher is, for a screen reader. The two letters on its buttons need no translation.

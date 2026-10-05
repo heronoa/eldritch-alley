@@ -72,6 +72,11 @@ describe('resolveHumanAction', () => {
 });
 
 describe('BattleRoom', () => {
+  // The text below is a contract with the client, not just a message: `onJoin` throwing `room full`
+  // is how the client learns that another session holds the seat, and `frontend/src/net/join-failure.ts`
+  // is the one place that reads it. Rewording the `throw` here without rewording it there makes a
+  // second tab report "server unavailable" again, with no test failing on either side. This case is
+  // the server half of that pin.
   it('refuses a second human with "room full"', async () => {
     const room = await server.createRoom<BattleRoom>(ROOM_NAME);
     const first = await server.connectTo(room);

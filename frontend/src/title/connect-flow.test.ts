@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import { canTransition, next, type Flow } from './connect-flow';
 
-const IDLE: Flow = { state: 'idle', stampStartedAt: null };
+const IDLE: Flow = { state: 'idle', stampStartedAt: null, failure: null };
 
 /** The flow after a press at `pressedAt`. */
 function pressed(pressedAt = 1000): Flow {
@@ -12,7 +12,7 @@ function pressed(pressedAt = 1000): Flow {
 
 describe('next', () => {
   it('starts connecting on the first press, and stamps the moment', () => {
-    expect(pressed()).toEqual({ state: 'connecting', stampStartedAt: 1000 });
+    expect(pressed()).toEqual({ state: 'connecting', stampStartedAt: 1000, failure: null });
   });
 
   it('ignores a second press while it is connecting', () => {
@@ -21,16 +21,28 @@ describe('next', () => {
   });
 
   it('becomes ready when the server confirms, keeping the stamp', () => {
-    expect(next(pressed(), 'connected', 1500)).toEqual({ state: 'ready', stampStartedAt: 1000 });
+    expect(next(pressed(), 'connected', 1500)).toEqual({
+      state: 'ready',
+      stampStartedAt: 1000,
+      failure: null,
+    });
   });
 
   it('fails without a stamp when the server does not answer', () => {
-    expect(next(pressed(), 'failed', 1500)).toEqual({ state: 'failed', stampStartedAt: null });
+    expect(next(pressed(), 'failed', 1500)).toEqual({
+      state: 'failed',
+      stampStartedAt: null,
+      failure: 'unavailable',
+    });
   });
 
   it('lets the player press again after a failure', () => {
     const failed = next(pressed(), 'failed', 1500);
-    expect(next(failed, 'press', 2000)).toEqual({ state: 'connecting', stampStartedAt: 2000 });
+    expect(next(failed, 'press', 2000)).toEqual({
+      state: 'connecting',
+      stampStartedAt: 2000,
+      failure: null,
+    });
   });
 
   it('ignores every event once the match is ready', () => {
@@ -41,10 +53,35 @@ describe('next', () => {
   });
 
   it('leaves the flow it is handed alone', () => {
-    const flow: Flow = { state: 'idle', stampStartedAt: null };
+    const flow: Flow = { state: 'idle', stampStartedAt: null, failure: null };
     const snapshot = { ...flow };
     next(flow, 'press', 1000);
     expect(flow).toEqual(snapshot);
+  });
+});
+
+describe('the reason a failure carries', () => {
+  it('keeps the reason it was given', () => {
+    expect(next(pressed(), 'failed', 1500, 'occupied')).toEqual({
+      state: 'failed',
+      stampStartedAt: null,
+      failure: 'occupied',
+    });
+  });
+
+  it('is the generic one when no reason is given, so the old call sites keep their meaning', () => {
+    expect(next(pressed(), 'failed', 1500).failure).toBe('unavailable');
+  });
+
+  it('is cleared by the next press, so a retry does not show the old line', () => {
+    const failed = next(pressed(), 'failed', 1500, 'occupied');
+    expect(next(failed, 'press', 2000).failure).toBeNull();
+  });
+
+  it('is carried by no state but the failed one', () => {
+    expect(pressed().failure).toBeNull();
+    expect(next(pressed(), 'connected', 1500).failure).toBeNull();
+    expect(IDLE.failure).toBeNull();
   });
 });
 

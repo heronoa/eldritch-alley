@@ -26,6 +26,7 @@ export const enUS: Partial<Record<MessageKey, string>> = {
   'title.hint': 'or press Enter',
   'title.granted': 'MATCH AUTHORIZED',
   'title.unavailable': 'Server unavailable',
+  'title.occupied': 'You already have a match open in another tab',
   'title.footerVersion': 'v0.1',
   'title.footerPlace': 'Belém · the small hours',
   'title.language': 'Language',
