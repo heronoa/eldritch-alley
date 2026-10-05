@@ -17,17 +17,19 @@ PvP.
 
 ## Decisions worth reusing
 
-**A refused resume does not clear the stored token**
+**A token the server refuses is removed; a token that failed for another reason is kept**
 
-- Situation: a stored reconnection token is refused by the server, either because the seat expired or because
-  the request failed for another reason.
-- Decision taken: a refused resume returns `false` and keeps the token. `open()` then calls `connect()`, which
-  overwrites the token with the new room's. A stale token costs one request per load and nothing else.
-- Alternative rejected: delete the token on refusal. To do that safely, the code must tell a server refusal
-  apart from a network error or a proxy timeout. The SDK's error code for a refused reconnect is an HTTP
-  status, which Cloudflare also uses (522 and 524), so the code cannot tell them apart.
-- Applies when: deciding whether to clear stored credentials after a failed resume. If the next successful
-  step overwrites the credential anyway, deleting it adds risk and no benefit.
+- Situation: a stored reconnection token is refused by the server (the seat expired, or the room is gone), or
+  the request fails for another reason (a dropped connection, a proxy timeout).
+- Decision taken: a refusal removes the token. Any other failure keeps it, because the seat may still be held.
+  A refusal is recognised by the numeric code and the server's own words: 522 with "has been disposed", and
+  524 with "reconnection token invalid or expired", "failed to reconnect" or "already consumed".
+- Alternative rejected, first: keep the token on every failure, and let `connect()` overwrite it. That was the
+  first decision. It was reversed because a stored token that the server refuses should not be kept.
+- Alternative rejected, second: delete on the code alone. Cloudflare Tunnel uses 522 and 524 for its own
+  timeouts, so a code alone would drop a seat that is still valid after a tunnel timeout.
+- Applies when: deciding whether to clear stored credentials after a failed call. Match the error by what the
+  server says, not only by its status code, when the same code can come from a proxy.
 
 **Per-tab tokens are a shortcut for the bot match, not the identity for PvP**
 
