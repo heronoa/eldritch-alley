@@ -4,6 +4,7 @@ dist/
 .env
 .env.*
 !.env.example
+!.env.production
 .wrangler/
 .DS_Store
 coverage/
