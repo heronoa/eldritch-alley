@@ -33,6 +33,17 @@ npm run build             # builds every workspace
 
 The full stack in containers: `docker compose up --build`.
 
+### Configuration
+
+The backend services read the root `.env` (copied from `.env.example`). The frontend reads its own files in `frontend/`: `.env.production` for builds, which is committed, and an optional `frontend/.env` for dev, copied from `frontend/.env.example`. Only the `VITE_` keys reach the browser bundle.
+
+| Variable | Read by | Default | Notes |
+|---|---|---|---|
+| `GAME_SERVER_PORT` | game-server | `2567` | Must be 1–65535 |
+| `PLATFORM_API_PORT` | platform-api | `3000` | Must be 1–65535 |
+| `VITE_GAME_SERVER` | frontend | `ws://localhost:2567` under `vite dev` | Required in builds. Production value is in `frontend/.env.production` |
+| `JWT_SECRET` | docker compose | none | Required by `docker compose up`. A secret: never give it the `VITE_` prefix, or it reaches the bundle |
+
 ## Deploy (planned)
 
 - **Backend:** images from `backend/Dockerfile` published to ECR and run on ECS (Fargate) behind an Application Load Balancer. The first public version's infrastructure is described in the roadmap (M2).

@@ -5,7 +5,7 @@
 // `city-data.ts`, where the walkers go in `walkers.ts`, when they stop in `ambient.ts`, the stamp in
 // `stamp.ts`, the state of the call to action in `connect-flow.ts`, the wording in `copy.ts` and what
 // may move in `motion.ts`. What is left here is the DOM.
-import { startMatch, whenTitleShown } from '../main';
+import { gameServerEndpoint } from '../config';
 import { Session } from '../net/session';
 import { createCity, type CityView } from './city-render';
 import { canTransition, next, type Flow } from './connect-flow';
@@ -13,9 +13,6 @@ import { CTA, CTA_BUSY, UNAVAILABLE } from './copy';
 import { motionPolicy, type MotionPolicy } from './motion';
 import { loadSheets } from './sheet';
 import { stampAt } from './stamp';
-
-/** Where the game server listens when the build declares no other endpoint. */
-const DEFAULT_ENDPOINT = 'ws://localhost:2567';
 
 /** The player's own setting for how much the screen is allowed to move. */
 const REDUCED_MOTION = '(prefers-reduced-motion: reduce)';
@@ -31,6 +28,9 @@ const canvas = byId<HTMLCanvasElement>('title-city');
 const cta = byId<HTMLButtonElement>('cta');
 const alertLine = byId<HTMLParagraphElement>('alert');
 const granted = byId<HTMLDivElement>('granted');
+
+/** The server to join. Resolved here, at load: a build without a valid endpoint never shows the title. */
+const endpoint = gameServerEndpoint(import.meta.env);
 
 /**
  * The call to action as the page loads it: nothing pressed, nothing announced. Kept as one value so
@@ -60,11 +60,6 @@ const reducedMotion = window.matchMedia(REDUCED_MOTION);
 
 /** What the screen may move, from the player's own setting. */
 let policy: MotionPolicy = motionPolicy(reducedMotion.matches);
-
-/** The server to join: the build's own if it has one, the development one otherwise. */
-function endpoint(): string {
-  return import.meta.env.VITE_GAME_SERVER ?? DEFAULT_ENDPOINT;
-}
 
 /**
  * One frame of the stamp: the class follows the pose, which is the only thing that changes from one
@@ -96,6 +91,27 @@ function stopStamp(): void {
   stampLoop = 0;
 }
 
+/**
+ * The match module, Phaser included. It is downloaded the first time a match starts, never with the
+ * title. A failed download is forgotten, so the next press tries again.
+ */
+let matchModule: Promise<typeof import('../main')> | null = null;
+
+function loadMatch(): Promise<typeof import('../main')> {
+  matchModule ??= import('../main').then(
+    (main) => {
+      // The match's handler for "the title has the screen again", registered once, before any match.
+      main.whenTitleShown(resume);
+      return main;
+    },
+    (error) => {
+      matchModule = null;
+      throw error;
+    },
+  );
+  return matchModule;
+}
+
 /** Gives the screen to the match. The session belongs to it from here on. */
 function handOver(): void {
   if (session === null) return;
@@ -107,7 +123,20 @@ function handOver(): void {
   // are not the title's. Both come back in `resume`, when the match ends.
   onScreen = false;
   city?.stop();
-  startMatch(confirmed);
+
+  loadMatch().then(
+    (main) => main.startMatch(confirmed),
+    () => {
+      // The match could not be downloaded: the session is released and the title is usable again.
+      // The flow is set by hand, because `next` answers nothing from `ready`.
+      confirmed.close();
+      flow = { state: 'failed', stampStartedAt: null };
+      onScreen = true;
+      resetControls();
+      alertLine.textContent = UNAVAILABLE;
+      city?.start();
+    },
+  );
 }
 
 /** The server did not answer: the stamp goes, the reason shows, and the button comes back. */
@@ -154,7 +183,7 @@ async function press(): Promise<void> {
   alertLine.textContent = '';
   startStamp();
 
-  const opening = new Session(endpoint());
+  const opening = new Session(endpoint);
   try {
     await opening.connect();
   } catch {
@@ -203,9 +232,5 @@ reducedMotion.addEventListener('change', (event) => {
   policy = motionPolicy(event.matches);
   city?.setPolicy(policy);
 });
-
-// The match ends by taking its own game down, and `main.ts` says so once the canvas is gone: that is
-// where the title hears the screen is its own again.
-whenTitleShown(resume);
 
 void bootCity();
