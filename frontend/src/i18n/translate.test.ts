@@ -38,7 +38,9 @@ describe('interpolate', () => {
 describe('t', () => {
   it('opens in the fallback locale, and falls back to the reference text', () => {
     expect(getLocale()).toBe('en-US');
-    expect(t('title.cta')).toBe(ptBR['title.cta']);
+    // M3 translated the title alone, so the fallback is now what a player who picks EN sees in a
+    // match: a key of the game still reads in Portuguese.
+    expect(t('hud.back')).toBe(ptBR['hud.back']);
   });
 
   it('answers in the locale the player chose', () => {

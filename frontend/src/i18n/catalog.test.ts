@@ -37,6 +37,7 @@ describe('the pt-BR catalog', () => {
     expect(ptBR['title.unavailable']).toBe('Servidor indisponível');
     expect(ptBR['title.footerVersion']).toBe('v0.1');
     expect(ptBR['title.footerPlace']).toBe('Belém · madrugada');
+    expect(ptBR['title.language']).toBe('Idioma');
   });
 });
 
@@ -45,6 +46,31 @@ describe('the en-US catalog', () => {
     for (const key of Object.keys(enUS)) {
       expect(Object.keys(ptBR), key).toContain(key);
     }
+  });
+
+  it('translates the whole title screen, which is what this feature ships', () => {
+    // Decision 5: after M3 the title's keys are required. A gap here is a title line that would
+    // show up in Portuguese inside an English screen.
+    const untranslatedTitle = missingKeys('en-US').filter((key) => key.startsWith('title.'));
+    expect(untranslatedTitle).toEqual([]);
+  });
+
+  it('carries the English copy the owner reviews before this milestone closes', () => {
+    expect(enUS['title.document']).toBe('Eldritch Alley: Tactics');
+    expect(enUS['title.meta']).toBe('BUREAU OF OCCULT AFFAIRS · INCIDENT NO. 2026/0001');
+    expect(enUS['title.name']).toBe('Eldritch Alley');
+    expect(enUS['title.stampTag']).toBe('TACTICS');
+    expect(enUS['title.tagline']).toBe(
+      'Licensed agents, unlicensed magic, and a whole city of alleys. Assemble your squad and respond to the incident.',
+    );
+    expect(enUS['title.cta']).toBe('Start match');
+    expect(enUS['title.ctaBusy']).toBe('Connecting…');
+    expect(enUS['title.hint']).toBe('or press Enter');
+    expect(enUS['title.granted']).toBe('MATCH AUTHORIZED');
+    expect(enUS['title.unavailable']).toBe('Server unavailable');
+    expect(enUS['title.footerVersion']).toBe('v0.1');
+    expect(enUS['title.footerPlace']).toBe('Belém · the small hours');
+    expect(enUS['title.language']).toBe('Language');
   });
 });
 

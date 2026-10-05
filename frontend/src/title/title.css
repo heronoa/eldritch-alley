@@ -1,7 +1,7 @@
-/* Title screen M2 — the page around the canvas: the title block, the stamp, the call to action and
-   the footer. The values are the prototype's (`css/styles.css` in
-   `.ia_context/prototypes/eldritch-alley-title-screen/`); M3 is the milestone that revisits the
-   colours, the type and the composition. */
+/* Title screen M2 — the page around the canvas: the title block, the stamp, the call to action, the
+   footer and, since localization M3, the language switcher. The values are the prototype's
+   (`css/styles.css` in `.ia_context/prototypes/eldritch-alley-title-screen/`); the title screen's own
+   M3 is the milestone that revisits the colours, the type and the composition. */
 
 :root {
   --ink: #e6dcc4;
@@ -69,7 +69,7 @@ body {
 }
 
 /* The block itself takes the clicks; the space around it stays with the city. */
-.title > div {
+.title > .block {
   pointer-events: auto;
   padding: 0 20px;
 }
@@ -155,6 +155,54 @@ h1 {
   font-size: 11px;
   color: var(--muted);
   letter-spacing: 0.08em;
+}
+
+/* The language switcher, in the corner the title block leaves free. It sits on a pool of its own
+   night so its contrast does not depend on what the city behind it happens to be drawing: the canvas
+   is drawn small and blown up, so a neon pixel can be a bright block under this corner. At 0.92
+   --muted stays above 5.8:1 even over the brightest thing the city draws (#3de9ff), which is the
+   worst case; over the plain night it is 6.6:1, and --ink is far past both. The script fills the box
+   with one button per locale; an empty one draws nothing, which is what a page without script gets. */
+.lang {
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  pointer-events: auto;
+  background: rgba(5, 7, 15, 0.92);
+}
+
+.lang:empty {
+  display: none;
+}
+
+.lang button {
+  min-width: 34px;
+  min-height: 26px;
+  padding: 0 8px;
+  cursor: pointer;
+  font: 600 12px/1 var(--body);
+  letter-spacing: 0.1em;
+  color: var(--muted);
+  background: none;
+  border: 1px solid transparent;
+}
+
+.lang button:hover {
+  color: var(--ink);
+}
+
+/* The language on screen: the ink of the title, edged in the stamp's red. */
+.lang button[aria-pressed='true'] {
+  color: var(--ink);
+  border-color: var(--stamp);
+}
+
+.lang button:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
 }
 
 /* What went wrong, under the call to action. Empty when there is nothing to say. */

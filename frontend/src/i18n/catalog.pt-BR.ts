@@ -7,7 +7,9 @@
 // `panel.label.*` and `action.*` with the `PanelKey` and the action id.
 //
 // The values are the Portuguese the game shipped with, moved here unchanged in M2. The title screen
-// was moved in M1 (from `src/title/copy.ts`), and it is the only area this feature translates.
+// was moved in M1 (from `src/title/copy.ts`), and it is the only area this feature translates: M3
+// wrote its English in `catalog.en-US.ts`, and every other key here is what a player who picks EN
+// still reads until the game's own translation lands.
 
 export const ptBR = {
   // The title screen. The markup keeps its own copy of these as the fallback for a page whose
@@ -25,6 +27,8 @@ export const ptBR = {
   'title.unavailable': 'Servidor indisponível',
   'title.footerVersion': 'v0.1',
   'title.footerPlace': 'Belém · madrugada',
+  // What the switcher is, for a screen reader. The two letters on its buttons need no translation.
+  'title.language': 'Idioma',
 
   // The battle log. One sentence per event, and the placeholders are filled by `interpolate`.
   'log.event.moved': '{actor} moveu de {from} para {to}',
