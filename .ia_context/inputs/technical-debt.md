@@ -96,14 +96,6 @@ Planned features are not debt: they live in [backlog.md](./backlog.md).
 - **Trigger:** before the MR of `feat/visual-identity` is opened.
 - **Evidence:** `git diff --stat develop...feat/visual-identity` lists `.ia_context/plans/title-screen-*`, `.ia_context/prototypes/eldritch-alley-title-screen/`, `ASSETS_LICENSE.md`, `README-license-section.md`.
 
-### DT-60 · A refresh in the middle of a match cannot return to it; the lobby shows "Servidor indisponível"
-- **Category:** Architecture (design)
-- **Risk if untreated:** a page reload during a match loses the match for the player. Starting a new one then fails with a misleading message. The player has no way back to the battle they were in, although the server keeps the seat for 120 s.
-- **Effort:** P
-- **Trigger:** before the next playtest.
-- **Evidence:** `frontend/src/scenes/LobbyScene.ts` (`startMatch` calls only `session.connect()`, which joins or creates a room); `frontend/src/net/session.ts` (`reconnect()` reads the token from `sessionStorage` but only `MatchScene.handleDrop` calls it); `backend/game-server/src/battle-room.ts` (`onJoin` throws `room full` for a second human; `onReconnect` sends the state). **Suspected, not yet reproduced:** `connect()` lands in the old room and fails on `room full`, which is why the lobby shows "Servidor indisponível".
-- **Suggested fix:** the lobby tries `session.reconnect()` first when a token is stored, and falls back to `connect()` only when the token is missing or stale. A stale token is cleared, so it is not tried again.
-- **Reproduced again on 2026-10-04:** in a measurement run, three page loads in a row did not start a match after the first one, while the first did. The lobby never reconnected, which is the cause this item describes.
 ### DT-64 · Memory and texture cost of one canvas per cell is not measured
 - **Category:** Performance
 - **Risk if untreated:** a long match may slow down or use more memory than expected, with no signal until the player feels it.

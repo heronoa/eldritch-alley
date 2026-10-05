@@ -3,7 +3,7 @@
 **Milestone:** —
 **Feature pai:** nenhuma (débito isolado, fora do index de quick wins)
 **Criado em:** 2026-10-05
-**Status:** pendente
+**Status:** concluído em 2026-10-05. As 3 checagens manuais da seção 4 foram feitas pelo dono no browser e passaram todas. DT-60 movido para [technical-debt-closed.md](../inputs/technical-debt-closed.md). O plano seguiu a seção 3 à risca: o token recusado **não** é apagado, o que contraria o "Suggested fix" original do DT-60 (que previa limpar o token obsoleto) — a seção 3 justifica a escolha, e `reconnect()` ficou inalterado.
 
 ---
 
@@ -49,19 +49,21 @@ Não há mudança visual, não há mudança no `backend/` e não há mudança no
 ### 4. Testes previstos
 
 **Unitários** (`frontend/src/net/session.test.ts`, com o fake do SDK):
-- [ ] `open()` com token válido retoma a sala: `reconnect` chamado uma vez, `joinOrCreate` não chamado, o token da sala retomada é gravado.
-- [ ] `open()` sem token entra em sala nova: `joinOrCreate` chamado uma vez, `reconnect` não chamado.
-- [ ] `open()` com token recusado pelo servidor: `reconnect` falha, `joinOrCreate` é chamado e o token gravado passa a ser o da sala nova.
-- [ ] `reconnect()` com falha retorna `false` e **mantém** o token gravado.
-- [ ] `reconnect()` sem token retorna `false` e não chama o cliente.
-- [ ] `open()` lança o erro de `joinOrCreate` quando a retomada falha e a sala nova também falha.
-- [ ] `open()` sem `sessionStorage` disponível cai em `connect()` sem lançar.
-- [ ] Casos já existentes continuam passando, em especial "offers a way to reconnect when the storage is unavailable" e "keeps the subscriptions when it reconnects into a new room".
+- [x] `open()` com token válido retoma a sala: `reconnect` chamado uma vez, `joinOrCreate` não chamado, o token da sala retomada é gravado. — "resumes the match when a token is stored"
+- [x] `open()` sem token entra em sala nova: `joinOrCreate` chamado uma vez, `reconnect` não chamado. — "joins a new room when no token is stored"
+- [x] `open()` com token recusado pelo servidor: `reconnect` falha, `joinOrCreate` é chamado e o token gravado passa a ser o da sala nova. — "joins a new room when the stored token is refused"
+- [x] `reconnect()` com falha retorna `false` e **mantém** o token gravado. — "keeps the stored token when the reconnection is refused"
+- [x] `reconnect()` sem token retorna `false` e não chama o cliente. — "refuses to reconnect, without calling the server, when no token is stored"
+- [x] `open()` lança o erro de `joinOrCreate` quando a retomada falha e a sala nova também falha. — "throws the join error when the resumption fails and the new room does too"
+- [x] `open()` sem `sessionStorage` disponível cai em `connect()` sem lançar. — "falls back to a new room when the storage is unavailable"
+- [x] Casos já existentes continuam passando, em especial "offers a way to reconnect when the storage is unavailable" e "keeps the subscriptions when it reconnects into a new room". — `session.test.ts` 20/20; suíte completa 361/361 em 33 arquivos
 
 **Manuais** (sem e2e no projeto):
-- [ ] Começar partida contra o bot, dar F5, pressionar o botão do título: a partida volta com o tabuleiro e o HUD do estado atual.
-- [ ] Repetir o refresh após mais de 120 s sem partida em andamento: a retomada falha, o título entra em sala nova e a partida nova começa.
-- [ ] Depois de uma partida terminada, dar F5 e pressionar o botão: começa partida nova, sem "Servidor indisponível".
+- [x] Começar partida contra o bot, dar F5, pressionar o botão do título: a partida volta com o tabuleiro e o HUD do estado atual.
+- [x] Repetir o refresh após mais de 120 s sem partida em andamento: a retomada falha, o título entra em sala nova e a partida nova começa.
+- [x] Depois de uma partida terminada, dar F5 e pressionar o botão: começa partida nova, sem "Servidor indisponível".
+
+As 3 manuais foram rodadas pelo dono em 2026-10-05, com o resultado esperado em todas.
 
 Comando de verificação: `npm test` e `npm run build` em `frontend/`.
 
