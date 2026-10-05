@@ -3,6 +3,10 @@
 // A mode only ever filters the intent `resolveClick` produced: `selection.ts` stays the one place
 // that knows the click rules. `reload` and `endTurn` have no board target and are sent straight
 // from the button, so they never pass through here. The server still refuses anything illegal.
+//
+// The labels come from the catalog, keyed by the button's own id, so a button cannot be added
+// without a word for it.
+import { t } from '../i18n';
 import type { PublicState, Team, UnitState } from '../protocol';
 import { highlightedCells } from './highlight';
 import type { Intent } from './selection';
@@ -19,7 +23,7 @@ export interface AvailableActions {
 
 export interface ActionButton {
   id: 'move' | 'attack' | 'reload' | 'endTurn';
-  /** Portuguese, because the player reads it. */
+  /** What the button says, in the language of the client. */
   label: string;
   enabled: boolean;
   /** The mode this button arms, or null for a button that sends at once. */
@@ -66,10 +70,17 @@ export function availableActions(state: PublicState, humanTeam: Team): Available
 export function actionButtons(state: PublicState, humanTeam: Team): ActionButton[] {
   const available = availableActions(state, humanTeam);
 
+  const button = (id: ActionButton['id'], enabled: boolean, mode: ActionMode | null): ActionButton => ({
+    id,
+    label: t(`action.${id}`),
+    enabled,
+    mode,
+  });
+
   return [
-    { id: 'move', label: 'Mover', enabled: available.canMove, mode: 'move' },
-    { id: 'attack', label: 'Atacar', enabled: available.canAttack, mode: 'attack' },
-    { id: 'reload', label: 'Recarregar', enabled: available.canReload, mode: null },
-    { id: 'endTurn', label: 'Terminar turno', enabled: available.canEndTurn, mode: null },
+    button('move', available.canMove, 'move'),
+    button('attack', available.canAttack, 'attack'),
+    button('reload', available.canReload, null),
+    button('endTurn', available.canEndTurn, null),
   ];
 }

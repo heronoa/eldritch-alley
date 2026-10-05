@@ -1,4 +1,7 @@
 <!doctype html>
+<!-- `lang` is the markup's own: the title's text below is Portuguese, which is what a page whose
+     script never runs shows. The script writes the language it resolved — the player's saved choice,
+     or the browser's — over this one as it loads. -->
 <html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
@@ -45,19 +48,27 @@
   <body>
     <canvas id="title-city" aria-hidden="true"></canvas>
     <div class="shade"></div>
+    <!-- The text below is what the page shows before its script runs. Every line carries an id and is
+         written again from the catalog of the client's language on load, so the catalog is the one
+         source once the script is up and the markup is only the fallback. -->
     <main class="title">
-      <div>
-        <p class="meta">SECRETARIA DE ASSUNTOS OCULTOS · OCORRÊNCIA Nº 2026/0001</p>
-        <h1>Eldritch Alley</h1>
-        <span class="stamp">TACTICS</span>
-        <p class="tagline">Agentes licenciados, magia sem licença e uma cidade inteira de becos. Monte o seu esquadrão e responda à ocorrência.</p>
+      <div class="block">
+        <p class="meta" id="meta">SECRETARIA DE ASSUNTOS OCULTOS · OCORRÊNCIA Nº 2026/0001</p>
+        <h1 id="name">Eldritch Alley</h1>
+        <span class="stamp" id="stamp">TACTICS</span>
+        <p class="tagline" id="tagline">Agentes licenciados, magia sem licença e uma cidade inteira de becos. Monte o seu esquadrão e responda à ocorrência.</p>
         <button class="cta" id="cta" type="button">Iniciar partida</button>
-        <p class="hint">ou pressione Enter</p>
+        <p class="hint" id="hint">ou pressione Enter</p>
         <p class="alert" id="alert" role="status"></p>
       </div>
+      <!-- The language switcher, in the corner the title block leaves free. Only the box is here: the
+           script draws one button per locale the client ships, so a page whose script never runs has
+           no dead control, and the box draws nothing while it is empty. `aria-label` is the markup's
+           fallback, rewritten from the catalog with the rest of the screen. -->
+      <div class="lang" id="lang" role="group" aria-label="Idioma"></div>
     </main>
     <div class="granted" id="granted" aria-live="polite">PARTIDA AUTORIZADA</div>
-    <footer><span>v0.1</span><span>Belém · madrugada</span></footer>
+    <footer><span id="footer-version">v0.1</span><span id="footer-place">Belém · madrugada</span></footer>
     <div id="game" hidden></div>
     <script type="module" src="/src/title/title.ts"></script>
   </body>

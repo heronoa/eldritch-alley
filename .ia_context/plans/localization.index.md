@@ -44,9 +44,9 @@ Taken by this plan (flagged for the owner to object to):
 
 | # | Milestone | Scope | Depends on | Status |
 |---|-----------|-------|-----------|--------|
-| 1 | `localization-m1-core`: catalogs, `t()`, resolver, persistence, ADR 0009 | New files in `frontend/src/i18n/` and tests. No visible change. | Approval (given) | [ ] pendente |
-| 2 | `localization-m2-extract`: move every string in the audit to keys, with `pt-BR` values identical to today; map names move to keys (client and server data) | Touches `copy.ts`, `log.ts`, `panel.ts`, `HudScene.ts`, `MatchScene.ts`, the map files and `index.html`. No `en-US` text yet. | M1; title-screen M2 and M3 merged or coordinated, since both edit `copy.ts` and the title files | [ ] pendente |
-| 3 | `localization-m3-title-en`: `en-US` copy for the title screen, `PT`/`EN` switcher on the title, `<html lang>`, `document.title`, owner review of the copy, screenshots at 390 px and desktop in both locales | Title files, the switcher and its styles, `en-US` catalog (title keys only) | M2 | [ ] pendente |
+| 1 | `localization-m1-core`: catalogs, `t()`, resolver, persistence, ADR 0009 | New files in `frontend/src/i18n/` and tests. No visible change. | Approval (given) | [x] concluído (`ad2c379`) |
+| 2 | `localization-m2-extract`: move every string in the audit to keys, with `pt-BR` values identical to today; map names move to keys (client and server data) | Touches `copy.ts`, `log.ts`, `panel.ts`, `HudScene.ts`, `MatchScene.ts`, the map files and `index.html`. No `en-US` text yet. | M1; title-screen M2 and M3 merged or coordinated, since both edit `copy.ts` and the title files | [x] concluído (`d36ba86`) |
+| 3 | `localization-m3-title-en`: `en-US` copy for the title screen, `PT`/`EN` switcher on the title, `<html lang>`, `document.title`, owner review of the copy, screenshots at 390 px and desktop in both locales | Title files, the switcher and its styles, `en-US` catalog (title keys only) | M2 | [x] concluído, aprovado por smoke test em 2026-10-05; faltam os screenshots de 390 px/desktop e a medição de contraste do switcher |
 
 ### Acceptance (each milestone)
 

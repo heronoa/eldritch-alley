@@ -1,37 +1,62 @@
-// Title screen M1 — every line the title shows, in one place, in the Portuguese the prototype wrote.
-// The markup and the scene read these instead of repeating them, so a change to the wording is a
-// change to one file.
+// Title screen M1, localization M3 — every line the title shows, read from the catalog of the
+// language the client is in.
+//
+// The markup and the screen read these instead of repeating them, so a change to the wording is a
+// change to one entry of `src/i18n/catalog.pt-BR.ts`. The title screen held them as constants, which
+// was enough while the language could not change; localization M3 reads them again on every call,
+// because the switcher rewrites the screen and a constant cannot follow a language that changes
+// after the page is up.
+import { t } from '../i18n';
 
-/** The line above the name: which office filed the occurrence, and its number. */
-export const META = 'SECRETARIA DE ASSUNTOS OCULTOS · OCORRÊNCIA Nº 2026/0001';
+/**
+ * One line of the title screen, by the name `title.ts` knows it by. The keys of this type are the
+ * lines: a line that is missing here is a compile error, and one that has no entry in the reference
+ * catalog is another.
+ */
+export interface TitleCopy {
+  /** The document title, which is the tab and the bookmark. */
+  readonly document: string;
+  /** The line above the name: which office filed the occurrence, and its number. */
+  readonly meta: string;
+  /** The name of the game. */
+  readonly name: string;
+  /** The tag stamped over the name. */
+  readonly stampTag: string;
+  /** The pitch under the name. */
+  readonly tagline: string;
+  /** The call to action. Starts a match against the bot. */
+  readonly cta: string;
+  /** What the call to action says while the session is being opened. */
+  readonly ctaBusy: string;
+  /** The keyboard shortcut, under the call to action. */
+  readonly hint: string;
+  /** The word the stamp shows once the server has confirmed the session. */
+  readonly granted: string;
+  /** What the screen says when the server does not answer. */
+  readonly unavailable: string;
+  /** The version in the footer. The prototype's word for itself does not ship. */
+  readonly footerVersion: string;
+  /** Where the story is set. */
+  readonly footerPlace: string;
+  /** What the language switcher is called, for a screen reader. */
+  readonly language: string;
+}
 
-/** The name of the game. */
-export const TITLE = 'Eldritch Alley';
-
-/** The tag stamped over the name. */
-export const STAMP_TAG = 'TACTICS';
-
-/** The pitch under the name. */
-export const TAGLINE =
-  'Agentes licenciados, magia sem licença e uma cidade inteira de becos. Monte o seu esquadrão e responda à ocorrência.';
-
-/** The call to action. Starts a match against the bot. */
-export const CTA = 'Iniciar partida';
-
-/** What the call to action says while the session is being opened. */
-export const CTA_BUSY = 'Conectando…';
-
-/** The keyboard shortcut, under the call to action. */
-export const HINT = 'ou pressione Enter';
-
-/** The word the stamp shows once the server has confirmed the session. */
-export const GRANTED = 'PARTIDA AUTORIZADA';
-
-/** What the screen says when the server does not answer. */
-export const UNAVAILABLE = 'Servidor indisponível';
-
-/** The version in the footer. The prototype's word for itself does not ship. */
-export const FOOTER_VERSION = 'v0.1';
-
-/** Where the story is set. */
-export const FOOTER_PLACE = 'Belém · madrugada';
+/** Every line of the title, in the language the client is showing right now. */
+export function titleCopy(): TitleCopy {
+  return {
+    document: t('title.document'),
+    meta: t('title.meta'),
+    name: t('title.name'),
+    stampTag: t('title.stampTag'),
+    tagline: t('title.tagline'),
+    cta: t('title.cta'),
+    ctaBusy: t('title.ctaBusy'),
+    hint: t('title.hint'),
+    granted: t('title.granted'),
+    unavailable: t('title.unavailable'),
+    footerVersion: t('title.footerVersion'),
+    footerPlace: t('title.footerPlace'),
+    language: t('title.language'),
+  };
+}

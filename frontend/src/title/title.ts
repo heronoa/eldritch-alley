@@ -3,13 +3,16 @@
 //
 // Everything with a rule of its own lives next door and is tested there: what the city is made of in
 // `city-data.ts`, where the walkers go in `walkers.ts`, when they stop in `ambient.ts`, the stamp in
-// `stamp.ts`, the state of the call to action in `connect-flow.ts`, the wording in `copy.ts` and what
-// may move in `motion.ts`. What is left here is the DOM.
+// `stamp.ts`, the state of the call to action in `connect-flow.ts`, the wording in `copy.ts`, which
+// languages the switcher offers in `language.ts`, and what may move in `motion.ts`. What is left
+// here is the DOM.
 import { gameServerEndpoint } from '../config';
+import { getLocale, saveLocale, setLocale, type Locale } from '../i18n';
 import { Session } from '../net/session';
 import { createCity, type CityView } from './city-render';
 import { canTransition, next, type Flow } from './connect-flow';
-import { CTA, CTA_BUSY, UNAVAILABLE } from './copy';
+import { titleCopy, type TitleCopy } from './copy';
+import { LANGUAGE_OPTIONS, switchesTo } from './language';
 import { motionPolicy, type MotionPolicy } from './motion';
 import { loadSheets } from './sheet';
 import { stampAt } from './stamp';
@@ -25,9 +28,95 @@ function byId<T extends HTMLElement>(id: string): T {
 }
 
 const canvas = byId<HTMLCanvasElement>('title-city');
+const meta = byId<HTMLParagraphElement>('meta');
+const heading = byId<HTMLHeadingElement>('name');
+const stampTag = byId<HTMLSpanElement>('stamp');
+const tagline = byId<HTMLParagraphElement>('tagline');
 const cta = byId<HTMLButtonElement>('cta');
+const hint = byId<HTMLParagraphElement>('hint');
 const alertLine = byId<HTMLParagraphElement>('alert');
 const granted = byId<HTMLDivElement>('granted');
+const footerVersion = byId<HTMLSpanElement>('footer-version');
+const footerPlace = byId<HTMLSpanElement>('footer-place');
+const switcher = byId<HTMLDivElement>('lang');
+
+/**
+ * Writes the page in the language the client is in: the title's own lines, the document's language,
+ * and the tab's name. The markup carries the same text in Portuguese, which is what a page whose
+ * script never runs shows; from here on the catalog is the one source. The switcher calls this again
+ * on a press, which is why it reads the copy instead of holding it.
+ */
+function render(): void {
+  const copy = titleCopy();
+
+  document.documentElement.lang = getLocale();
+  document.title = copy.document;
+  meta.textContent = copy.meta;
+  heading.textContent = copy.name;
+  stampTag.textContent = copy.stampTag;
+  tagline.textContent = copy.tagline;
+  hint.textContent = copy.hint;
+  granted.textContent = copy.granted;
+  footerVersion.textContent = copy.footerVersion;
+  footerPlace.textContent = copy.footerPlace;
+
+  renderFlow(copy);
+  renderSwitcher(copy);
+}
+
+/**
+ * The lines the flow owns, read from the flow rather than written at each step: the button's label,
+ * whether it answers, and what went wrong. Deriving them is what keeps a language change and a state
+ * change from disagreeing about what the screen says.
+ *
+ * The button answers in `idle` and `failed` alone. From the press until the match takes the screen —
+ * `connecting`, then `ready` while the stamp lands — the session is the title's to finish, and the
+ * only thing a second press would do is nothing.
+ */
+function renderFlow(copy: TitleCopy): void {
+  const answers = flow.state === 'idle' || flow.state === 'failed';
+
+  cta.disabled = !answers;
+  cta.textContent = answers ? copy.cta : copy.ctaBusy;
+  alertLine.textContent = flow.state === 'failed' ? copy.unavailable : '';
+}
+
+/** The switcher: what it is called, and which of its buttons is the language on screen. */
+function renderSwitcher(copy: TitleCopy): void {
+  switcher.setAttribute('aria-label', copy.language);
+
+  for (const button of languageButtons) {
+    button.element.setAttribute('aria-pressed', String(button.locale === getLocale()));
+  }
+}
+
+/**
+ * The switcher's buttons, built from the locales the client ships rather than written in the markup:
+ * a third language cannot be shipped without its button, and the markup holds only the box around
+ * them, which draws nothing while it is empty. The press is wired here and decided in `language.ts`.
+ */
+const languageButtons = LANGUAGE_OPTIONS.map((option) => {
+  const element = document.createElement('button');
+  element.type = 'button';
+  // The label is the language's own code, so it is announced in that language: "EN" inside a page in
+  // pt-BR would otherwise be read with Portuguese phonetics, which is not what the player is looking
+  // for. The letter pair itself is the same in either locale, so only this attribute changes.
+  element.lang = option.locale;
+  element.textContent = option.label;
+  element.addEventListener('click', () => switchLanguage(option.locale));
+
+  switcher.append(element);
+  return { locale: option.locale, element };
+});
+
+/** What a press on the switcher does: the language changes, the page is written again, and it is kept. */
+function switchLanguage(locale: Locale): void {
+  if (!switchesTo(getLocale(), locale)) return;
+
+  setLocale(locale);
+  saveLocale(locale);
+  render();
+}
 
 /** The server to join. Resolved here, at load: a build without a valid endpoint never shows the title. */
 const endpoint = gameServerEndpoint(import.meta.env);
@@ -40,6 +129,10 @@ const IDLE: Flow = { state: 'idle', stampStartedAt: null };
 
 /** Where the call to action is: idle, waiting for the server, confirmed, or back with an error. */
 let flow: Flow = IDLE;
+
+// The page opens in the language the player picked last time, or the one the browser asks for, which
+// is what `getLocale` resolves. Every line below the title is written from here.
+render();
 
 /**
  * Whether the title owns the screen. While the match is on it does not: the page's keys are the
@@ -132,8 +225,7 @@ function handOver(): void {
       confirmed.close();
       flow = { state: 'failed', stampStartedAt: null };
       onScreen = true;
-      resetControls();
-      alertLine.textContent = UNAVAILABLE;
+      renderControls();
       city?.start();
     },
   );
@@ -143,16 +235,16 @@ function handOver(): void {
 function fail(): void {
   flow = next(flow, 'failed', performance.now());
   stopStamp();
-  resetControls();
-  alertLine.textContent = UNAVAILABLE;
+  renderControls();
 }
 
-/** The call to action's own controls, back as the page loads them: no stamp, no notice, button ready. */
-function resetControls(): void {
+/**
+ * The call to action's own controls in the state the flow is in: the stamp is put away, and the
+ * button's two lines are written again. Called wherever the flow moves outside of `render`.
+ */
+function renderControls(): void {
   granted.classList.remove('on');
-  alertLine.textContent = '';
-  cta.disabled = false;
-  cta.textContent = CTA;
+  renderFlow(titleCopy());
 }
 
 /**
@@ -162,7 +254,7 @@ function resetControls(): void {
 function resume(): void {
   onScreen = true;
   flow = IDLE;
-  resetControls();
+  renderControls();
   city?.start();
 }
 
@@ -178,9 +270,8 @@ async function press(): Promise<void> {
   // nothing, which is what keeps a second click from opening a second session.
   if (flow === before) return;
 
-  cta.disabled = true;
-  cta.textContent = CTA_BUSY;
-  alertLine.textContent = '';
+  // The flow is `connecting` by now, so the button reads its own two lines from it.
+  renderControls();
   startStamp();
 
   const opening = new Session(endpoint);

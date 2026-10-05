@@ -1,7 +1,9 @@
 // The battle log: one short sentence per event.
 //
-// These sentences are Portuguese, unlike the rest of the repository, because they are read by a
-// player. Change the language here and nowhere else.
+// The sentences live in the catalog, under `log.event.*` and `log.rejection.*`, because they are
+// read by a player and the player reads one language. The unit names are not translated: they are
+// proper nouns of the setting (owner's decision, 2026-10-04).
+import { t } from '../i18n';
 import type { Event, Position, RejectReason, UnitId } from '../protocol';
 
 /** Display name of each unit id. An id with no entry is shown as it is. */
@@ -19,21 +21,29 @@ function positionText(position: Position): string {
 export function describeEvent(event: Event, names: UnitNames): string {
   switch (event.type) {
     case 'moved':
-      return `${nameOf(names, event.actor)} moveu de ${positionText(event.from)} para ${positionText(event.to)}`;
+      return t('log.event.moved', {
+        actor: nameOf(names, event.actor),
+        from: positionText(event.from),
+        to: positionText(event.to),
+      });
     case 'attacked':
       return event.hit
-        ? `${nameOf(names, event.actor)} acertou ${nameOf(names, event.target)} por ${event.damage}`
-        : `${nameOf(names, event.actor)} errou`;
+        ? t('log.event.attacked', {
+            actor: nameOf(names, event.actor),
+            target: nameOf(names, event.target),
+            damage: event.damage,
+          })
+        : t('log.event.missed', { actor: nameOf(names, event.actor) });
     case 'reloaded':
-      return `${nameOf(names, event.actor)} recarregou`;
+      return t('log.event.reloaded', { actor: nameOf(names, event.actor) });
     case 'unit-defeated':
-      return `${nameOf(names, event.target)} caiu`;
+      return t('log.event.defeated', { target: nameOf(names, event.target) });
     case 'corpse-removed':
-      return `Corpo de ${nameOf(names, event.target)} removido`;
+      return t('log.event.corpseRemoved', { target: nameOf(names, event.target) });
     case 'turn-ended':
-      return `Vez de ${nameOf(names, event.next)}`;
+      return t('log.event.turnEnded', { next: nameOf(names, event.next) });
     default:
-      return 'evento desconhecido';
+      return t('log.event.unknown');
   }
 }
 
@@ -41,32 +51,21 @@ export function describeEvent(event: Event, names: UnitNames): string {
 export function describeRejection(reason: RejectReason): string {
   switch (reason) {
     case 'not-your-turn':
-      return 'Não é a sua vez';
     case 'out-of-bounds':
-      return 'Fora do tabuleiro';
     case 'cell-occupied':
-      return 'Casa ocupada';
     case 'height-step-too-high':
-      return 'Desnível alto demais';
     case 'not-enough-movement':
-      return 'Movimento insuficiente';
     case 'already-acted':
-      return 'Ação já usada';
     case 'target-out-of-range':
-      return 'Alvo fora de alcance';
     case 'target-invalid':
-      return 'Alvo inválido';
     case 'no-magazine':
-      return 'Sem carregador';
     case 'magazine-full':
-      return 'Carregador cheio';
     case 'not-adjacent':
-      return 'Casa não adjacente';
     case 'game-over':
-      return 'Partida encerrada';
     case 'malformed-action':
-      return 'Ação inválida';
+      // The key is the code itself, so a new reason cannot arrive without its sentence.
+      return t(`log.rejection.${reason}`);
     default:
-      return 'Ação recusada';
+      return t('log.rejection.unknown');
   }
 }

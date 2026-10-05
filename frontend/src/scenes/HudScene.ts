@@ -5,6 +5,7 @@ import Phaser from 'phaser';
 import type { ActionButton, ActionMode } from '../game/actions';
 import { unitPanel } from '../game/panel';
 import { turnOrder } from '../game/turn-order';
+import { t } from '../i18n';
 import type { PublicState } from '../protocol';
 import {
   LEGEND_RECT,
@@ -36,9 +37,6 @@ import { Button, createPanel, createTurnChip } from './widgets';
 
 /** Space between the result text and the frame drawn around it. */
 const STAMP_PADDING = 16;
-
-/** What the legend says about the colours on the board, for a player who has not been told. */
-const LEGEND = 'Azul-tinta: você · Vermelho: bot · Papel: selecionado\nRealce azul: movimento · Realce vermelho: ataque';
 
 /** Everything the HUD shows at one moment, as the match scene knows it. */
 export interface HudView {
@@ -84,8 +82,8 @@ export class HudScene extends Phaser.Scene {
   }
 
   create(): void {
-    createPanel(this, PANEL_RECT, 'Unidade');
-    createPanel(this, LOG_RECT, 'Registro');
+    createPanel(this, PANEL_RECT, t('hud.panel.unit'));
+    createPanel(this, LOG_RECT, t('hud.panel.log'));
     this.chips = this.add.container(0, 0);
     this.panelRows = this.add.container(0, 0);
 
@@ -96,7 +94,8 @@ export class HudScene extends Phaser.Scene {
       lineSpacing: 4,
     });
 
-    this.add.text(LEGEND_RECT.x + PADDING, LEGEND_RECT.y + PADDING, LEGEND, {
+    // What the legend says about the colours on the board, for a player who has not been told.
+    this.add.text(LEGEND_RECT.x + PADDING, LEGEND_RECT.y + PADDING, t('hud.legend'), {
       fontFamily: FONT_BODY,
       fontSize: FONT_SIZE.legend,
       color: TEXT_COLOR,
@@ -119,7 +118,7 @@ export class HudScene extends Phaser.Scene {
     // The stamp is drawn over the result, so it is added after it and resized whenever it changes.
     this.stamp = this.add.graphics();
 
-    this.wayOut = new Button(this, RESULT_BUTTON_RECT, 'Voltar ao início').setVisible(false);
+    this.wayOut = new Button(this, RESULT_BUTTON_RECT, t('hud.back')).setVisible(false);
 
     this.built = true;
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.teardown());
