@@ -115,6 +115,8 @@ export function createCity(
   let current = policy;
   let handle = 0;
   let running = false;
+  /** Whether the title wants the loop. A hidden tab suspends it without the title giving it up. */
+  let wanted = false;
   let last = performance.now();
 
   // The top-left of the map on the low-resolution canvas, recomputed every frame from its size.
@@ -555,24 +557,36 @@ export function createCity(
     draw(timeMs);
   }
 
-  function start(): void {
-    if (running) return;
+  /** Runs the loop again, if the title still wants it and the tab is showing it. */
+  function resume(): void {
+    if (running || !wanted || document.hidden) return;
     running = true;
     // The tab may have been hidden for a while; the first frame after that is not a long one.
     last = performance.now();
     handle = requestAnimationFrame(tick);
   }
 
-  function stop(): void {
+  function pause(): void {
     if (!running) return;
     running = false;
     cancelAnimationFrame(handle);
   }
 
-  // A hidden tab is a stopped loop: a title left open in the background costs nothing.
+  function start(): void {
+    wanted = true;
+    resume();
+  }
+
+  function stop(): void {
+    wanted = false;
+    pause();
+  }
+
+  // A hidden tab suspends the loop, and showing it again picks the loop back up — but only while the
+  // title still wants it: a title the match has taken the screen from stays stopped.
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) stop();
-    else start();
+    if (document.hidden) pause();
+    else resume();
   });
 
   return {

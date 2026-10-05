@@ -5,7 +5,7 @@
 // `city-data.ts`, where the walkers go in `walkers.ts`, when they stop in `ambient.ts`, the stamp in
 // `stamp.ts`, the state of the call to action in `connect-flow.ts`, the wording in `copy.ts` and what
 // may move in `motion.ts`. What is left here is the DOM.
-import { startMatch } from '../main';
+import { startMatch, whenTitleShown } from '../main';
 import { Session } from '../net/session';
 import { createCity, type CityView } from './city-render';
 import { canTransition, next, type Flow } from './connect-flow';
@@ -32,8 +32,20 @@ const cta = byId<HTMLButtonElement>('cta');
 const alertLine = byId<HTMLParagraphElement>('alert');
 const granted = byId<HTMLDivElement>('granted');
 
+/**
+ * The call to action as the page loads it: nothing pressed, nothing announced. Kept as one value so
+ * the title can be put back in this state when a match ends and the title owns the screen again.
+ */
+const IDLE: Flow = { state: 'idle', stampStartedAt: null };
+
 /** Where the call to action is: idle, waiting for the server, confirmed, or back with an error. */
-let flow: Flow = { state: 'idle', stampStartedAt: null };
+let flow: Flow = IDLE;
+
+/**
+ * Whether the title owns the screen. While the match is on it does not: the page's keys are the
+ * match's then, and the city stays where the title left it.
+ */
+let onScreen = true;
 
 /** The session the server confirmed, until the match takes it over. */
 let session: Session | null = null;
@@ -91,7 +103,9 @@ function handOver(): void {
   session = null;
 
   stopStamp();
-  // The city has no one left to walk for: the match owns the screen and its own loop.
+  // The match owns the screen from here: the city has no one left to walk for, and the page's keys
+  // are not the title's. Both come back in `resume`, when the match ends.
+  onScreen = false;
   city?.stop();
   startMatch(confirmed);
 }
@@ -100,14 +114,35 @@ function handOver(): void {
 function fail(): void {
   flow = next(flow, 'failed', performance.now());
   stopStamp();
-  granted.classList.remove('on');
+  resetControls();
   alertLine.textContent = UNAVAILABLE;
+}
+
+/** The call to action's own controls, back as the page loads them: no stamp, no notice, button ready. */
+function resetControls(): void {
+  granted.classList.remove('on');
+  alertLine.textContent = '';
   cta.disabled = false;
   cta.textContent = CTA;
 }
 
+/**
+ * The match is over and the title has the screen again: the call to action is usable, and the city
+ * picks its walkers back up where it left them.
+ */
+function resume(): void {
+  onScreen = true;
+  flow = IDLE;
+  resetControls();
+  city?.start();
+}
+
 /** What a press does: the stamp goes up, the session is opened, and the flow follows both. */
 async function press(): Promise<void> {
+  // A press belongs to the title only while the title is on screen: during a match, Enter is the
+  // match's key, not another call to action.
+  if (!onScreen) return;
+
   const before = flow;
   flow = next(flow, 'press', performance.now());
   // The flow answers an event it ignores with the flow it was given: a press it ignores changes
@@ -168,5 +203,9 @@ reducedMotion.addEventListener('change', (event) => {
   policy = motionPolicy(event.matches);
   city?.setPolicy(policy);
 });
+
+// The match ends by taking its own game down, and `main.ts` says so once the canvas is gone: that is
+// where the title hears the screen is its own again.
+whenTitleShown(resume);
 
 void bootCity();
