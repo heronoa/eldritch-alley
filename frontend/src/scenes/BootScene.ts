@@ -29,6 +29,11 @@ export class BootScene extends Phaser.Scene {
   }
 
   create(): void {
+    // The boot has one job, and the session is the whole of it. Started without one, it would hand
+    // the match an empty session and the screen would stay black; better to say so here.
+    if (this.session === undefined) {
+      throw new Error('the boot scene was started without a session');
+    }
     void this.handOver();
   }
 

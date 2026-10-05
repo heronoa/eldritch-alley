@@ -130,12 +130,21 @@ match).
 ```ts
 let game: Phaser.Game | null = null;
 export function startMatch(session: Session): void {
-  game = new Phaser.Game({ ...config, scene: [BootScene, MatchScene] });
-  game.events.once(Phaser.Core.Events.READY, () => game!.scene.start('boot', { session }));
+  game = new Phaser.Game(CONFIG);
+  game.scene.add('boot', BootScene, true, { session });
+  game.scene.add('match', MatchScene, false);
+  game.scene.add('hud', HudScene, false);
 }
 ```
 
-- `config` is the current game config (1280×720, `Scale.FIT`, `pixelArt: true`, background `BG_COLOR`).
+- The scenes are added here, not declared in the config. Phaser starts the first scene of the config
+  itself, the moment the textures are ready, with an empty data object — and a scene whose start has
+  already begun ignores the data of a second `start`. A `scene: [BootScene, …]` in the config
+  therefore ran the boot without a session, and the match threw on the missing one (a black screen).
+  Added from `startMatch`, while the game is still booting, the boot is started once, with the session.
+- `hud` is added last, so the HUD draws over the map. The match starts it (`this.scene.launch('hud')`).
+- `CONFIG` is the current game config (1280×720, `Scale.FIT`, `pixelArt: true`, background `BG_COLOR`),
+  without `scene`.
 - The Phaser game is created at most once. A second call while a game exists throws a `RangeError`.
 - Call `startMatch` only from `title.ts`. No other import of `main.ts`.
 

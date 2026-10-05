@@ -7,7 +7,7 @@ import { CANVAS_HEIGHT, CANVAS_WIDTH } from './view/layout';
 import { BG_COLOR, cssColor } from './view/theme';
 
 /**
- * The game, as the match needs it. The HUD comes after the match, so it is drawn above the map.
+ * The game, as the match needs it. The scenes are added in `startMatch`, in the order they draw.
  *
  * Nothing here runs at import time: the title is a page of its own, and the game only exists once
  * the server has confirmed a session (`startMatch`).
@@ -38,9 +38,15 @@ export function startMatch(session: Session): void {
   if (game !== null) throw new RangeError('the match has already been started');
 
   showGame();
-  game = new Phaser.Game({ ...CONFIG, scene: [BootScene, MatchScene, HudScene] });
-  // The scenes can only be started once the game is up, which is a moment after it is built.
-  game.events.once(Phaser.Core.Events.READY, () => game?.scene.start('boot', { session }));
+  game = new Phaser.Game(CONFIG);
+  // The scenes are added here, not declared in the config. Phaser starts the first scene of the
+  // config itself, the moment the textures are ready, with an empty data object — and a scene whose
+  // start has already begun ignores the data of a second one. The boot would then hand the match a
+  // session it never received. Added from here, while the game is still booting, the boot is started
+  // once, with the session, and the other two wait for it to start them.
+  game.scene.add('boot', BootScene, true, { session });
+  game.scene.add('match', MatchScene, false);
+  game.scene.add('hud', HudScene, false);
 }
 
 /** Takes the title down and puts the game canvas on screen. */
