@@ -1,5 +1,6 @@
-// Localization M1 and M2 — the catalogs. pt-BR is the reference: its keys are the type, and a locale
-// that has not translated a key gets the Portuguese one. en-US is empty until M3 writes the title.
+// Localization M1, M2 and M3 — the catalogs. pt-BR is the reference: its keys are the type, and a
+// locale that has not translated a key gets the Portuguese one. en-US holds the title screen alone,
+// which is the whole of what this feature translates.
 //
 // M2 moved the strings of the game out of the code and in here. The last block is the record of that
 // move: it holds the text `develop` had, so a silent change to the Portuguese fails a test.
@@ -49,7 +50,7 @@ describe('the en-US catalog', () => {
   });
 
   it('translates the whole title screen, which is what this feature ships', () => {
-    // Decision 5: after M3 the title's keys are required. A gap here is a title line that would
+    // Decision 5: with M3 done, the title's keys are required. A gap here is a title line that would
     // show up in Portuguese inside an English screen.
     const untranslatedTitle = missingKeys('en-US').filter((key) => key.startsWith('title.'));
     expect(untranslatedTitle).toEqual([]);
@@ -84,7 +85,7 @@ describe('missingKeys', () => {
     expect(missingKeys('en-US')).toEqual(expected);
   });
 
-  it('reports what is still untranslated without failing on it, so M3 can close the gap', () => {
+  it('reports what is still untranslated without failing on it, so the next area starts from a list', () => {
     const untranslated = missingKeys('en-US');
     console.info(
       untranslated.length === 0

@@ -1,8 +1,8 @@
 // The catalogs, side by side, and what a lookup does when a locale has not translated a key.
 //
 // `pt-BR` is the reference — see decision 5 of the plan. A missing English key is a gap the client
-// fills with the Portuguese text rather than a blank on the screen, which is what lets M3 land the
-// English title by title without the rest of the game changing.
+// fills with the Portuguese text rather than a blank on the screen, which is what lets a translation
+// land one area at a time without the rest of the game changing.
 
 import { ptBR, type MessageKey } from './catalog.pt-BR';
 import { enUS } from './catalog.en-US';

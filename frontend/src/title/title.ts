@@ -98,6 +98,10 @@ function renderSwitcher(copy: TitleCopy): void {
 const languageButtons = LANGUAGE_OPTIONS.map((option) => {
   const element = document.createElement('button');
   element.type = 'button';
+  // The label is the language's own code, so it is announced in that language: "EN" inside a page in
+  // pt-BR would otherwise be read with Portuguese phonetics, which is not what the player is looking
+  // for. The letter pair itself is the same in either locale, so only this attribute changes.
+  element.lang = option.locale;
   element.textContent = option.label;
   element.addEventListener('click', () => switchLanguage(option.locale));
 

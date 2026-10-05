@@ -28,8 +28,8 @@ translated client shows Portuguese where it has no English, never a blank or a k
 
 **Keys are flat and prefixed by area** — `title.cta`, and `log.…`, `panel.…`, `map.…` as the rest of
 the audit moves. Flat keys keep `MessageKey` a plain union with no type-level path recursion, and
-the prefix is what lets a test assert the completeness of one area — the title, in M3 — without
-pinning the others.
+the prefix is what lets a test assert the completeness of one area — the title, the area M3
+completed — without pinning the others.
 
 **Locale resolution is ordered: saved choice, then `navigator.languages`, then `en-US`.** Any `pt*`
 tag opens in `pt-BR`; every other browser opens in en-US, which is the fallback the owner chose. The
@@ -56,8 +56,9 @@ them do not exist yet, and when they do they get their own decision.
 - Class and unit names are not translated in either locale (owner's decision, 2026-10-04). They are
   proper nouns of the setting, so they stay out of the catalogs and never need an English value.
 - The untranslated keys are visible rather than silent: `missingKeys(locale)` lists them, and a test
-  reports the list without failing on it. M3 tightens that to a failure for the title keys, which is
-  the area it completes.
+  reports the list without failing on it. For the title keys, which are the area M3 completed, that
+  report is a failure instead — a gap there would be a title line showing up in Portuguese inside an
+  English screen.
 - Until the rest of the game is translated, a player who picks English gets an English title screen
   and a Portuguese match. That is the expected state of this feature, not a defect.
 - A feature that needs plural rules, dates or number formats — a scoreboard, a timer readout — will

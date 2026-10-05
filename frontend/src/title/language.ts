@@ -11,6 +11,8 @@ export interface LanguageOption {
 /**
  * What each button shows. The language's own code, which reads the same in either language — a
  * player looking for their own language looks for these two letters, not for a translated word.
+ * `title.ts` writes each label with `lang` set to the locale it selects, so a screen reader
+ * announces it in that language instead of in the one the page happens to be showing.
  */
 const LABELS: Record<Locale, string> = {
   'pt-BR': 'PT',
