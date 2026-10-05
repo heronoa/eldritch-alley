@@ -1,7 +1,8 @@
 # Index — Three prototype maps, one drawn at random per match
 
 **Created on:** 2026-10-04
-**Branch:** `feat/visual-identity` (this plan ships in the same branch and the same MR as the visual identity feature)
+**Status:** partially delivered; superseded by [map-fidelity.index.md](./map-fidelity.index.md). The four-tone maps do not match the prototype's look (no tile colours, props, sky or exact heights), so this feature is not closed.
+**Branch:** `feat/map-variaty` (the visual identity shipped in its own MR, #8, before this one)
 **Source:** `.ia_context/prototypes/eldritch-alley-map-prototype/` (the three 10×10 maps `street`, `park` and `roof`)
 
 ## Goal
@@ -24,8 +25,8 @@ The owner chose the three values below after the M3 review; they are fixed for t
    panels.
 2. **Walls as cliffs, levels 0..3.** A four-tone palette; level 3 is the building mass. The engine already
    refuses a step with `|Δlevel| > 1` (`backend/engine/src/actions.ts`, `'height-step-too-high'`), so a
-   3-level block only has to be authored so that no level-2 cell touches it and it is impassable. **No
-   engine rule changes.**
+   3-level block only has to be authored so that **no level-2 cell is within Chebyshev distance 1 of it**
+   (diagonals included: the engine steps diagonally, DT-48) and it is impassable. **No engine rule changes.**
 3. **Fixed corner spawns, derived from the board size**, as today: A = (0,0), (1,0), (0,1);
    B = (w−1, h−1), (w−2, h−1), (w−1, h−2). On 10×10 that is the (0,0) and (9,9) corners.
 
@@ -59,10 +60,10 @@ The owner chose the three values below after the M3 review; they are fixed for t
 
 | # | Plan | Status | PR |
 |---|------|--------|----|
-| 1 | [map-variety-m1-logic.plan.md](./map-variety-m1-logic.plan.md): size-driven projection and picking, four-tone palette (no Phaser) | [ ] pendente | — |
-| 2 | [map-variety-m2-integration.plan.md](./map-variety-m2-integration.plan.md): the client draws the board the state carries | [ ] pendente | — |
-| 3 | [map-variety-m3-server.plan.md](./map-variety-m3-server.plan.md): three 10×10 maps, spawns by size, one drawn at random per match (DT-32 first) | [ ] pendente | — |
-| 4 | [map-variety-m4-design.plan.md](./map-variety-m4-design.plan.md): design pass by screenshot, owner approval | [ ] pendente | — |
+| 1 | [map-variety-m1-logic.plan.md](./map-variety-m1-logic.plan.md): size-driven projection and picking, four-tone palette (no Phaser) | [x] concluído | — |
+| 2 | [map-variety-m2-integration.plan.md](./map-variety-m2-integration.plan.md): the client draws the board the state carries | [x] concluído | — |
+| 3 | [map-variety-m3-server.plan.md](./map-variety-m3-server.plan.md): three 10×10 maps, spawns by size, one drawn at random per match (DT-32 first) | [x] concluído | — |
+| 4 | [map-variety-m4-design.plan.md](./map-variety-m4-design.plan.md): design pass by screenshot, owner approval | [~] executado em 2026-10-04 — sem mudança de código; aguardando o dono | — |
 
 ## Dependency notes
 
@@ -72,4 +73,10 @@ The owner chose the three values below after the M3 review; they are fixed for t
 - M3 also carries the DT-32 fix, because its trigger is "before the next change to `backend/game-server`"
   and the new map tests cannot run without it.
 - M4 depends on M3: the screenshots have to show the three real maps.
-- DT-44 (attack effects drawn beneath the board) stays open and is not fixed here.
+- DT-44 (attack effects drawn beneath the board) is **closed**: `EFFECT_DEPTH = 20` in the isometric
+  feature put the effects above the deepest cell a unit stands on and below the HUD. The note that called
+  it open was stale.
+- **Open after M4, found by its section 4.4 check:** `cellAt` tests every top face before any block, so a
+  click on a tall block's side face can resolve to a cell hidden behind it — on the street map, the pixel
+  at (592, 320) is painted as the wall at (3, 5) and picks (3, 4). It needs its own change; the detail is
+  in [map-variety-m4-design.plan.md](./map-variety-m4-design.plan.md), section 10.

@@ -139,8 +139,11 @@ export type RejectReason =
 /**
  * Bumped whenever a payload changes shape. The client compares it with its own and refuses to play
  * a match it cannot draw.
+ *
+ * Version 3: the state message carries `mapId`, because the client draws the terrain of the map it is
+ * told the match is on rather than a board it is sent cell by cell.
  */
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 
 /** The single room type of M2-a. One room is one match. */
 export const ROOM_NAME = 'battle';
@@ -170,6 +173,8 @@ export type ClientAction =
 
 export interface StateMessage {
   version: number;
+  /** Which of the three maps the match is on: `PrototypeMapId` in `./maps/prototype-maps`. */
+  mapId: 'street' | 'park' | 'roof';
   state: PublicState;
 }
 

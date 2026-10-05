@@ -12,10 +12,9 @@ import {
 } from '../game/actions';
 import { highlightedCells } from '../game/highlight';
 import { describeEvent, describeRejection, type UnitNames } from '../game/log';
-import { unitPanel } from '../game/panel';
 import { presentationOf, type Cue, type Snapshot } from '../game/presentation';
 import { resolveClick } from '../game/selection';
-import { turnOrder } from '../game/turn-order';
+import { terrainOf, type Terrain } from '../maps/terrain';
 import { Session } from '../net/session';
 import {
   PROTOCOL_VERSION,
@@ -27,59 +26,39 @@ import {
   type Team,
   type UnitState,
 } from '../protocol';
-import type { Cell, Pixel } from '../view/grid';
+import { NO_FLOOR, type Cell, type Pixel } from '../view/grid';
+import { MIN_ZOOM, zoomAbout, type CameraView } from '../view/camera';
 import { cellAt, cellToScreen, depthOfCell, topFace } from '../view/iso';
 import {
-  LEGEND_RECT,
   LOG_LINES,
-  LOG_RECT,
-  LOG_TEXT_POINT,
-  PADDING,
-  PANEL_BAR_HEIGHT,
-  PANEL_BAR_OFFSET,
-  PANEL_RECT,
-  STATUS_RECT,
   buttonIndexAt,
-  HUD_DEPTH,
   RESULT_BUTTON_RECT,
-  buttonRect,
-  carouselSlotRect,
   containsPoint,
   hudRects,
-  panelRowPoint,
+  CANVAS_HEIGHT,
+  CANVAS_WIDTH,
+  boardBounds,
 } from '../view/layout';
 import {
-  CURRENT_TURN_COLOR,
-  FONT_BODY,
-  FONT_SIZE,
-  FONT_TITLE,
   HIGHLIGHT_ATTACK_ALPHA,
   HIGHLIGHT_ATTACK_COLOR,
   HIGHLIGHT_MOVE_ALPHA,
   HIGHLIGHT_MOVE_COLOR,
-  PANEL_STROKE,
-  STAMP_COLOR,
-  STAMP_WIDTH,
-  TEXT_COLOR,
-  TEXT_COLOR_ALERT,
-  TEXT_COLOR_DISABLED,
 } from '../view/theme';
-import { BoardTiles } from './BoardTiles';
 import { playEffect } from './effects';
+import { MapView } from './map/MapView';
+import { HudScene } from './HudScene';
 import { BODY_HEIGHT, UnitSprite, type Placement } from './units';
-import { Button, createPanel, createTurnChip } from './widgets';
 
 /** The side the person at the keyboard plays. */
 const HUMAN_TEAM: Team = 'A';
 
-/** The air between the result and the stamp around it. */
-const STAMP_PADDING = 16;
-
 /** How far over its own cell a highlight is drawn, so the tile under it stays visible. */
 const HIGHLIGHT_DEPTH_STEP = 0.1;
 
-/** What the colours on the board mean, for a player who has not been told. Two lines of the column. */
-const LEGEND = 'Azul-tinta: você · Vermelho: bot · Papel: selecionado\nRealce azul: movimento · Realce vermelho: ataque';
+/** How far one wheel notch, and one key press, zoom the map. */
+const WHEEL_ZOOM_STEP = 1.15;
+const KEY_ZOOM_STEP = 1.25;
 
 /** The state carries no display name for a unit, so the log falls back to the id. */
 const UNIT_NAMES: UnitNames = {};
@@ -123,20 +102,19 @@ export class MatchScene extends Phaser.Scene {
   /** What the client knew of each unit when the last events arrived, for `presentationOf`. */
   private snapshot = new Map<string, Snapshot>();
 
-  private tiles!: BoardTiles;
+  /** Built from the first state the map id names: the map is not known before it arrives. */
+  private map: Terrain | null = null;
+  private mapView: MapView | null = null;
   /** One graphic per highlighted cell, at the cell's own depth, rebuilt on every redraw. */
   private highlights: Phaser.GameObjects.Graphics[] = [];
-  private chips!: Phaser.GameObjects.Container;
-  private panelRows!: Phaser.GameObjects.Container;
-  private buttons: Button[] = [];
+  /** The HUD, in its own scene above the map. It is handed a view of the match and draws it. */
+  private hud!: HudScene;
   /** The model the drawn buttons came from, so a click resolves to the action the player sees. */
   private buttonModel: ActionButton[] = [];
-  private logText!: Phaser.GameObjects.Text;
-  private status!: Phaser.GameObjects.Text;
-  private result!: Phaser.GameObjects.Text;
-  /** Shown once the match is over, so the player can leave it. */
-  private wayOut!: Button;
-  private stamp!: Phaser.GameObjects.Graphics;
+  private statusText = '';
+  private resultText = '';
+  /** Where the map camera is: its zoom, and the world point at the centre of the canvas. */
+  private camera: CameraView = { zoom: MIN_ZOOM, centre: { x: CANVAS_WIDTH / 2, y: CANVAS_HEIGHT / 2 } };
 
   constructor() {
     super('match');
@@ -150,63 +128,47 @@ export class MatchScene extends Phaser.Scene {
     this.logLines = [];
     this.finished = false;
     this.reconnecting = false;
-    this.buttons = [];
     this.buttonModel = [];
+    this.statusText = '';
+    this.resultText = '';
+    this.camera = { zoom: MIN_ZOOM, centre: { x: CANVAS_WIDTH / 2, y: CANVAS_HEIGHT / 2 } };
     this.highlights = [];
+    this.map = null;
+    this.mapView = null;
     this.sprites = new Map();
     this.snapshot = new Map();
   }
 
   create(): void {
-    // Drawing order is depth here, not the order things are added: the blocks carry the depth of
-    // their cell, the highlights a hair over their own cell, the units half a step further, and the
+    // Drawing order is depth here, not the order things are added: the map carries the depth of each
+    // of its cells, the highlights a hair over their own cell, the units half a step further, and the
     // whole HUD floats above all of it.
-    this.tiles = new BoardTiles(this, (cell) => this.levelAt(cell));
+    //
+    // The map is not here: it is only known once the state names it, and `handleState` builds it then.
 
-    // The frames are drawn once; the chips and the panel rows are rebuilt from the state instead.
-    createPanel(this, PANEL_RECT, 'Unidade').setDepth(HUD_DEPTH);
-    createPanel(this, LOG_RECT, 'Registro').setDepth(HUD_DEPTH);
-    this.chips = this.add.container(0, 0).setDepth(HUD_DEPTH);
-    this.panelRows = this.add.container(0, 0).setDepth(HUD_DEPTH);
-
-    this.logText = this.add
-      .text(LOG_TEXT_POINT.x, LOG_TEXT_POINT.y, '', {
-        fontFamily: FONT_BODY,
-        fontSize: FONT_SIZE.log,
-        color: TEXT_COLOR,
-        lineSpacing: 4,
-      })
-      .setDepth(HUD_DEPTH);
-
-    this.add
-      .text(LEGEND_RECT.x + PADDING, LEGEND_RECT.y + PADDING, LEGEND, {
-        fontFamily: FONT_BODY,
-        fontSize: FONT_SIZE.legend,
-        color: TEXT_COLOR,
-      })
-      .setDepth(HUD_DEPTH);
-
-    this.status = this.add
-      .text(STATUS_RECT.x + PADDING, STATUS_RECT.y, '', {
-        fontFamily: FONT_BODY,
-        fontSize: FONT_SIZE.unit,
-        color: TEXT_COLOR_ALERT,
-      })
-      .setDepth(HUD_DEPTH);
-
-    this.result = this.add
-      .text(this.scale.width / 2, this.scale.height / 2, '', {
-        fontFamily: FONT_TITLE,
-        fontSize: FONT_SIZE.result,
-        color: TEXT_COLOR,
-      })
-      .setOrigin(0.5)
-      .setDepth(HUD_DEPTH + 1);
-
-    // The stamp is drawn over the result, so it is added after it and resized whenever it changes.
-    this.stamp = this.add.graphics().setDepth(HUD_DEPTH + 2);
+    // The HUD runs in its own scene, above this one, so the map can be zoomed under it.
+    this.scene.launch('hud');
+    this.hud = this.scene.get('hud') as HudScene;
+    this.applyCamera();
 
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => this.handleClick(pointer));
+    this.input.on('wheel', (pointer: Phaser.Input.Pointer, _objects: unknown, _dx: number, dy: number) => {
+      this.zoomBy(dy < 0 ? WHEEL_ZOOM_STEP : 1 / WHEEL_ZOOM_STEP, { x: pointer.x, y: pointer.y });
+    });
+    this.input.keyboard?.on('keydown', (event: KeyboardEvent) => {
+      const centre = { x: this.scale.width / 2, y: this.scale.height / 2 };
+      if (event.key === '+' || event.key === '=') this.zoomBy(KEY_ZOOM_STEP, centre);
+      if (event.key === '-') this.zoomBy(1 / KEY_ZOOM_STEP, centre);
+    });
+
+    // The map's canvases are textures of the game, not objects of this scene: leaving without taking
+    // them out would pile a hundred of them up on the next match.
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.mapView?.destroy();
+      this.mapView = null;
+      this.map = null;
+      this.scene.stop('hud');
+    });
 
     this.session.onState((message) => this.handleState(message));
     this.session.onEvents((events) => this.handleEvents(events));
@@ -216,7 +178,6 @@ export class MatchScene extends Phaser.Scene {
       void this.handleDrop();
     });
 
-    this.wayOut = new Button(this, RESULT_BUTTON_RECT, 'Voltar ao início').setDepth(HUD_DEPTH).setVisible(false);
   }
 
   /**
@@ -227,7 +188,10 @@ export class MatchScene extends Phaser.Scene {
    * server decides the rest.
    */
   private handleClick(pointer: Phaser.Input.Pointer): void {
+    // The HUD is not zoomed, so its rectangles are tested in screen space; the board is zoomed, so it is
+    // tested in the world space the pointer reports for the map camera.
     const point = { x: pointer.x, y: pointer.y };
+    const world = { x: pointer.worldX, y: pointer.worldY };
 
     if (this.finished && containsPoint(RESULT_BUTTON_RECT, point)) {
       this.leave();
@@ -244,7 +208,14 @@ export class MatchScene extends Phaser.Scene {
 
     if (hudRects().some((rect) => containsPoint(rect, point))) return;
 
-    const cell = cellAt(point, (candidate) => this.levelAt(candidate));
+    // The board the state carries says how big it is; what each cell is drawn at comes from the map,
+    // lift included, so a click lands on the cell the player aimed at.
+    const cell = cellAt(
+      world,
+      this.state.board,
+      (candidate) => this.levelAt(candidate),
+      this.lift,
+    );
     if (cell === null) return;
 
     const intent = applyMode(
@@ -282,7 +253,8 @@ export class MatchScene extends Phaser.Scene {
 
   private handleState(message: StateMessage): void {
     if (message.version !== PROTOCOL_VERSION) {
-      this.status.setText('Versão incompatível');
+      this.statusText = 'Versão incompatível';
+      this.pushHud();
       return;
     }
 
@@ -290,6 +262,7 @@ export class MatchScene extends Phaser.Scene {
     // The state always comes after the events it caused, so what it says here is where the board
     // ends up — and every event that arrives next is read against it.
     this.snapshot = snapshotOf(message.state);
+    this.ensureMap(message.mapId);
 
     // The acting unit is selected for the player, so the board and the panel are about the unit that
     // can actually act; the mode then falls back if the new turn has nothing left to do.
@@ -301,8 +274,21 @@ export class MatchScene extends Phaser.Scene {
 
     if (this.reconnecting) {
       this.reconnecting = false;
-      this.status.setText('');
+      this.statusText = '';
+      this.pushHud();
     }
+  }
+
+  /**
+   * Builds the map the state names, once. A room always plays on the same map, so a different id only
+   * happens on a re-join; rebuilding is the cheap correct answer and it costs one comparison per state.
+   */
+  private ensureMap(mapId: StateMessage['mapId']): void {
+    if (this.map !== null && this.map.id === mapId) return;
+
+    this.mapView?.destroy();
+    this.map = terrainOf(mapId);
+    this.mapView = new MapView(this, this.map);
   }
 
   private actor(): UnitState | undefined {
@@ -311,17 +297,22 @@ export class MatchScene extends Phaser.Scene {
     return this.state.units.find((unit) => unit.id === currentId);
   }
 
-  /** The height of a cell, as the state carries it. Flat until the first state arrives. */
+  /**
+   * The height of a cell, as the map the state names has it: the client draws the prototype's own
+   * relief rather than a board it is sent cell by cell. A cell with no floor has no height at all.
+   */
   private levelAt(cell: Cell): number {
-    const board = this.state?.board;
-    if (board === undefined) return 0;
+    return this.map?.levelAt(cell) ?? NO_FLOOR;
+  }
 
-    return board.levels[cell.y * board.width + cell.x];
+  /** How far the whole board is lifted off the floor, which only the roof map is. Zero before the map. */
+  private get lift(): number {
+    return this.map?.lift ?? 0;
   }
 
   /** Where a unit's feet rest on a cell: the centre of its top face, lifted by the cell's level. */
   private placementOf(cell: Cell): Placement {
-    return { cell, anchor: cellToScreen(cell, this.levelAt(cell)) };
+    return { cell, anchor: cellToScreen(cell, this.levelAt(cell), this.lift) };
   }
 
   /**
@@ -399,28 +390,29 @@ export class MatchScene extends Phaser.Scene {
     if (this.logLines.length > LOG_LINES) {
       this.logLines.splice(0, this.logLines.length - LOG_LINES);
     }
-    this.logText.setText(this.logLines.join('\n'));
+    this.pushHud();
   }
 
   private async handleDrop(): Promise<void> {
     if (this.finished) return;
 
     this.reconnecting = true;
-    this.status.setText('Reconectando...');
+    this.statusText = 'Reconectando...';
+    this.pushHud();
 
     // The server sends the state again once the seat is back, which clears the notice.
     if (await this.session.reconnect()) return;
 
     this.reconnecting = false;
     this.finish();
-    this.status.setText('Partida perdida');
-    if (this.state) this.updateActionBar(this.state);
+    this.statusText = 'Partida perdida';
+    this.pushHud();
   }
 
   /** The match is over: clicks stop, and the way out appears. */
   private finish(): void {
     this.finished = true;
-    this.wayOut.setVisible(true);
+    this.pushHud();
   }
 
   /** Back to the lobby. The session is closed first, so the room does not report the exit as a drop. */
@@ -434,34 +426,48 @@ export class MatchScene extends Phaser.Scene {
     this.reconnecting = false;
     this.mode = 'inspect';
     this.selectedId = null;
-    this.status.setText('');
-    this.result.setText(message.winner === HUMAN_TEAM ? 'Vitória' : 'Derrota');
-    this.drawStamp();
-    if (this.state) this.redraw(this.state);
-  }
-
-  /** The stamp frame hugs whatever the result says, so it is redrawn rather than placed once. */
-  private drawStamp(): void {
-    this.stamp.clear();
-    if (this.result.text === '') return;
-
-    const bounds = this.result.getBounds();
-    this.stamp.lineStyle(STAMP_WIDTH, STAMP_COLOR, 1);
-    this.stamp.strokeRect(
-      bounds.x - STAMP_PADDING,
-      bounds.y - STAMP_PADDING,
-      bounds.width + 2 * STAMP_PADDING,
-      bounds.height + 2 * STAMP_PADDING,
-    );
+    this.statusText = '';
+    this.resultText = message.winner === HUMAN_TEAM ? 'Vitória' : 'Derrota';
+    this.pushHud();
   }
 
   private redraw(state: PublicState): void {
-    this.tiles.sync((cell) => this.levelAt(cell));
     this.drawHighlights(state);
     this.redrawUnits(state);
-    this.redrawCarousel(state);
-    this.redrawPanel(state);
-    this.updateActionBar(state);
+    this.pushHud();
+  }
+
+  /** Hands the HUD what it shows now, and keeps the model of its buttons for the clicks. */
+  private pushHud(): void {
+    this.buttonModel = this.state ? actionButtons(this.state, HUMAN_TEAM) : [];
+    this.hud.render({
+      state: this.state,
+      selectedId: this.selectedId,
+      mode: this.mode,
+      finished: this.finished,
+      buttons: this.buttonModel,
+      logLines: this.logLines,
+      status: this.statusText,
+      result: this.resultText,
+      wayOutVisible: this.finished,
+    });
+  }
+
+  /** Zooms the map about a point of the screen. The HUD is not in the map camera, so it stays put. */
+  private zoomBy(factor: number, screen: Pixel): void {
+    if (this.state === null) return;
+
+    const canvas = { width: this.scale.width, height: this.scale.height };
+    const bounds = boardBounds(this.state.board, (cell) => this.levelAt(cell), this.lift);
+    this.camera = zoomAbout(this.camera, screen, { x: canvas.width / 2, y: canvas.height / 2 }, factor, bounds, canvas);
+    this.applyCamera();
+  }
+
+  /** Puts the map camera where the view says. Before the board is known there is nothing to clamp to. */
+  private applyCamera(): void {
+    const cam = this.cameras.main;
+    cam.setZoom(this.camera.zoom);
+    cam.centerOn(this.camera.centre.x, this.camera.centre.y);
   }
 
   /** The cells the armed mode would act on, drawn as the top face of each cell they cover. */
@@ -481,8 +487,12 @@ export class MatchScene extends Phaser.Scene {
     });
 
     for (const cell of cells) {
+      const level = this.levelAt(cell);
+      // A gap has no top face to wash: nothing is aimed at it and no rule ever offers it.
+      if (level === NO_FLOOR) continue;
+
       const graphic = this.add.graphics().setDepth(depthOfCell(cell) + HIGHLIGHT_DEPTH_STEP);
-      const face = topFace(cell, this.levelAt(cell));
+      const face = topFace(cell, level, this.lift);
 
       graphic.fillStyle(color, alpha);
       graphic.fillPoints(face, true);
@@ -521,66 +531,8 @@ export class MatchScene extends Phaser.Scene {
 
   /** One frame of every animation on the board. The scene decides nothing; the sprites advance. */
   update(time: number): void {
+    this.mapView?.update(time);
     for (const sprite of this.sprites.values()) sprite.tick(time);
   }
 
-  /** One chip per unit still in play, in turn order, so the queue shrinks as units fall. */
-  private redrawCarousel(state: PublicState): void {
-    this.chips.removeAll(true);
-
-    turnOrder(state).forEach((slot, index) => {
-      this.chips.add(createTurnChip(this, carouselSlotRect(index), slot));
-    });
-  }
-
-  private redrawPanel(state: PublicState): void {
-    this.panelRows.removeAll(true);
-
-    const barWidth = PANEL_RECT.width - 2 * PADDING;
-    const valueX = PANEL_RECT.x + PANEL_RECT.width - PADDING;
-
-    unitPanel(state, this.selectedId).forEach((row, index) => {
-      const point = panelRowPoint(index);
-      const color = row.enabled ? TEXT_COLOR : TEXT_COLOR_DISABLED;
-
-      const label = this.add.text(point.x, point.y, row.label, {
-        fontFamily: FONT_BODY,
-        fontSize: FONT_SIZE.log,
-        color,
-      });
-      const value = this.add
-        .text(valueX, point.y, row.value, { fontFamily: FONT_BODY, fontSize: FONT_SIZE.log, color })
-        .setOrigin(1, 0);
-      this.panelRows.add([label, value]);
-
-      if (row.fill === null) return;
-
-      const barY = point.y + PANEL_BAR_OFFSET;
-      const track = this.add
-        .rectangle(point.x, barY, barWidth, PANEL_BAR_HEIGHT, PANEL_STROKE)
-        .setOrigin(0);
-      const filled = this.add
-        .rectangle(point.x, barY, barWidth * row.fill, PANEL_BAR_HEIGHT, CURRENT_TURN_COLOR)
-        .setOrigin(0);
-      this.panelRows.add([track, filled]);
-    });
-  }
-
-  /** Built once from the model, then only refreshed, because a button keeps its own visual state. */
-  private updateActionBar(state: PublicState): void {
-    const model = actionButtons(state, HUMAN_TEAM);
-    this.buttonModel = model;
-
-    if (this.buttons.length === 0) {
-      this.buttons = model.map(
-        (button, index) => new Button(this, buttonRect(index), button.label).setDepth(HUD_DEPTH),
-      );
-    }
-
-    model.forEach((button, index) => {
-      // A finished match disables the bar whatever the last state still says about availability.
-      this.buttons[index].setEnabled(!this.finished && button.enabled);
-      this.buttons[index].setSelected(button.mode !== null && button.mode === this.mode);
-    });
-  }
 }

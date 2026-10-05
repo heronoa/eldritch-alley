@@ -1,12 +1,16 @@
 // The message protocol of a match. The browser client is not written yet: when it is, it keeps a
 // copy of this file under frontend/src and the two are kept in sync.
 import type { Event, Position, PublicState, RejectReason, Team, UnitId } from '@eldritch-alley/engine';
+import type { MapId } from './map';
 
 /**
  * Bumped whenever a payload changes shape. The client compares it with its own and refuses to play
  * a match it cannot draw.
+ *
+ * Version 3: the state message carries `mapId`, because the client draws the terrain of the map it is
+ * told the match is on rather than a board it is sent cell by cell.
  */
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 
 /** The single room type of M2-a. One room is one match. */
 export const ROOM_NAME = 'battle';
@@ -36,6 +40,8 @@ export type ClientAction =
 
 export interface StateMessage {
   version: number;
+  /** Which of the three maps the match is on, so the client can draw its terrain. */
+  mapId: MapId;
   state: PublicState;
 }
 

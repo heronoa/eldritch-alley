@@ -64,8 +64,11 @@ const DIAMOND = [
   { x: -1, y: 0 },
 ];
 
-/** Geometry of a drawn unit, in pixels. The body is a 16x24 frame drawn at three times its size. */
-const BODY_SCALE = 3;
+/**
+ * Geometry of a drawn unit, in pixels. The body is a 16x24 frame drawn at twice its size, which is
+ * the size the prototype's own figures take at its scale: the tile of the map is 64 by 32.
+ */
+const BODY_SCALE = 2;
 
 /** How tall the figure stands above its feet, which is what the bars and the shot leave from. */
 export const BODY_HEIGHT = 24 * BODY_SCALE;

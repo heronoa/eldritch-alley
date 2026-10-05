@@ -2,6 +2,7 @@
 // engine's public contract, answers each accepted action with its events and the new public state,
 // and then plays the bot's turns. A client never names the acting unit: the room derives it from
 // whose turn it is.
+import { randomInt } from 'node:crypto';
 import { Room, type Client } from '@colyseus/core';
 import {
   applyAction,
@@ -16,7 +17,7 @@ import {
 } from '@eldritch-alley/engine';
 import { isClientAction } from './action-shape';
 import { chooseBotAction } from './bot';
-import { createMatchSetup } from './map';
+import { createMatchSetup, mapFor, type MapId } from './map';
 import {
   MESSAGE,
   PROTOCOL_VERSION,
@@ -36,6 +37,18 @@ export const RECONNECTION_WINDOW_SECONDS = 120;
 
 /** A bot turn is a few moves, one action and an endTurn per unit. This only stops a runaway loop. */
 const BOT_ITERATION_GUARD = 50;
+
+/** The seed range the engine takes, `0 <= seed <= UINT32_MAX`. */
+const SEED_RANGE = 2 ** 32;
+
+/**
+ * The seed of a new match, drawn by the room: the map is a pure function of it, so this is where a
+ * match's board is chosen. It is not engine randomness (ADR 0005) — the engine still only ever replays
+ * the seed it is handed, and the seed travels in the public state, so a match stays reproducible.
+ */
+function randomSeed(): number {
+  return randomInt(0, SEED_RANGE);
+}
 
 /** A unit is in the fight until it is defeated. A body still holds its tile but no longer fights. */
 export function teamHasLivingUnit(state: MatchState, team: Team): boolean {
@@ -78,10 +91,14 @@ export class BattleRoom extends Room {
   winner: Team | null = null;
 
   private match!: MatchState;
+  /** Which map the match was built on: the client is told, because it draws the terrain of the id. */
+  private mapId!: MapId;
   private humanSessionId: string | null = null;
 
   onCreate(): void {
-    this.match = newMatch(createMatchSetup());
+    const setup = createMatchSetup(randomSeed());
+    this.match = newMatch(setup);
+    this.mapId = mapFor(setup.seed).id;
     this.onMessage<ClientAction>(MESSAGE.action, (client, action) => this.handleAction(client, action));
   }
 
@@ -184,6 +201,6 @@ export class BattleRoom extends Room {
   }
 
   private stateMessage(): StateMessage {
-    return { version: PROTOCOL_VERSION, state: publicState(this.match) };
+    return { version: PROTOCOL_VERSION, mapId: this.mapId, state: publicState(this.match) };
   }
 }

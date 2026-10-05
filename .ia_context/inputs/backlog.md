@@ -68,3 +68,14 @@ Order follows the roadmap: [ROADMAP.md](../../ROADMAP.md).
 - **Effort:** M
 - **Trigger:** the first view of a unit facing away from the camera in a playtest.
 - **Evidence:** `.ia_context/prototypes/eldritch-alley-characters-v1/README.md` ("Only the front view exists").
+
+### DT-67 · Map controls: rotate the map (zoom is done, see map-zoom.plan.md)
+- **Category:** Architecture (design)
+- **Risk if untreated:** the player cannot look closer at a crowded corner or see a map from another side. Not a defect: a new control.
+- **Effort:** G for rotation. Zoom was delivered on 2026-10-04 with the HUD moved to its own scene.
+- **Trigger:** only if rotation is still wanted after using the zoom.
+- **Notes:**
+  - **Zoom** is a camera change: the scene's camera zooms around the cursor, and the HUD stays at its size, so it is cheap. Pan with drag comes with it.
+  - **Rotation** is not a camera change. The prototype draws one orientation. Rotating means four projections, four depth orders for cells and units, four picking functions, and each prop, facade and sprite flip re-read for its side. The prototype's `cars` already carry a `v` (vertical) flag, which shows the orientation work is per-prop. Rotation changes the isometric and picking work done in `view/iso.ts` and `scenes/map/`.
+  - A rotation of 90° in one direction is the cheapest first step if rotation is wanted at all.
+- **Evidence:** `.ia_context/prototypes/eldritch-alley-map-prototype/js/app.js` (one projection, `iso()`, and one depth order); `frontend/src/view/iso.ts`; `frontend/src/scenes/map/MapView.ts`.

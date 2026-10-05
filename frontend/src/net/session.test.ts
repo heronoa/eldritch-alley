@@ -245,4 +245,18 @@ describe('Session against a room', () => {
     expect(fake.rooms[0].leaves).toBe(1);
     expect(fake.rooms[0].sent).toEqual([]);
   });
+
+  it('carries the map id of the match with the state, so the board can be built from it', async () => {
+    const session = new Session('ws://localhost:2567');
+    await session.connect();
+    fake.rooms[0].emit(MESSAGE.state, { version: PROTOCOL_VERSION, mapId: 'roof', state: null });
+
+    // The client draws the terrain of the id, so a late subscriber needs the id the state came with,
+    // not only the state.
+    const handed: { mapId: string }[] = [];
+    session.onState((message) => handed.push(message));
+
+    expect(PROTOCOL_VERSION).toBe(3);
+    expect(handed).toEqual([{ version: PROTOCOL_VERSION, mapId: 'roof', state: null }]);
+  });
 });

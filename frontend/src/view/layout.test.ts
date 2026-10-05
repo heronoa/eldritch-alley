@@ -1,4 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { terrainOf } from '../maps/terrain';
+import { PROTOTYPE_MAPS } from '../maps/prototype-maps';
+import type { Cell } from './grid';
+import { topFace } from './iso';
 import {
   ACTION_BAR_RECT,
   ACTION_BUTTON,
@@ -29,6 +33,18 @@ const CAROUSEL_SLOTS = 6;
 const ACTION_BUTTONS = 4;
 /** The six pieces of the HUD, in the order `hudRects` returns them. */
 const HUD_NAMES = ['carousel', 'action bar', 'panel', 'log', 'legend', 'status'];
+
+/** The board the client draws now: the prototype's 10x10, a size the state carries. */
+const BOARD_SIZE = { width: 10, height: 10 };
+
+/** Every cell of that board, in reading order. */
+function everyCell(): Cell[] {
+  const cells: Cell[] = [];
+  for (let y = 0; y < BOARD_SIZE.height; y += 1) {
+    for (let x = 0; x < BOARD_SIZE.width; x += 1) cells.push({ x, y });
+  }
+  return cells;
+}
 
 function right(rect: Rect): number {
   return rect.x + rect.width;
@@ -82,15 +98,71 @@ describe('layout', () => {
     ]);
   });
 
-  it('measures the board as the box every block of it fits in', () => {
-    expect(boardBounds()).toEqual({ x: 320, y: 200, width: 640, height: 360 });
+  it('measures a flat board as the box its top faces fill', () => {
+    // The west corner of the leftmost cell to the east corner of the rightmost, and the top vertex
+    // of the first cell down to the front corner of the last.
+    expect(boardBounds(BOARD_SIZE, () => 0)).toEqual({ x: 320, y: 200, width: 640, height: 320 });
   });
 
-  it('leaves the board clear of the carousel and the action bar', () => {
-    const board = boardBounds();
+  it('measures each map as the box of its own relief', () => {
+    // The street's tallest cells are the buildings of its first row, six and seven levels up; its
+    // lowest ground is the parking lot in front, at zero. The box is the relief, not a level range.
+    const street = terrainOf('street');
 
-    expect(overlaps(board, CAROUSEL_RECT)).toBe(false);
-    expect(overlaps(board, ACTION_BAR_RECT)).toBe(false);
+    expect(boardBounds(BOARD_SIZE, street.levelAt, street.lift)).toEqual({
+      x: 320,
+      y: 104,
+      width: 640,
+      height: 416,
+    });
+  });
+
+  it('holds every top face of every map', () => {
+    for (const map of PROTOTYPE_MAPS) {
+      const terrain = terrainOf(map.id);
+      const board = boardBounds(BOARD_SIZE, terrain.levelAt, terrain.lift);
+
+      for (const cell of everyCell()) {
+        if (terrain.isVoid(cell)) continue;
+
+        for (const corner of topFace(cell, terrain.levelAt(cell), terrain.lift)) {
+          const where = `${map.id} ${cell.x},${cell.y}`;
+          expect(corner.x, where).toBeGreaterThanOrEqual(board.x);
+          expect(corner.x, where).toBeLessThanOrEqual(right(board));
+          expect(corner.y, where).toBeGreaterThanOrEqual(board.y);
+          expect(corner.y, where).toBeLessThanOrEqual(bottom(board));
+        }
+      }
+    }
+  });
+
+  it('leaves every map clear of the carousel and the action bar', () => {
+    for (const map of PROTOTYPE_MAPS) {
+      const terrain = terrainOf(map.id);
+      const board = boardBounds(BOARD_SIZE, terrain.levelAt, terrain.lift);
+
+      expect(overlaps(board, CAROUSEL_RECT), map.id).toBe(false);
+      expect(overlaps(board, ACTION_BAR_RECT), map.id).toBe(false);
+    }
+  });
+
+  it('keeps every map clear of the columns the panels sit in', () => {
+    // The panels float over the board, so the board has to fit the gap between the two columns.
+    for (const map of PROTOTYPE_MAPS) {
+      const terrain = terrainOf(map.id);
+      const board = boardBounds(BOARD_SIZE, terrain.levelAt, terrain.lift);
+
+      expect(right(PANEL_RECT), map.id).toBeLessThanOrEqual(board.x);
+      expect(right(board), map.id).toBeLessThanOrEqual(LOG_RECT.x);
+    }
+  });
+
+  it('grows with the size it is given', () => {
+    const small = boardBounds({ width: 8, height: 8 }, () => 0);
+    const large = boardBounds(BOARD_SIZE, () => 0);
+
+    expect(small.width).toBeLessThan(large.width);
+    expect(small.height).toBeLessThan(large.height);
   });
 
   it('fits four buttons inside the action bar', () => {

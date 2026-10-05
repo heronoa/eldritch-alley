@@ -4,8 +4,8 @@
 // The HUD floats over the board instead of sitting beside it, so the rectangles are placed from the
 // edges of the canvas and the board keeps the middle. Every point inside one of them belongs to the
 // HUD, which is what lets a panel cover a tile without a click reaching the tile.
-import { BOARD_HEIGHT, BOARD_WIDTH, type Pixel } from './grid';
-import { HZ, TILE_H, TILE_W, TOP_Y, cellToScreen } from './iso';
+import { NO_FLOOR, type BoardSize, type Cell, type Pixel } from './grid';
+import { topFace } from './iso';
 
 /** A rectangle on the canvas. */
 export interface Rect {
@@ -22,13 +22,11 @@ export const CANVAS_HEIGHT = 720;
 export const PADDING = 16;
 
 /**
- * Where the HUD is drawn: over every tile (14) and every unit (14.5) of an 8x8 board, so a panel
- * floating over the board is never covered by it. The result and its stamp sit over the panels.
+ * Where the HUD is drawn: over every tile and every unit the board can hold — a 10x10 board puts its
+ * deepest cell at 18 and its unit at 18.5 — so a panel floating over the board is never covered by
+ * it. The result and its stamp sit over the panels.
  */
 export const HUD_DEPTH = 100;
-
-/** The widest level the board can reach, which is what the board's lowest block is drawn for. */
-const HIGHEST_LEVEL = 2;
 
 /** The carousel and the action bar share one column, centred on the canvas. */
 const CENTRED_X = 248;
@@ -100,15 +98,33 @@ export const LOG_TEXT_POINT: Pixel = { x: LOG_RECT.x + PADDING, y: LOG_RECT.y + 
 export const PANEL_TITLE_POINT: Pixel = { x: PANEL_RECT.x + PADDING, y: PANEL_RECT.y + PADDING };
 
 /**
- * The box that holds every top face and every block of the board, drawn at the highest level the
- * board can reach: the west corner of the leftmost cell to the east corner of the rightmost one,
- * and the north corner of the top cell down past the base of the tallest block.
+ * The box that holds every top face of the board: the shape of the map's own relief, not a level
+ * range. The westmost corner, the northmost, and so on, over the cells that have a floor — a gap has
+ * nothing to aim at and is not part of the area the player plays on.
+ *
+ * The blocks' side faces run below their tops, and the prototypes' facades dive under the HUD on
+ * purpose, so what has to fit the space the panels leave is what the player aims at.
  */
-export function boardBounds(): Rect {
-  const north = TOP_Y;
-  const west = cellToScreen({ x: 0, y: BOARD_HEIGHT - 1 }, 0).x - TILE_W / 2;
-  const east = cellToScreen({ x: BOARD_WIDTH - 1, y: 0 }, 0).x + TILE_W / 2;
-  const south = cellToScreen({ x: BOARD_WIDTH - 1, y: BOARD_HEIGHT - 1 }, 0).y + TILE_H / 2 + HIGHEST_LEVEL * HZ;
+export function boardBounds(size: BoardSize, levelAt: (cell: Cell) => number, lift = 0): Rect {
+  let north = Number.POSITIVE_INFINITY;
+  let south = Number.NEGATIVE_INFINITY;
+  let west = Number.POSITIVE_INFINITY;
+  let east = Number.NEGATIVE_INFINITY;
+
+  for (let y = 0; y < size.height; y += 1) {
+    for (let x = 0; x < size.width; x += 1) {
+      const cell = { x, y };
+      const level = levelAt(cell);
+      if (level === NO_FLOOR) continue;
+
+      for (const corner of topFace(cell, level, lift)) {
+        north = Math.min(north, corner.y);
+        south = Math.max(south, corner.y);
+        west = Math.min(west, corner.x);
+        east = Math.max(east, corner.x);
+      }
+    }
+  }
 
   return { x: west, y: north, width: east - west, height: south - north };
 }

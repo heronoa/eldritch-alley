@@ -103,27 +103,6 @@ Planned features are not debt: they live in [backlog.md](./backlog.md).
 - **Trigger:** when the licence files are split out of the visual identity branch (DT-51).
 - **Evidence:** `README-license-section.md` at the root; not linked from `README.md`.
 
-### DT-48 · Wall and reach invariants of the map plan use orthogonal adjacency
-- **Category:** Testing
-- **Risk if untreated:** a map with a level-2 cell diagonal to a level-3 wall passes the test, and a unit can step diagonally into the wall. The engine allows diagonal steps (Chebyshev distance 1).
-- **Effort:** P
-- **Trigger:** before `map-variety-m3-server` is executed.
-- **Evidence:** `.ia_context/plans/map-variety-m3-server.plan.md` (I1, I1b, I3); `backend/engine/src/actions.ts:96` (`distance(...) !== 1`), `backend/engine/src/board.ts:19-21`.
-
-### DT-49 · Map variety starts with DT-44 still open, despite the declared blocker
-- **Category:** Architecture (design)
-- **Risk if untreated:** the three maps and the four milestones are built on attack effects that are partly invisible.
-- **Effort:** P
-- **Trigger:** before `map-variety-m1-logic` starts.
-- **Evidence:** `frontend/src/scenes/effects.ts` (no `setDepth`); DT-44 in this file, marked as required before the M2 approval.
-
-### DT-50 · Map plan measures the panel edge with a 4 px error
-- **Category:** Documentation
-- **Risk if untreated:** the layout reading of the map plan is wrong in the review.
-- **Effort:** P
-- **Trigger:** next edit of `map-variety-m1-logic.plan.md`.
-- **Evidence:** `.ia_context/plans/map-variety-m1-logic.plan.md` (west corner at x 320; the left panel ends at x 316, `layout.ts` `PANEL_RECT`).
-
 ### DT-51 · The visual identity branch mixes three subjects
 - **Category:** Architecture (design)
 - **Risk if untreated:** the MR for the visual identity carries the title-screen plans, the title prototype and the licence files, against `CLAUDE.md` rule 5 (one subject per diff).
@@ -138,6 +117,20 @@ Planned features are not debt: they live in [backlog.md](./backlog.md).
 - **Trigger:** before the next playtest.
 - **Evidence:** `frontend/src/scenes/LobbyScene.ts` (`startMatch` calls only `session.connect()`, which joins or creates a room); `frontend/src/net/session.ts` (`reconnect()` reads the token from `sessionStorage` but only `MatchScene.handleDrop` calls it); `backend/game-server/src/battle-room.ts` (`onJoin` throws `room full` for a second human; `onReconnect` sends the state). **Suspected, not yet reproduced:** `connect()` lands in the old room and fails on `room full`, which is why the lobby shows "Servidor indisponível".
 - **Suggested fix:** the lobby tries `session.reconnect()` first when a token is stored, and falls back to `connect()` only when the token is missing or stale. A stale token is cleared, so it is not tried again.
+- **Reproduced again on 2026-10-04:** in a measurement run, three page loads in a row did not start a match after the first one, while the first did. The lobby never reconnected, which is the cause this item describes.
+### DT-64 · Memory and texture cost of one canvas per cell is not measured
+- **Category:** Performance
+- **Risk if untreated:** a long match may slow down or use more memory than expected, with no signal until the player feels it.
+- **Effort:** M
+- **Trigger:** if a measurement in a long match shows high cost.
+- **Evidence:** `frontend/src/scenes/map/MapView.ts` (one canvas and one texture per cell, plus the animated layers). Suspected, not measured.
+- **Measured on 2026-10-04**, headless Chrome 150 against the production build, one valid match: 134 canvases created for the match, about 7.3 Mpx, so about 29 MB of canvas memory (estimate: 4 bytes per pixel). JS heap 6 MB, unchanged after 20 s idle. Frame rate 13 fps during the match, but Chrome ran without a GPU (`--disable-gpu`), so that number does not describe a real browser. **Still open:** the next three matches in the same run did not start (see DT-60), so growth across matches is not measured yet.
+### DT-66 · The "room full" error is printed by the server test suite
+- **Category:** Testing
+- **Risk if untreated:** expected log noise can hide a real server error.
+- **Effort:** P
+- **Trigger:** the next change to `battle-room.test.ts`.
+- **Evidence:** `backend/game-server/src/battle-room.test.ts:75-80` (the test that expects `room full` prints it in the output).
 
 ---
 
