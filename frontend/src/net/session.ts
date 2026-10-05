@@ -56,6 +56,16 @@ export class Session {
     this.client = new Client(endpoint);
   }
 
+  /**
+   * Puts the session in a room: the one the stored token names when the browser kept one, a new one
+   * otherwise. A reload during a match therefore resumes it instead of opening a second room. A token
+   * the server refuses costs one request and nothing else — `connect()` follows and overwrites it.
+   */
+  async open(): Promise<void> {
+    if (await this.reconnect()) return;
+    await this.connect();
+  }
+
   /** Joins a match. The reconnection token is stored when the browser lets it be. */
   async connect(): Promise<void> {
     // A new match brings a new board: the previous room's state must not be handed to anyone.

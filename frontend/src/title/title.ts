@@ -276,7 +276,8 @@ async function press(): Promise<void> {
 
   const opening = new Session(endpoint);
   try {
-    await opening.connect();
+    // Resumes the match this page was in before a reload, when there is one to resume.
+    await opening.open();
   } catch {
     // A session that never reached a room is worth dropping, so a retry starts from nothing.
     opening.close();

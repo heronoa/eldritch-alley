@@ -68,23 +68,37 @@ const fake = vi.hoisted(() => {
     return room;
   }
 
+  /**
+   * How often each call was made, and whether the fake server refuses it. A refusal is what a token
+   * the room no longer knows looks like from the client: the SDK throws.
+   */
+  const calls = { joinOrCreate: 0, reconnect: 0 };
+  const refuse = { join: false, reconnect: false };
+
   class FakeClient {
     async joinOrCreate(): Promise<FakeRoom> {
+      calls.joinOrCreate += 1;
+      if (refuse.join) throw new Error('the room refused the seat');
       return makeRoom();
     }
 
     async reconnect(): Promise<FakeRoom> {
+      calls.reconnect += 1;
+      if (refuse.reconnect) throw new Error('the server no longer knows the token');
       return makeRoom();
     }
   }
 
-  return { rooms, FakeClient };
+  return { rooms, calls, refuse, FakeClient };
 });
 
 vi.mock('@colyseus/sdk', () => ({ Client: fake.FakeClient }));
 
 const { Session } = await import('./session');
 const { MESSAGE, PROTOCOL_VERSION } = await import('../protocol');
+
+/** The key `session.ts` keeps the reconnection token under, so a test can seed and read it. */
+const TOKEN_KEY = 'ea.reconnect';
 
 describe('Session without a server', () => {
   it('is constructed and refuses to send before connect, without touching the storage', () => {
@@ -105,6 +119,10 @@ describe('Session against a room', () => {
 
   beforeEach(() => {
     fake.rooms.length = 0;
+    fake.calls.joinOrCreate = 0;
+    fake.calls.reconnect = 0;
+    fake.refuse.join = false;
+    fake.refuse.reconnect = false;
     store.clear();
     vi.stubGlobal('sessionStorage', {
       getItem: (key: string) => store.get(key) ?? null,
@@ -209,6 +227,87 @@ describe('Session against a room', () => {
     reconnected.drop();
 
     expect(states).toHaveLength(2);
+  });
+
+  // A reload during a match builds a new Session over the same storage. `open()` is what it calls,
+  // and it has to land on the seat the token names instead of opening a second room.
+  describe('opening a session', () => {
+    it('resumes the match when a token is stored', async () => {
+      const playing = new Session('ws://localhost:2567');
+      await playing.connect();
+      const stored = store.get(TOKEN_KEY);
+      fake.calls.joinOrCreate = 0;
+
+      const afterReload = new Session('ws://localhost:2567');
+      await afterReload.open();
+
+      expect(fake.calls.reconnect).toBe(1);
+      expect(fake.calls.joinOrCreate).toBe(0);
+      expect(store.get(TOKEN_KEY)).not.toBe(stored);
+    });
+
+    it('joins a new room when no token is stored', async () => {
+      const session = new Session('ws://localhost:2567');
+
+      await session.open();
+
+      expect(fake.calls.joinOrCreate).toBe(1);
+      expect(fake.calls.reconnect).toBe(0);
+    });
+
+    it('joins a new room when the stored token is refused', async () => {
+      const playing = new Session('ws://localhost:2567');
+      await playing.connect();
+      const stale = store.get(TOKEN_KEY);
+      fake.calls.joinOrCreate = 0;
+      fake.refuse.reconnect = true;
+
+      const afterReload = new Session('ws://localhost:2567');
+      await afterReload.open();
+
+      expect(fake.calls.reconnect).toBe(1);
+      expect(fake.calls.joinOrCreate).toBe(1);
+      expect(store.get(TOKEN_KEY)).not.toBe(stale);
+    });
+
+    it('throws the join error when the resumption fails and the new room does too', async () => {
+      const playing = new Session('ws://localhost:2567');
+      await playing.connect();
+      fake.refuse.reconnect = true;
+      fake.refuse.join = true;
+
+      const afterReload = new Session('ws://localhost:2567');
+
+      await expect(afterReload.open()).rejects.toThrow('the room refused the seat');
+    });
+
+    it('falls back to a new room when the storage is unavailable', async () => {
+      vi.stubGlobal('sessionStorage', undefined);
+      const session = new Session('ws://localhost:2567');
+
+      await expect(session.open()).resolves.toBeUndefined();
+
+      expect(fake.calls.joinOrCreate).toBe(1);
+    });
+
+    it('keeps the stored token when the reconnection is refused', async () => {
+      const playing = new Session('ws://localhost:2567');
+      await playing.connect();
+      const stored = store.get(TOKEN_KEY);
+      fake.refuse.reconnect = true;
+
+      await expect(playing.reconnect()).resolves.toBe(false);
+
+      expect(store.get(TOKEN_KEY)).toBe(stored);
+    });
+
+    it('refuses to reconnect, without calling the server, when no token is stored', async () => {
+      const session = new Session('ws://localhost:2567');
+
+      await expect(session.reconnect()).resolves.toBe(false);
+
+      expect(fake.calls.reconnect).toBe(0);
+    });
   });
 
   it('leaves the room when it is closed', async () => {
