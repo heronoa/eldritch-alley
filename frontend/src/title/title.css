@@ -1,0 +1,218 @@
+/* Title screen M2 — the page around the canvas: the title block, the stamp, the call to action and
+   the footer. The values are the prototype's (`css/styles.css` in
+   `.ia_context/prototypes/eldritch-alley-title-screen/`); M3 is the milestone that revisits the
+   colours, the type and the composition. */
+
+:root {
+  --ink: #e6dcc4;
+  --muted: #9b937f;
+  --accent: #c8322a;
+  --stamp: #d9473d;
+  --title: 'Special Elite', 'Courier New', monospace;
+  --body: 'IBM Plex Mono', ui-monospace, monospace;
+  --night: #05070f;
+  --game: #0b0e18;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: inherit;
+}
+
+:root {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--night);
+}
+
+body {
+  color: var(--ink);
+  font-family: var(--body);
+}
+
+/* The city is a canvas behind everything, drawn by `city-render.ts` at a low resolution and blown
+   up whole: the browser must not smooth what the drawing already decided. */
+#title-city {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+}
+
+/* The shade that keeps the title readable over the city: a dark pool behind the block and a
+   vignette at the edges. It never takes a click. */
+.shade {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 44% 30% at 50% 44%, rgba(5, 7, 15, 0.82), rgba(5, 7, 15, 0.3) 62%, transparent 82%),
+    radial-gradient(ellipse at center, transparent 55%, rgba(0, 0, 0, 0.6) 100%);
+}
+
+.title {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding-bottom: 6vh;
+  text-align: center;
+  pointer-events: none;
+}
+
+/* The block itself takes the clicks; the space around it stays with the city. */
+.title > div {
+  pointer-events: auto;
+  padding: 0 20px;
+}
+
+/* `display: grid` above would otherwise win over the `hidden` attribute. */
+.title[hidden] {
+  display: none;
+}
+
+.meta {
+  margin: 0 0 14px;
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  color: var(--accent);
+}
+
+h1 {
+  margin: 0;
+  font: 400 clamp(46px, 8vw, 104px) / 1 var(--title);
+  letter-spacing: 0.04em;
+  color: var(--ink);
+  text-shadow:
+    0 2px 0 #05070f,
+    0 0 24px rgba(5, 7, 15, 0.9);
+}
+
+.stamp {
+  display: inline-block;
+  margin-top: 10px;
+  padding: 4px 14px 2px;
+  border: 3px solid var(--stamp);
+  color: var(--stamp);
+  font: 400 clamp(20px, 3.2vw, 34px) / 1 var(--title);
+  letter-spacing: 0.38em;
+  transform: rotate(-4deg);
+  opacity: 0.92;
+}
+
+.tagline {
+  margin: 22px auto 0;
+  max-width: 520px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--muted);
+  text-shadow: 0 1px 0 #05070f;
+}
+
+.cta {
+  margin-top: 30px;
+  padding: 16px 34px;
+  cursor: pointer;
+  font: 600 18px/1 var(--body);
+  letter-spacing: 0.06em;
+  background: #a8322a;
+  color: #f3ead6;
+  border: 2px solid #e07a6f;
+  box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.45);
+  transition: transform 0.08s;
+}
+
+.cta:hover:enabled {
+  background: #b93a31;
+}
+
+.cta:active:enabled {
+  transform: translate(2px, 2px);
+  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.45);
+}
+
+.cta:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 4px;
+}
+
+/* While the session is being opened the button keeps its place and stops answering. */
+.cta:disabled {
+  cursor: default;
+  opacity: 0.72;
+}
+
+.hint {
+  margin-top: 12px;
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.08em;
+}
+
+/* What went wrong, under the call to action. Empty when there is nothing to say. */
+.alert {
+  margin: 14px 0 0;
+  min-height: 1em;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  color: var(--stamp);
+}
+
+/* The stamp the call to action slams down: it falls in over 180 ms and leaves 1.6 s later, which is
+   the clock `stamp.ts` keeps. `title.ts` only turns the class on and off. */
+.granted {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%) rotate(-8deg) scale(1.6);
+  opacity: 0;
+  pointer-events: none;
+  border: 5px solid var(--stamp);
+  color: var(--stamp);
+  padding: 10px 22px 6px;
+  font: 400 clamp(26px, 5vw, 54px) / 1 var(--title);
+  letter-spacing: 0.12em;
+  background: rgba(5, 7, 15, 0.35);
+  transition:
+    transform 0.18s ease-out,
+    opacity 0.18s ease-out;
+  white-space: nowrap;
+}
+
+.granted.on {
+  opacity: 0.95;
+  transform: translate(-50%, -50%) rotate(-8deg) scale(1);
+}
+
+footer {
+  position: fixed;
+  left: 16px;
+  right: 16px;
+  bottom: 12px;
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #6a6f80;
+  pointer-events: none;
+}
+
+/* Where the match is drawn, once the server has confirmed the session. It covers the title and the
+   city, and carries the game's own colour so the bars around a fitted canvas are not another night. */
+#game {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  background: var(--game);
+}
+
+#game[hidden] {
+  display: none;
+}

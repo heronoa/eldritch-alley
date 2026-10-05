@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -31,24 +31,34 @@
         font-display: block;
       }
 
-      /* The game canvas scales to fit, so it needs a viewport-sized parent to scale against.
-         The background matches the game's own, so the bars around a fitted canvas are not white. */
+      /* The title is a page, not a canvas: the night it sits on belongs to the document. */
       html,
       body {
         margin: 0;
         padding: 0;
         height: 100%;
-        background: #0b0e18;
-      }
-
-      #game {
-        width: 100%;
-        height: 100%;
+        background: #05070f;
       }
     </style>
+    <link rel="stylesheet" href="/src/title/title.css" />
   </head>
   <body>
-    <div id="game"></div>
-    <script type="module" src="/src/main.ts"></script>
+    <canvas id="title-city" aria-hidden="true"></canvas>
+    <div class="shade"></div>
+    <main class="title">
+      <div>
+        <p class="meta">SECRETARIA DE ASSUNTOS OCULTOS · OCORRÊNCIA Nº 2026/0001</p>
+        <h1>Eldritch Alley</h1>
+        <span class="stamp">TACTICS</span>
+        <p class="tagline">Agentes licenciados, magia sem licença e uma cidade inteira de becos. Monte o seu esquadrão e responda à ocorrência.</p>
+        <button class="cta" id="cta" type="button">Iniciar partida</button>
+        <p class="hint">ou pressione Enter</p>
+        <p class="alert" id="alert" role="status"></p>
+      </div>
+    </main>
+    <div class="granted" id="granted" aria-live="polite">PARTIDA AUTORIZADA</div>
+    <footer><span>v0.1</span><span>Belém · madrugada</span></footer>
+    <div id="game" hidden></div>
+    <script type="module" src="/src/title/title.ts"></script>
   </body>
 </html>

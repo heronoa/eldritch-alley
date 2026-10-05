@@ -32,7 +32,7 @@ Taken by the plan (not in the answers, flagged for the owner):
 
 | # | Plan | Status | PR |
 |---|------|--------|----|
-| 1 | [title-screen-m1-logic.plan.md](./title-screen-m1-logic.plan.md): city data, walkers, ambient schedule, stamp timing, connection state machine (no DOM) | [ ] pendente | — |
+| 1 | [title-screen-m1-logic.plan.md](./title-screen-m1-logic.plan.md): city data, walkers, ambient schedule, stamp timing, connection state machine (no DOM) | [x] concluído | — |
 | 2 | [title-screen-m2-integration.plan.md](./title-screen-m2-integration.plan.md): HTML title, canvas city, walkers and effects, connection, lazy Phaser start, neutral sheet | [ ] pendente | — |
 | 3 | [title-screen-m3-design.plan.md](./title-screen-m3-design.plan.md): typography, stamp, CTA, responsive composition, reduced motion, contrast matrix | [ ] pendente | — |
 
