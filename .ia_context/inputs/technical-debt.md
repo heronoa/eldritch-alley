@@ -10,13 +10,6 @@ Planned features are not debt: they live in [backlog.md](./backlog.md).
 
 ## Open
 
-### DT-12 · Frontend bundle size warning
-- **Category:** Performance
-- **Risk if untreated:** the Phaser bundle exceeds Vite's chunk-size limit, so the first load is heavier than it needs to be.
-- **Effort:** P
-- **Trigger:** building the M2 client.
-- **Evidence:** `npm run build` output: "Some chunks are larger than 500 kB".
-
 ### DT-19 · Low and moderate advisories left after the Colyseus 0.18 migration
 - **Category:** Security
 - **Risk if untreated:** `npm audit` still reports 19 advisories: 14 low and 5 moderate, none high and none critical. The low ones sit on the `@colyseus/*` packages and `colyseus` itself; the moderate one is `grant`, pulled in by `@colyseus/auth`. They have no fix inside 0.18.9.
@@ -81,13 +74,6 @@ Planned features are not debt: they live in [backlog.md](./backlog.md).
 - **Effort:** M
 - **Trigger:** together with the fix of DT-44.
 - **Evidence:** `frontend/src/view/iso.test.ts` (depth functions only); no test imports `MatchScene` or `effects.ts`.
-
-### DT-40 · Client bundle is 1.69 MB, not compared with develop
-- **Category:** Performance
-- **Risk if untreated:** a heavier first load on the Cloudflare deploy than necessary; unknown whether the growth comes from Phaser or from the new code.
-- **Effort:** P
-- **Trigger:** before the M2-b deploy.
-- **Evidence:** `npm run build -w @eldritch-alley/frontend` output, `dist/assets/index-*.js` 1,686 kB (gzip 402 kB). Not compared with a build of `develop`.
 
 ### DT-41 · The match scene has no automated test
 - **Category:** Testing

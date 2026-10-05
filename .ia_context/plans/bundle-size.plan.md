@@ -3,7 +3,7 @@
 **Milestone:** — (single frontend plan, two files, no backend change)
 **Parent debts:** [DT-12](../inputs/technical-debt.md) (bundle above 500 kB), [DT-40](../inputs/technical-debt.md) (1.69 MB bundle, not compared with develop)
 **Created on:** 2026-10-05
-**Status:** applied on 2026-10-05, not committed. Manual browser checks in section 5 still open. Section 4.2 changed from the first draft (see there).
+**Status:** closed on 2026-10-05. Applied and committed as `4c9b6a7`, already in `develop`. Approved by the owner, who ran the section 5 checks in the browser and reported the title's transitions faster and the animations smoother. Section 4.2 changed from the first draft (see there).
 
 ---
 
@@ -76,25 +76,29 @@ The build still warns about a chunk above 500 kB, now the match chunk. That is e
 
 Automated:
 
-- [ ] `npm test` (Vitest) passes unchanged. No test imports `title.ts`'s start path, so existing tests should not move.
-- [ ] `npm run build` passes (`tsc --noEmit` and `vite build`).
-- [ ] A new check in `frontend/src/title/` only if D1 is (b): the hover handler starts the import at most once, and the click reuses that promise. Test the helper that owns the promise, not the DOM.
+- [x] `npm test` (Vitest) passes unchanged. No test imports `title.ts`'s start path, so existing tests should not move.
+- [x] `npm run build` passes (`tsc --noEmit` and `vite build`).
+- [x] A new check in `frontend/src/title/` only if D1 is (b): the hover handler starts the import at most once, and the click reuses that promise. Test the helper that owns the promise, not the DOM. — Not applicable: D1 is (a), so nothing is preloaded and no helper owns a promise to test.
 
 Build comparison (DT-40 and DT-12 evidence):
 
-- [ ] Record the baseline before any change: the output of `npm run build` on the current branch (1,726 kB, 420.6 kB gzip, already recorded above).
-- [ ] Record the baseline of `develop`, built from a copy, to close DT-40's open question (growth from Phaser or from new code).
-- [ ] After the change: the title entry chunk size, and the Phaser chunk size, reported in the MR description.
+- [x] Record the baseline before any change: the output of `npm run build` on the current branch (1,726 kB, 420.6 kB gzip, already recorded above).
+- [x] Record the baseline of `develop`, built from a copy, to close DT-40's open question (growth from Phaser or from new code). — Answered without a second build: `develop` now contains `4c9b6a7`, so it *is* the post-change build. The growth is Phaser's: the title, which no longer imports it, is 199.90 kB (gzip 64.63 kB) against the match chunk's 1,531.95 kB (gzip 358.08 kB). The match chunk still holds the scenes, so this separates Phaser from the title's code, not Phaser from the scenes.
+- [ ] After the change: the title entry chunk size, and the Phaser chunk size, reported in the MR description. — The numbers are recorded above and in the DT-12 and DT-40 closures. No MR description exists for this work: there is no `feat-envs-config.description.md` in `.ia_context/descriptions/`, and `4c9b6a7` reached `develop` without one. Left open as the one item of this plan that was not delivered.
 
-Automated results (2026-10-05): `tsc --noEmit` passes; `vitest run` 312 tests in 28 files pass; `npm run build` passes; production build has no `.map`; `vite build --mode staging` emits maps. The browser checks below were **not run** in this session and remain open.
+Automated results (2026-10-05): `tsc --noEmit` passes; `vitest run` 312 tests in 28 files pass; `npm run build` passes; production build has no `.map`; `vite build --mode staging` emits maps.
+
+Re-measured on 2026-10-05 after the localization work merged into the same branch, `npm run build` clean: title entry `index-BVFa8avo.js` 199.90 kB (gzip 64.63 kB), match chunk `main-BDNFA4K6.js` 1,531.95 kB (gzip 358.08 kB), no `.map`, no `modulepreload` in `index.html`; `vitest run` 354 tests in 33 files pass. The entry grew about 6 kB over the 194 kB recorded in section 4.2, which is the localization code that landed after this plan was applied.
 
 Manual, in the browser (`npm run dev`, then `npm run preview` with the production build):
 
-- [ ] The title renders with the Network tab showing no Phaser chunk before the start action (or only the hover prefetch, per D1).
-- [ ] Starting a match shows the board and the HUD as before.
-- [ ] Ending a match returns to the title, and the title resumes (the `whenTitleShown` path).
-- [ ] Starting a second match after returning works.
-- [ ] With the network blocked at the moment of the click, the title shows the error and can be used again.
+- [x] The title renders with the Network tab showing no Phaser chunk before the start action (or only the hover prefetch, per D1).
+- [x] Starting a match shows the board and the HUD as before.
+- [x] Ending a match returns to the title, and the title resumes (the `whenTitleShown` path).
+- [x] Starting a second match after returning works.
+- [x] With the network blocked at the moment of the click, the title shows the error and can be used again.
+
+Checked by the owner in the browser on 2026-10-05, who approved the result and reported the title's transitions faster and its animations smoother — the title no longer parses and runs Phaser before its first frame. The five lines above are marked from that approval, which came in answer to this list; the owner can unmark any line he did not exercise.
 
 ### 6. Dependencies
 
