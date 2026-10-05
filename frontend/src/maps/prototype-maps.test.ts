@@ -5,6 +5,7 @@
 // against each other by checking both against the generator's numbers — a drift on either side fails
 // that side's own suite.
 import { describe, expect, it } from 'vitest';
+import { t } from '../i18n';
 import { PROTOTYPE_MAPS, PROTOTYPE_TILE_LETTERS, type PrototypeMapId } from './prototype-maps';
 // The server's copy of the same data. Comparing the two directly, not only their constants, is what catches
 // an edit that changes one copy and leaves the other alone (DT-62).
@@ -64,6 +65,13 @@ const DEMO_UNITS: Readonly<Record<PrototypeMapId, readonly DemoUnit[]>> = {
   ],
 };
 
+/** The name the prototype prints above each map. The data carries the key, not the text. */
+const PROTOTYPE_TITLES: Readonly<Record<PrototypeMapId, string>> = {
+  street: 'Rua do Comércio e beco',
+  park: 'Praça Municipal nº 3',
+  roof: 'Edifício Central, cobertura',
+};
+
 /** How many times each value appears, which is how a count is compared without its order mattering. */
 function counted(values: readonly string[]): Record<string, number> {
   const counts: Record<string, number> = {};
@@ -121,8 +129,7 @@ describe.each(PROTOTYPE_MAPS)('the $id map', (map) => {
   });
 
   it('names the map, its sky and its lift as the prototype does', () => {
-    expect(typeof map.title).toBe('string');
-    expect(map.title.length).toBeGreaterThan(0);
+    expect(t(map.title)).toBe(PROTOTYPE_TITLES[map.id]);
     expect(map.sky).toBe(map.id);
     expect(map.lift).toBeGreaterThanOrEqual(0);
   });
@@ -131,7 +138,13 @@ describe.each(PROTOTYPE_MAPS)('the $id map', (map) => {
 describe('the map set', () => {
   it('ships the three prototype maps, in the order the game walks them', () => {
     expect(PROTOTYPE_MAPS.map((map) => map.id)).toEqual(['street', 'park', 'roof']);
+    // The map carries a message key, and resolving it gives the name the prototype prints.
     expect(PROTOTYPE_MAPS.map((map) => map.title)).toEqual([
+      'map.street.title',
+      'map.park.title',
+      'map.roof.title',
+    ]);
+    expect(PROTOTYPE_MAPS.map((map) => t(map.title))).toEqual([
       'Rua do Comércio e beco',
       'Praça Municipal nº 3',
       'Edifício Central, cobertura',

@@ -9,7 +9,20 @@ import { gameServerEndpoint } from '../config';
 import { Session } from '../net/session';
 import { createCity, type CityView } from './city-render';
 import { canTransition, next, type Flow } from './connect-flow';
-import { CTA, CTA_BUSY, UNAVAILABLE } from './copy';
+import {
+  CTA,
+  CTA_BUSY,
+  DOCUMENT,
+  FOOTER_PLACE,
+  FOOTER_VERSION,
+  GRANTED,
+  HINT,
+  META,
+  STAMP_TAG,
+  TAGLINE,
+  TITLE,
+  UNAVAILABLE,
+} from './copy';
 import { motionPolicy, type MotionPolicy } from './motion';
 import { loadSheets } from './sheet';
 import { stampAt } from './stamp';
@@ -25,9 +38,36 @@ function byId<T extends HTMLElement>(id: string): T {
 }
 
 const canvas = byId<HTMLCanvasElement>('title-city');
+const meta = byId<HTMLParagraphElement>('meta');
+const heading = byId<HTMLHeadingElement>('name');
+const stampTag = byId<HTMLSpanElement>('stamp');
+const tagline = byId<HTMLParagraphElement>('tagline');
 const cta = byId<HTMLButtonElement>('cta');
+const hint = byId<HTMLParagraphElement>('hint');
 const alertLine = byId<HTMLParagraphElement>('alert');
 const granted = byId<HTMLDivElement>('granted');
+const footerVersion = byId<HTMLSpanElement>('footer-version');
+const footerPlace = byId<HTMLSpanElement>('footer-place');
+
+/**
+ * Writes every line of the title from the catalog of the client's language. The markup carries the
+ * same text, which is what a page whose script never runs shows; from here on the catalog is the one
+ * source, and this is the function M3 calls again when the player switches language.
+ */
+function fillTitle(): void {
+  document.title = DOCUMENT;
+  meta.textContent = META;
+  heading.textContent = TITLE;
+  stampTag.textContent = STAMP_TAG;
+  tagline.textContent = TAGLINE;
+  cta.textContent = CTA;
+  hint.textContent = HINT;
+  granted.textContent = GRANTED;
+  footerVersion.textContent = FOOTER_VERSION;
+  footerPlace.textContent = FOOTER_PLACE;
+}
+
+fillTitle();
 
 /** The server to join. Resolved here, at load: a build without a valid endpoint never shows the title. */
 const endpoint = gameServerEndpoint(import.meta.env);

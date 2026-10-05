@@ -14,6 +14,7 @@ import { highlightedCells } from '../game/highlight';
 import { describeEvent, describeRejection, type UnitNames } from '../game/log';
 import { presentationOf, type Cue, type Snapshot } from '../game/presentation';
 import { resolveClick } from '../game/selection';
+import { t } from '../i18n';
 import { terrainOf, type Terrain } from '../maps/terrain';
 import { Session } from '../net/session';
 import {
@@ -253,7 +254,7 @@ export class MatchScene extends Phaser.Scene {
 
   private handleState(message: StateMessage): void {
     if (message.version !== PROTOCOL_VERSION) {
-      this.statusText = 'Versão incompatível';
+      this.statusText = t('match.versionMismatch');
       this.pushHud();
       return;
     }
@@ -397,7 +398,7 @@ export class MatchScene extends Phaser.Scene {
     if (this.finished) return;
 
     this.reconnecting = true;
-    this.statusText = 'Reconectando...';
+    this.statusText = t('match.reconnecting');
     this.pushHud();
 
     // The server sends the state again once the seat is back, which clears the notice.
@@ -405,7 +406,7 @@ export class MatchScene extends Phaser.Scene {
 
     this.reconnecting = false;
     this.finish();
-    this.statusText = 'Partida perdida';
+    this.statusText = t('match.lost');
     this.pushHud();
   }
 
@@ -433,7 +434,7 @@ export class MatchScene extends Phaser.Scene {
     this.mode = 'inspect';
     this.selectedId = null;
     this.statusText = '';
-    this.resultText = message.winner === HUMAN_TEAM ? 'Vitória' : 'Derrota';
+    this.resultText = t(message.winner === HUMAN_TEAM ? 'match.victory' : 'match.defeat');
     this.pushHud();
   }
 

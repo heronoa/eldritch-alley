@@ -1,37 +1,44 @@
-// Title screen M1 — every line the title shows, in one place, in the Portuguese the prototype wrote.
-// The markup and the scene read these instead of repeating them, so a change to the wording is a
-// change to one file.
+// Title screen M1 and M2 — every line the title shows, taken from the catalog of the language the
+// client is in.
+//
+// The markup and the screen read these instead of repeating them, so a change to the wording is a
+// change to one entry of `src/i18n/catalog.pt-BR.ts`. They are resolved once, when this module
+// loads: M3 turns them into a function the switcher calls again, because a constant cannot follow a
+// language that changes after the page is up.
+import { t } from '../i18n';
+
+/** The document title, which is the tab and the bookmark. */
+export const DOCUMENT = t('title.document');
 
 /** The line above the name: which office filed the occurrence, and its number. */
-export const META = 'SECRETARIA DE ASSUNTOS OCULTOS · OCORRÊNCIA Nº 2026/0001';
+export const META = t('title.meta');
 
 /** The name of the game. */
-export const TITLE = 'Eldritch Alley';
+export const TITLE = t('title.name');
 
 /** The tag stamped over the name. */
-export const STAMP_TAG = 'TACTICS';
+export const STAMP_TAG = t('title.stampTag');
 
 /** The pitch under the name. */
-export const TAGLINE =
-  'Agentes licenciados, magia sem licença e uma cidade inteira de becos. Monte o seu esquadrão e responda à ocorrência.';
+export const TAGLINE = t('title.tagline');
 
 /** The call to action. Starts a match against the bot. */
-export const CTA = 'Iniciar partida';
+export const CTA = t('title.cta');
 
 /** What the call to action says while the session is being opened. */
-export const CTA_BUSY = 'Conectando…';
+export const CTA_BUSY = t('title.ctaBusy');
 
 /** The keyboard shortcut, under the call to action. */
-export const HINT = 'ou pressione Enter';
+export const HINT = t('title.hint');
 
 /** The word the stamp shows once the server has confirmed the session. */
-export const GRANTED = 'PARTIDA AUTORIZADA';
+export const GRANTED = t('title.granted');
 
 /** What the screen says when the server does not answer. */
-export const UNAVAILABLE = 'Servidor indisponível';
+export const UNAVAILABLE = t('title.unavailable');
 
 /** The version in the footer. The prototype's word for itself does not ship. */
-export const FOOTER_VERSION = 'v0.1';
+export const FOOTER_VERSION = t('title.footerVersion');
 
 /** Where the story is set. */
-export const FOOTER_PLACE = 'Belém · madrugada';
+export const FOOTER_PLACE = t('title.footerPlace');

@@ -37,7 +37,11 @@ export interface PropSpec {
 /** One of the prototype's maps: its relief, its props and where its two squads start. */
 export interface PrototypeMap {
   readonly id: PrototypeMapId;
-  /** The name the prototype prints above the map. Nothing draws it yet. */
+  /**
+   * The message key of the name the prototype prints above the map. Nothing draws it yet, and the
+   * server never will: the text belongs to the client's catalog, and the client resolves the key.
+   * The frontend's copy of this file types it as the key itself; here it stays a string.
+   */
   readonly title: string;
   /** Ten rows of ten tile letters, as `data.js` writes them. */
   readonly tiles: readonly string[];
@@ -63,7 +67,7 @@ const VOID = -10;
 
 const STREET: PrototypeMap = {
   id: 'street',
-  title: 'Rua do Comércio e beco',
+  title: 'map.street.title',
   tiles: [
       'BBBBBBBBBB',
       'BssssssssB',
@@ -126,7 +130,7 @@ const STREET: PrototypeMap = {
 
 const PARK: PrototypeMap = {
   id: 'park',
-  title: 'Praça Municipal nº 3',
+  title: 'map.park.title',
   tiles: [
       'BBBBBBBBBB',
       'Bgggpggggg',
@@ -182,7 +186,7 @@ const PARK: PrototypeMap = {
 
 const ROOF: PrototypeMap = {
   id: 'roof',
-  title: 'Edifício Central, cobertura',
+  title: 'map.roof.title',
   tiles: [
       'RRRrrrvBBB',
       'RRRrrrvBBB',

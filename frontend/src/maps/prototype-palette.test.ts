@@ -5,6 +5,7 @@
 // literal keeps the last declaration: the values below are the second ones, which are the ones the
 // prototype draws with.
 import { describe, expect, it } from 'vitest';
+import { t } from '../i18n';
 import { luminance } from '../view/contrast';
 import { PROTOTYPE_MAPS } from './prototype-maps';
 import { MAP_COLORS, TILE_PALETTE, shadeHex } from './prototype-palette';
@@ -51,9 +52,18 @@ function hex(color: string): number {
   return Number.parseInt(color.slice(1), 16);
 }
 
+/** The palette as the player sees it: the name a tile shows, in the language of the client. */
+function named(): Record<string, { name: string; top: string; left: string; right: string }> {
+  return Object.fromEntries(
+    Object.entries(TILE_PALETTE).map(([letter, tile]) => [letter, { ...tile, name: t(tile.name) }]),
+  );
+}
+
 describe('TILE_PALETTE', () => {
   it('keeps every tile of the prototype, letter for letter', () => {
-    expect(TILE_PALETTE).toEqual(PROTOTYPE_TILE);
+    // The names in the data are keys, so resolving them is what makes this a comparison with the
+    // prototype's own table rather than with the client's vocabulary.
+    expect(named()).toEqual(PROTOTYPE_TILE);
   });
 
   it('has an entry for every letter the three maps use', () => {

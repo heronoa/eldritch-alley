@@ -17,6 +17,8 @@
 // rooftop's plank is drawn in the neighbour-roof tone. That is the prototype's own output, and this
 // data is the prototype's.
 
+import type { MessageKey } from '../i18n';
+
 /** Which of the three maps this is. */
 export type PrototypeMapId = 'street' | 'park' | 'roof';
 
@@ -37,8 +39,8 @@ export interface PropSpec {
 /** One of the prototype's maps: its relief, its props and where its two squads start. */
 export interface PrototypeMap {
   readonly id: PrototypeMapId;
-  /** The name the prototype prints above the map. Nothing draws it yet. */
-  readonly title: string;
+  /** The message key of the name the prototype prints above the map. Nothing draws it yet. */
+  readonly title: MessageKey;
   /** Ten rows of ten tile letters, as `data.js` writes them. */
   readonly tiles: readonly string[];
   /** Ten rows of ten heights: the prototype's own, 0 to 11, with `void` where there is a gap. */
@@ -63,7 +65,7 @@ const VOID = -10;
 
 const STREET: PrototypeMap = {
   id: 'street',
-  title: 'Rua do Comércio e beco',
+  title: 'map.street.title',
   tiles: [
       'BBBBBBBBBB',
       'BssssssssB',
@@ -126,7 +128,7 @@ const STREET: PrototypeMap = {
 
 const PARK: PrototypeMap = {
   id: 'park',
-  title: 'Praça Municipal nº 3',
+  title: 'map.park.title',
   tiles: [
       'BBBBBBBBBB',
       'Bgggpggggg',
@@ -182,7 +184,7 @@ const PARK: PrototypeMap = {
 
 const ROOF: PrototypeMap = {
   id: 'roof',
-  title: 'Edifício Central, cobertura',
+  title: 'map.roof.title',
   tiles: [
       'RRRrrrvBBB',
       'RRRrrrvBBB',

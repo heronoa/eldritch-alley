@@ -7,6 +7,16 @@
 import { describe, expect, it } from 'vitest';
 import { PROTOTYPE_MAPS, PROTOTYPE_TILE_LETTERS, type PrototypeMapId } from './prototype-maps';
 
+/**
+ * The key each map's name is message-keyed by. The server carries the key and never the text: the
+ * name is the client's to translate, and the frontend's copy of this file holds the same keys.
+ */
+const PROTOTYPE_TITLE_KEYS: Readonly<Record<PrototypeMapId, string>> = {
+  street: 'map.street.title',
+  park: 'map.park.title',
+  roof: 'map.roof.title',
+};
+
 /** What the generator recorded for one map. */
 interface Checksum {
   /** The sum of the heights, the void cells left out. */
@@ -118,8 +128,7 @@ describe.each(PROTOTYPE_MAPS)('the $id map', (map) => {
   });
 
   it('names the map, its sky and its lift as the prototype does', () => {
-    expect(typeof map.title).toBe('string');
-    expect(map.title.length).toBeGreaterThan(0);
+    expect(map.title).toBe(PROTOTYPE_TITLE_KEYS[map.id]);
     expect(map.sky).toBe(map.id);
     expect(map.lift).toBeGreaterThanOrEqual(0);
   });
@@ -129,9 +138,9 @@ describe('the map set', () => {
   it('ships the three prototype maps, in the order the game walks them', () => {
     expect(PROTOTYPE_MAPS.map((map) => map.id)).toEqual(['street', 'park', 'roof']);
     expect(PROTOTYPE_MAPS.map((map) => map.title)).toEqual([
-      'Rua do Comércio e beco',
-      'Praça Municipal nº 3',
-      'Edifício Central, cobertura',
+      'map.street.title',
+      'map.park.title',
+      'map.roof.title',
     ]);
     // The rooftop is the only map the prototype lifts, to make room for the street below it.
     expect(PROTOTYPE_MAPS.map((map) => map.lift)).toEqual([0, 0, 40]);

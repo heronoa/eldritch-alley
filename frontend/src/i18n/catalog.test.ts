@@ -1,6 +1,13 @@
-// Localization M1 — the catalogs. pt-BR is the reference: its keys are the type, and a locale that
-// has not translated a key gets the Portuguese one. en-US is empty until M3 writes the title.
+// Localization M1 and M2 — the catalogs. pt-BR is the reference: its keys are the type, and a locale
+// that has not translated a key gets the Portuguese one. en-US is empty until M3 writes the title.
+//
+// M2 moved the strings of the game out of the code and in here. The last block is the record of that
+// move: it holds the text `develop` had, so a silent change to the Portuguese fails a test.
 import { describe, expect, it } from 'vitest';
+import type { ActionButton } from '../game/actions';
+import { describeRejection } from '../game/log';
+import type { PanelKey } from '../game/panel';
+import type { RejectReason } from '../protocol';
 import { ptBR, type MessageKey } from './catalog.pt-BR';
 import { enUS } from './catalog.en-US';
 import { message, missingKeys } from './messages';
@@ -71,5 +78,104 @@ describe('message', () => {
     for (const key of missingKeys('en-US')) {
       expect(message('en-US', key), key).toBe(ptBR[key]);
     }
+  });
+});
+
+/**
+ * What M2 moved, held against the text `develop` had. The log, the panel, the copy of the title and
+ * the map names also assert their own output where they are read; this block is the record of the
+ * extraction itself, area by area.
+ */
+describe('the pt-BR the game shows', () => {
+  it('carries the sentences of the battle log, with their placeholders', () => {
+    expect(ptBR['log.event.moved']).toBe('{actor} moveu de {from} para {to}');
+    expect(ptBR['log.event.attacked']).toBe('{actor} acertou {target} por {damage}');
+    expect(ptBR['log.event.missed']).toBe('{actor} errou');
+    expect(ptBR['log.event.reloaded']).toBe('{actor} recarregou');
+    expect(ptBR['log.event.defeated']).toBe('{target} caiu');
+    expect(ptBR['log.event.corpseRemoved']).toBe('Corpo de {target} removido');
+    expect(ptBR['log.event.turnEnded']).toBe('Vez de {next}');
+    expect(ptBR['log.event.unknown']).toBe('evento desconhecido');
+  });
+
+  it('answers every refusal code out of the catalog, keyed by the code itself', () => {
+    // A code with no key of its own is a compile error: the key is built from the code.
+    const reasons: readonly RejectReason[] = [
+      'not-your-turn',
+      'out-of-bounds',
+      'cell-occupied',
+      'height-step-too-high',
+      'not-enough-movement',
+      'already-acted',
+      'target-out-of-range',
+      'target-invalid',
+      'no-magazine',
+      'magazine-full',
+      'not-adjacent',
+      'game-over',
+      'malformed-action',
+    ];
+
+    for (const reason of reasons) {
+      expect(describeRejection(reason), reason).toBe(message('pt-BR', `log.rejection.${reason}`));
+    }
+  });
+
+  it('carries the unit panel labels, keyed by the row they belong to', () => {
+    const labels: Record<PanelKey, string> = {
+      hp: 'HP',
+      movement: 'Movimento',
+      action: 'Ação',
+      ammo: 'Munição',
+      reaction: 'Reação',
+      mana: 'Mana',
+    };
+
+    for (const key of Object.keys(labels) as PanelKey[]) {
+      expect(message('pt-BR', `panel.label.${key}`), key).toBe(labels[key]);
+    }
+
+    expect(ptBR['panel.value.spent']).toBe('Gasta');
+    expect(ptBR['panel.value.available']).toBe('Disponível');
+  });
+
+  it('carries the four action buttons, keyed by the action each sends', () => {
+    const labels: Record<ActionButton['id'], string> = {
+      move: 'Mover',
+      attack: 'Atacar',
+      reload: 'Recarregar',
+      endTurn: 'Terminar turno',
+    };
+
+    for (const id of Object.keys(labels) as ActionButton['id'][]) {
+      expect(message('pt-BR', `action.${id}`), id).toBe(labels[id]);
+    }
+  });
+
+  it('carries the HUD lines', () => {
+    expect(ptBR['hud.legend']).toBe(
+      'Azul-tinta: você · Vermelho: bot · Papel: selecionado\nRealce azul: movimento · Realce vermelho: ataque',
+    );
+    expect(ptBR['hud.panel.unit']).toBe('Unidade');
+    expect(ptBR['hud.panel.log']).toBe('Registro');
+    expect(ptBR['hud.back']).toBe('Voltar ao início');
+  });
+
+  it('carries the match status lines', () => {
+    expect(ptBR['match.versionMismatch']).toBe('Versão incompatível');
+    expect(ptBR['match.victory']).toBe('Vitória');
+    expect(ptBR['match.defeat']).toBe('Derrota');
+    expect(ptBR['match.reconnecting']).toBe('Reconectando...');
+    expect(ptBR['match.lost']).toBe('Partida perdida');
+  });
+
+  it('carries the name each of the three maps answers to', () => {
+    expect(ptBR['map.street.title']).toBe('Rua do Comércio e beco');
+    expect(ptBR['map.park.title']).toBe('Praça Municipal nº 3');
+    expect(ptBR['map.roof.title']).toBe('Edifício Central, cobertura');
+  });
+
+  it('carries the document title the markup opens with', () => {
+    expect(ptBR['title.document']).toBe('Eldritch Alley: Tactics');
   });
 });
