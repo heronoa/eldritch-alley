@@ -29,7 +29,8 @@ import {
 } from '../protocol';
 import { NO_FLOOR, type Cell, type Pixel } from '../view/grid';
 import { MIN_ZOOM, zoomAbout, type CameraView } from '../view/camera';
-import { cellAt, cellToScreen, depthOfCell, topFace } from '../view/iso';
+import { LAYER } from '../view/depth';
+import { cellAt, cellToScreen, topFace } from '../view/iso';
 import {
   LOG_LINES,
   buttonIndexAt,
@@ -54,8 +55,6 @@ import { BODY_HEIGHT, UnitSprite, type Placement } from './units';
 /** The side the person at the keyboard plays. */
 const HUMAN_TEAM: Team = 'A';
 
-/** How far over its own cell a highlight is drawn, so the tile under it stays visible. */
-const HIGHLIGHT_DEPTH_STEP = 0.1;
 
 /** How far one wheel notch, and one key press, zoom the map. */
 const WHEEL_ZOOM_STEP = 1.15;
@@ -498,7 +497,7 @@ export class MatchScene extends Phaser.Scene {
       // A gap has no top face to wash: nothing is aimed at it and no rule ever offers it.
       if (level === NO_FLOOR) continue;
 
-      const graphic = this.add.graphics().setDepth(depthOfCell(cell) + HIGHLIGHT_DEPTH_STEP);
+      const graphic = this.add.graphics().setDepth(LAYER.highlight(cell));
       const face = topFace(cell, level, this.lift);
 
       graphic.fillStyle(color, alpha);

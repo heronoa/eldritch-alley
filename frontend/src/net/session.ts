@@ -37,6 +37,35 @@ function writeToken(token: string): void {
   }
 }
 
+function removeToken(): void {
+  try {
+    globalThis.sessionStorage?.removeItem(RECONNECT_KEY);
+  } catch {
+    // Nothing to do: without storage there is no token to remove.
+  }
+}
+
+/**
+ * The server's own refusals of a resume, by the numeric code and the words it sends with it. The SDK keeps
+ * only the code, and Cloudflare Tunnel reuses 522 and 524 for its timeouts, with other words. So a code alone
+ * would also drop a seat that is still valid after a tunnel timeout; the words tell the two apart.
+ */
+const REFUSALS: readonly { code: number; words: RegExp }[] = [
+  // The room is gone: `room "…" has been disposed.` (MATCHMAKE_INVALID_ROOM_ID).
+  { code: 522, words: /has been disposed/ },
+  // The seat is no longer held: `reconnection token invalid or expired.` (MATCHMAKE_EXPIRED), and the room's
+  // own `failed to reconnect` and `already consumed`, which carry the same code.
+  { code: 524, words: /reconnection token invalid or expired|failed to reconnect|already consumed/ },
+];
+
+/** Whether an error is the server refusing a resume. A network failure has no numeric code, so it is not. */
+function isRefusal(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const { code, message } = error as { code?: unknown; message?: unknown };
+  if (typeof code !== 'number' || typeof message !== 'string') return false;
+  return REFUSALS.some((refusal) => refusal.code === code && refusal.words.test(message));
+}
+
 /** Wires one subscription onto a room and answers how to take it off again. */
 type Attach = (room: Room) => () => void;
 
@@ -54,6 +83,16 @@ export class Session {
 
   constructor(endpoint: string) {
     this.client = new Client(endpoint);
+  }
+
+  /**
+   * Puts the session in a room: the one the stored token names when the browser kept one, a new one
+   * otherwise. A reload during a match therefore resumes it instead of opening a second room. A token
+   * the server refuses costs one request and nothing else — `connect()` follows and overwrites it.
+   */
+  async open(): Promise<void> {
+    if (await this.reconnect()) return;
+    await this.connect();
   }
 
   /** Joins a match. The reconnection token is stored when the browser lets it be. */
@@ -112,7 +151,11 @@ export class Session {
     });
   }
 
-  /** Takes a stored token back to its match. Answers false when there is no token left to use. */
+  /**
+   * Takes a stored token back to its match. Answers false when there is no token left to use. A token the
+   * server refuses is removed; any other failure, such as a dropped connection, keeps it, because the seat
+   * may still be held.
+   */
   async reconnect(): Promise<boolean> {
     const token = readToken();
     if (token === null) return false;
@@ -120,7 +163,8 @@ export class Session {
     try {
       this.attachRoom(await this.client.reconnect(token));
       return true;
-    } catch {
+    } catch (error) {
+      if (isRefusal(error)) removeToken();
       return false;
     }
   }

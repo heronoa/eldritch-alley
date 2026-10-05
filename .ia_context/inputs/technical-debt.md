@@ -10,13 +10,6 @@ Planned features are not debt: they live in [backlog.md](./backlog.md).
 
 ## Open
 
-### DT-12 · Frontend bundle size warning
-- **Category:** Performance
-- **Risk if untreated:** the Phaser bundle exceeds Vite's chunk-size limit, so the first load is heavier than it needs to be.
-- **Effort:** P
-- **Trigger:** building the M2 client.
-- **Evidence:** `npm run build` output: "Some chunks are larger than 500 kB".
-
 ### DT-19 · Low and moderate advisories left after the Colyseus 0.18 migration
 - **Category:** Security
 - **Risk if untreated:** `npm audit` still reports 19 advisories: 14 low and 5 moderate, none high and none critical. The low ones sit on the `@colyseus/*` packages and `colyseus` itself; the moderate one is `grant`, pulled in by `@colyseus/auth`. They have no fix inside 0.18.9.
@@ -59,14 +52,6 @@ Planned features are not debt: they live in [backlog.md](./backlog.md).
 - **Trigger:** together with the next edit of the HUD plans.
 - **Evidence:** `.ia_context/plans/m2a-hud-view.plan.md` section 4.1 versus `frontend/src/view/layout.ts:84` (`LOG_LINES = 12`) and the six rows of `frontend/src/game/panel.ts`.
 
-### DT-31 · The engine property test sits on the default 5 s timeout and fails on a loaded machine
-- **Status:** Implemented: the property test has an explicit 30 000 ms timeout. Engine suite passes (122/122). Not yet run on a loaded machine.
-- **Category:** Testing
-- **Risk if untreated:** `npm test` fails intermittently for a reason that has nothing to do with the change being tested, so a real regression can be dismissed as "the flaky one".
-- **Effort:** P
-- **Trigger:** the next red run of the engine suite, or the next change to `properties.test.ts`.
-- **Evidence:** `backend/engine/src/properties.test.ts:158`, "replays every accepted sequence to the same hash". 200 seeds × 40 steps, each hashing the whole state. Measured on 2026-10-04 with the browser harness, the Colyseus server and the Vite preview running: the test reports **6112 ms** in the full suite (13 files in parallel), over the 5000 ms default timeout, so it fails; **4.4 s** on its own, so it passes. Run `npm test -w @eldritch-alley/engine` with the machine otherwise idle and it passes. Untouched by the visual identity work (`git status --porcelain -- backend/` is empty); the test predates it.
-
 ### DT-46 · Highlight graphics are recreated on every redraw
 - **Category:** Performance
 - **Risk if untreated:** object churn in the scene on each state change. Suspected cost only; not measured.
@@ -74,26 +59,11 @@ Planned features are not debt: they live in [backlog.md](./backlog.md).
 - **Trigger:** only if a measurement in a real match shows a cost.
 - **Evidence:** `frontend/src/scenes/MatchScene.ts:453-454` destroys the previous highlights, and `:468` creates a new `Graphics` for each highlighted cell.
 
-### DT-47 · No test of the scene's depth order
-- **Status:** Partly done: the constant test (effects above the board, below the HUD) is in `iso.test.ts`. The scene-level test is still open.
-- **Category:** Testing
-- **Risk if untreated:** a regression like DT-44 comes back without any failing test. `iso.test.ts` covers the depth values of the module, but not that every effect, unit and HUD object sits in the right layer.
-- **Effort:** M
-- **Trigger:** together with the fix of DT-44.
-- **Evidence:** `frontend/src/view/iso.test.ts` (depth functions only); no test imports `MatchScene` or `effects.ts`.
-
-### DT-40 · Client bundle is 1.69 MB, not compared with develop
-- **Category:** Performance
-- **Risk if untreated:** a heavier first load on the Cloudflare deploy than necessary; unknown whether the growth comes from Phaser or from the new code.
-- **Effort:** P
-- **Trigger:** before the M2-b deploy.
-- **Evidence:** `npm run build -w @eldritch-alley/frontend` output, `dist/assets/index-*.js` 1,686 kB (gzip 402 kB). Not compared with a build of `develop`.
-
 ### DT-41 · The match scene has no automated test
 - **Category:** Testing
 - **Risk if untreated:** regressions in `MatchScene`, `units.ts` and `effects.ts` appear only in the browser, by hand.
 - **Effort:** M
-- **Trigger:** the first change to those files after this entry; first step is DT-47.
+- **Trigger:** the first change to those files after this entry; first step was DT-47, now closed (the depth table in `view/depth.ts`).
 - **Evidence:** `frontend/src/scenes/MatchScene.ts`, `units.ts`, `effects.ts`; the Node suites only cover the pure modules they call.
 
 ### DT-43 · `README-license-section.md` sits loose at the repository root
@@ -110,14 +80,6 @@ Planned features are not debt: they live in [backlog.md](./backlog.md).
 - **Trigger:** before the MR of `feat/visual-identity` is opened.
 - **Evidence:** `git diff --stat develop...feat/visual-identity` lists `.ia_context/plans/title-screen-*`, `.ia_context/prototypes/eldritch-alley-title-screen/`, `ASSETS_LICENSE.md`, `README-license-section.md`.
 
-### DT-60 · A refresh in the middle of a match cannot return to it; the lobby shows "Servidor indisponível"
-- **Category:** Architecture (design)
-- **Risk if untreated:** a page reload during a match loses the match for the player. Starting a new one then fails with a misleading message. The player has no way back to the battle they were in, although the server keeps the seat for 120 s.
-- **Effort:** P
-- **Trigger:** before the next playtest.
-- **Evidence:** `frontend/src/scenes/LobbyScene.ts` (`startMatch` calls only `session.connect()`, which joins or creates a room); `frontend/src/net/session.ts` (`reconnect()` reads the token from `sessionStorage` but only `MatchScene.handleDrop` calls it); `backend/game-server/src/battle-room.ts` (`onJoin` throws `room full` for a second human; `onReconnect` sends the state). **Suspected, not yet reproduced:** `connect()` lands in the old room and fails on `room full`, which is why the lobby shows "Servidor indisponível".
-- **Suggested fix:** the lobby tries `session.reconnect()` first when a token is stored, and falls back to `connect()` only when the token is missing or stale. A stale token is cleared, so it is not tried again.
-- **Reproduced again on 2026-10-04:** in a measurement run, three page loads in a row did not start a match after the first one, while the first did. The lobby never reconnected, which is the cause this item describes.
 ### DT-64 · Memory and texture cost of one canvas per cell is not measured
 - **Category:** Performance
 - **Risk if untreated:** a long match may slow down or use more memory than expected, with no signal until the player feels it.

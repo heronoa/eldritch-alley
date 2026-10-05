@@ -3,17 +3,19 @@
 //
 // Everything with a rule of its own lives next door and is tested there: what the city is made of in
 // `city-data.ts`, where the walkers go in `walkers.ts`, when they stop in `ambient.ts`, the stamp in
-// `stamp.ts`, the state of the call to action in `connect-flow.ts`, the wording in `copy.ts`, which
-// languages the switcher offers in `language.ts`, and what may move in `motion.ts`. What is left
-// here is the DOM.
+// `stamp.ts`, the state of the call to action in `connect-flow.ts`, the wording in `copy.ts`, what a
+// failure says in `notice.ts`, which languages the switcher offers in `language.ts`, and what may
+// move in `motion.ts`. What is left here is the DOM.
 import { gameServerEndpoint } from '../config';
 import { getLocale, saveLocale, setLocale, type Locale } from '../i18n';
+import { joinFailure } from '../net/join-failure';
 import { Session } from '../net/session';
 import { createCity, type CityView } from './city-render';
-import { canTransition, next, type Flow } from './connect-flow';
+import { canTransition, failureReason, next, type Flow } from './connect-flow';
 import { titleCopy, type TitleCopy } from './copy';
 import { LANGUAGE_OPTIONS, switchesTo } from './language';
 import { motionPolicy, type MotionPolicy } from './motion';
+import { noticeFor } from './notice';
 import { loadSheets } from './sheet';
 import { stampAt } from './stamp';
 
@@ -34,8 +36,11 @@ const stampTag = byId<HTMLSpanElement>('stamp');
 const tagline = byId<HTMLParagraphElement>('tagline');
 const cta = byId<HTMLButtonElement>('cta');
 const hint = byId<HTMLParagraphElement>('hint');
-const alertLine = byId<HTMLParagraphElement>('alert');
 const granted = byId<HTMLDivElement>('granted');
+const notice = byId<HTMLDivElement>('notice');
+const noticeHeading = byId<HTMLParagraphElement>('notice-heading');
+const noticeBody = byId<HTMLParagraphElement>('notice-body');
+const noticeClose = byId<HTMLButtonElement>('notice-close');
 const footerVersion = byId<HTMLSpanElement>('footer-version');
 const footerPlace = byId<HTMLSpanElement>('footer-place');
 const switcher = byId<HTMLDivElement>('lang');
@@ -61,13 +66,14 @@ function render(): void {
   footerPlace.textContent = copy.footerPlace;
 
   renderFlow(copy);
+  renderNotice(copy);
   renderSwitcher(copy);
 }
 
 /**
- * The lines the flow owns, read from the flow rather than written at each step: the button's label,
- * whether it answers, and what went wrong. Deriving them is what keeps a language change and a state
- * change from disagreeing about what the screen says.
+ * The lines the flow owns, read from the flow rather than written at each step: the button's label and
+ * whether it answers. Deriving them is what keeps a language change and a state change from disagreeing
+ * about what the screen says.
  *
  * The button answers in `idle` and `failed` alone. From the press until the match takes the screen —
  * `connecting`, then `ready` while the stamp lands — the session is the title's to finish, and the
@@ -78,7 +84,40 @@ function renderFlow(copy: TitleCopy): void {
 
   cta.disabled = !answers;
   cta.textContent = answers ? copy.cta : copy.ctaBusy;
-  alertLine.textContent = flow.state === 'failed' ? copy.unavailable : '';
+}
+
+/**
+ * The notice: up exactly while the flow carries a reason, written from that reason and the language on
+ * screen. It is the one place a failure is shown, so the screen cannot end up with a quiet line
+ * contradicting the card.
+ *
+ * Focus moves to the close button when the card opens, and only then: a re-render that leaves it open —
+ * a language change, say — must not pull focus away from wherever the player put it.
+ */
+function renderNotice(copy: TitleCopy): void {
+  const reason = failureReason(flow);
+  const wasOpen = !notice.hidden;
+  notice.hidden = reason === null;
+
+  if (reason === null) return;
+
+  const lines = noticeFor(copy, reason);
+  noticeHeading.textContent = lines.heading;
+  noticeBody.textContent = lines.body;
+  noticeClose.textContent = lines.close;
+
+  if (!wasOpen) noticeClose.focus();
+}
+
+/** What the close button does: the card goes and the call to action is left usable again. */
+function dismiss(): void {
+  const before = flow;
+  flow = next(flow, 'dismiss', performance.now());
+  // Only a failed flow answers a dismissal; from anywhere else the press is not the card's.
+  if (flow === before) return;
+
+  renderControls();
+  cta.focus();
 }
 
 /** The switcher: what it is called, and which of its buttons is the language on screen. */
@@ -125,7 +164,7 @@ const endpoint = gameServerEndpoint(import.meta.env);
  * The call to action as the page loads it: nothing pressed, nothing announced. Kept as one value so
  * the title can be put back in this state when a match ends and the title owns the screen again.
  */
-const IDLE: Flow = { state: 'idle', stampStartedAt: null };
+const IDLE: Flow = { state: 'idle', stampStartedAt: null, failure: null };
 
 /** Where the call to action is: idle, waiting for the server, confirmed, or back with an error. */
 let flow: Flow = IDLE;
@@ -223,7 +262,9 @@ function handOver(): void {
       // The match could not be downloaded: the session is released and the title is usable again.
       // The flow is set by hand, because `next` answers nothing from `ready`.
       confirmed.close();
-      flow = { state: 'failed', stampStartedAt: null };
+      // The seat was granted — the server answered — so this is the download's own failure and not a
+      // refusal. Naming it is what keeps the card from blaming a server that did its part.
+      flow = { state: 'failed', stampStartedAt: null, failure: 'load-failed' };
       onScreen = true;
       renderControls();
       city?.start();
@@ -231,20 +272,26 @@ function handOver(): void {
   );
 }
 
-/** The server did not answer: the stamp goes, the reason shows, and the button comes back. */
-function fail(): void {
-  flow = next(flow, 'failed', performance.now());
+/**
+ * The session did not open: the stamp goes, the reason shows, and the button comes back. The reason
+ * is read from the error, so a seat another tab holds is told apart from a server that did not
+ * answer.
+ */
+function fail(error: unknown): void {
+  flow = next(flow, 'failed', performance.now(), joinFailure(error));
   stopStamp();
   renderControls();
 }
 
 /**
  * The call to action's own controls in the state the flow is in: the stamp is put away, and the
- * button's two lines are written again. Called wherever the flow moves outside of `render`.
+ * button and the notice are written again. Called wherever the flow moves outside of `render`.
  */
 function renderControls(): void {
   granted.classList.remove('on');
-  renderFlow(titleCopy());
+  const copy = titleCopy();
+  renderFlow(copy);
+  renderNotice(copy);
 }
 
 /**
@@ -260,9 +307,10 @@ function resume(): void {
 
 /** What a press does: the stamp goes up, the session is opened, and the flow follows both. */
 async function press(): Promise<void> {
-  // A press belongs to the title only while the title is on screen: during a match, Enter is the
-  // match's key, not another call to action.
-  if (!onScreen) return;
+  // A press belongs to the title only while the title is on screen and the notice is down: during a
+  // match, Enter is the match's key, and with the card up it belongs to the card's close button, which
+  // has the focus and gets the browser's own click.
+  if (!onScreen || failureReason(flow) !== null) return;
 
   const before = flow;
   flow = next(flow, 'press', performance.now());
@@ -276,11 +324,12 @@ async function press(): Promise<void> {
 
   const opening = new Session(endpoint);
   try {
-    await opening.connect();
-  } catch {
+    // Resumes the match this page was in before a reload, when there is one to resume.
+    await opening.open();
+  } catch (error) {
     // A session that never reached a room is worth dropping, so a retry starts from nothing.
     opening.close();
-    fail();
+    fail(error);
     return;
   }
 
@@ -307,10 +356,25 @@ async function bootCity(): Promise<void> {
 }
 
 cta.addEventListener('click', () => void press());
+noticeClose.addEventListener('click', dismiss);
+
+// The card holds one control, so Tab and Shift+Tab hold focus on it rather than walking out of a
+// dialog `aria-modal` promises is modal. A second control in the card turns this into a real cycle
+// over the card's own controls.
+notice.addEventListener('keydown', (event) => {
+  if (event.key !== 'Tab') return;
+  event.preventDefault();
+  noticeClose.focus();
+});
 
 // Enter starts a match from anywhere on the page, as the prototype does. A held key is not a hundred
-// presses, and a press the flow ignores costs nothing.
+// presses, and a press the flow ignores costs nothing. Escape closes the notice, and belongs to
+// nothing else: while it is down the match is not on the screen.
 window.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && failureReason(flow) !== null) {
+    dismiss();
+    return;
+  }
   if (event.key !== 'Enter' || event.repeat) return;
   void press();
 });

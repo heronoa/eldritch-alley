@@ -59,7 +59,6 @@
         <p class="tagline" id="tagline">Agentes licenciados, magia sem licença e uma cidade inteira de becos. Monte o seu esquadrão e responda à ocorrência.</p>
         <button class="cta" id="cta" type="button">Iniciar partida</button>
         <p class="hint" id="hint">ou pressione Enter</p>
-        <p class="alert" id="alert" role="status"></p>
       </div>
       <!-- The language switcher, in the corner the title block leaves free. Only the box is here: the
            script draws one button per locale the client ships, so a page whose script never runs has
@@ -69,6 +68,25 @@
     </main>
     <div class="granted" id="granted" aria-live="polite">PARTIDA AUTORIZADA</div>
     <footer><span id="footer-version">v0.1</span><span id="footer-place">Belém · madrugada</span></footer>
+    <!-- Why the player is not in a match, over the title and over the city. It opens only when the
+         client has something to say, and its three lines are written from the catalog — the empty
+         paragraphs here are what a page whose script never runs shows, which is nothing, because
+         the whole card is hidden until a failure opens it. -->
+    <div
+      class="notice"
+      id="notice"
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby="notice-heading"
+      aria-describedby="notice-body"
+      hidden
+    >
+      <div class="notice-card">
+        <p class="notice-heading" id="notice-heading"></p>
+        <p class="notice-body" id="notice-body"></p>
+        <button class="cta notice-close" id="notice-close" type="button"></button>
+      </div>
+    </div>
     <div id="game" hidden></div>
     <script type="module" src="/src/title/title.ts"></script>
   </body>

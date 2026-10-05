@@ -32,8 +32,19 @@ export interface TitleCopy {
   readonly hint: string;
   /** The word the stamp shows once the server has confirmed the session. */
   readonly granted: string;
+  // The three sentences the notice can carry, one per `FailureReason`.
   /** What the screen says when the server does not answer. */
   readonly unavailable: string;
+  /** What the screen says when the room refused the seat because another session holds it. */
+  readonly occupied: string;
+  /** What the screen says when the match's own code could not be downloaded. */
+  readonly loadFailed: string;
+  /** What the notice calls a refusal: a seat the server did not grant. */
+  readonly noticeRefused: string;
+  /** What the notice calls a match that never opened, whose seat the server did grant. */
+  readonly noticeLoadFailed: string;
+  /** The notice's button, which closes it. */
+  readonly noticeClose: string;
   /** The version in the footer. The prototype's word for itself does not ship. */
   readonly footerVersion: string;
   /** Where the story is set. */
@@ -55,6 +66,11 @@ export function titleCopy(): TitleCopy {
     hint: t('title.hint'),
     granted: t('title.granted'),
     unavailable: t('title.unavailable'),
+    occupied: t('title.occupied'),
+    loadFailed: t('title.loadFailed'),
+    noticeRefused: t('title.notice.refused'),
+    noticeLoadFailed: t('title.notice.loadFailed'),
+    noticeClose: t('title.notice.close'),
     footerVersion: t('title.footerVersion'),
     footerPlace: t('title.footerPlace'),
     language: t('title.language'),

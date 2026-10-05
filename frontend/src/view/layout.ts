@@ -21,13 +21,6 @@ export const CANVAS_HEIGHT = 720;
 /** Space between a piece of the HUD and the edge of the canvas. */
 export const PADDING = 16;
 
-/**
- * Where the HUD is drawn: over every tile and every unit the board can hold — a 10x10 board puts its
- * deepest cell at 18 and its unit at 18.5 — so a panel floating over the board is never covered by
- * it. The result and its stamp sit over the panels.
- */
-export const HUD_DEPTH = 100;
-
 /** The carousel and the action bar share one column, centred on the canvas. */
 const CENTRED_X = 248;
 const CENTRED_WIDTH = 784;

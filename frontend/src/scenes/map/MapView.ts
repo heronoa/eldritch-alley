@@ -15,20 +15,12 @@ import type { PropSpec } from '../../maps/prototype-maps';
 import { propsAt, type Terrain } from '../../maps/terrain';
 import type { Cell, Pixel } from '../../view/grid';
 import { NO_FLOOR } from '../../view/grid';
-import { PIXEL, cellToScreen, depthOfCell } from '../../view/iso';
+import { LAYER } from '../../view/depth';
+import { PIXEL, cellToScreen } from '../../view/iso';
 import { CANVAS_HEIGHT, CANVAS_WIDTH } from '../../view/layout';
 import { drawBackdrop } from './backdrop';
 import { cellBox, depthOf, drawCell, drawCellAnimation, movesOverTime, px } from './cell';
 import { drawProp, isAnimatedProp, propsInPaintOrder } from './props';
-
-/** The backdrop is under every cell: the shallowest of them is at 0. */
-const BACKDROP_DEPTH = -1;
-
-/**
- * The wires and the clotheslines: over every cell and every unit — the deepest of the maps puts a unit
- * at 18.5 — and under the attack effects, which are thrown over the whole board.
- */
-const OVERLAY_DEPTH = 19;
 
 /** How far a wire hangs over the street, and a clothesline over the gap, in the prototype's pixels. */
 const WIRE_LIFT = 23;
@@ -88,16 +80,16 @@ export class MapView {
     const prefix = `ea-map-${(views += 1)}`;
 
     // The depth decides what covers what, so the order these are built in does not matter.
-    this.layer(`${prefix}-sky`, VIEW_WIDTH, VIEW_HEIGHT, BACKDROP_DEPTH, CORNER, CORNER, (ctx) =>
+    this.layer(`${prefix}-sky`, VIEW_WIDTH, VIEW_HEIGHT, LAYER.backdrop, CORNER, CORNER, (ctx) =>
       drawBackdrop(ctx, terrain.map.sky, VIEW_WIDTH, VIEW_HEIGHT, 0),
     );
-    this.layer(`${prefix}-wires`, VIEW_WIDTH, VIEW_HEIGHT, OVERLAY_DEPTH, CORNER, CORNER, (ctx) =>
+    this.layer(`${prefix}-wires`, VIEW_WIDTH, VIEW_HEIGHT, LAYER.overlay, CORNER, CORNER, (ctx) =>
       this.drawWires(ctx),
     );
     this.lines =
       terrain.decor.lines.length === 0
         ? null
-        : this.layer(`${prefix}-lines`, VIEW_WIDTH, VIEW_HEIGHT, OVERLAY_DEPTH, CORNER, CORNER, () => {});
+        : this.layer(`${prefix}-lines`, VIEW_WIDTH, VIEW_HEIGHT, LAYER.overlay, CORNER, CORNER, () => {});
 
     for (let y = 0; y < terrain.size.height; y += 1) {
       for (let x = 0; x < terrain.size.width; x += 1) {
@@ -143,7 +135,7 @@ export class MapView {
     const { terrain } = this;
     const box = cellBox(depthOf(terrain, cell));
     const at = cellToScreen(cell, level, terrain.lift);
-    const depth = depthOfCell(cell);
+    const depth = LAYER.board(cell);
     const { anchor } = box;
 
     // A cell's props are drawn in the prototype's own order, so a prop that shares a cell with another

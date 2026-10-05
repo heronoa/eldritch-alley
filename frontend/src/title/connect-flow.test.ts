@@ -1,9 +1,9 @@
 // Title screen M1 — the call to action as a state machine: the press, the server's answer, the
 // failure, the retry, and the wait for the stamp to land.
 import { describe, expect, it } from 'vitest';
-import { canTransition, next, type Flow } from './connect-flow';
+import { canTransition, failureReason, next, type Flow } from './connect-flow';
 
-const IDLE: Flow = { state: 'idle', stampStartedAt: null };
+const IDLE: Flow = { state: 'idle', stampStartedAt: null, failure: null };
 
 /** The flow after a press at `pressedAt`. */
 function pressed(pressedAt = 1000): Flow {
@@ -12,7 +12,7 @@ function pressed(pressedAt = 1000): Flow {
 
 describe('next', () => {
   it('starts connecting on the first press, and stamps the moment', () => {
-    expect(pressed()).toEqual({ state: 'connecting', stampStartedAt: 1000 });
+    expect(pressed()).toEqual({ state: 'connecting', stampStartedAt: 1000, failure: null });
   });
 
   it('ignores a second press while it is connecting', () => {
@@ -21,16 +21,28 @@ describe('next', () => {
   });
 
   it('becomes ready when the server confirms, keeping the stamp', () => {
-    expect(next(pressed(), 'connected', 1500)).toEqual({ state: 'ready', stampStartedAt: 1000 });
+    expect(next(pressed(), 'connected', 1500)).toEqual({
+      state: 'ready',
+      stampStartedAt: 1000,
+      failure: null,
+    });
   });
 
   it('fails without a stamp when the server does not answer', () => {
-    expect(next(pressed(), 'failed', 1500)).toEqual({ state: 'failed', stampStartedAt: null });
+    expect(next(pressed(), 'failed', 1500)).toEqual({
+      state: 'failed',
+      stampStartedAt: null,
+      failure: 'unavailable',
+    });
   });
 
   it('lets the player press again after a failure', () => {
     const failed = next(pressed(), 'failed', 1500);
-    expect(next(failed, 'press', 2000)).toEqual({ state: 'connecting', stampStartedAt: 2000 });
+    expect(next(failed, 'press', 2000)).toEqual({
+      state: 'connecting',
+      stampStartedAt: 2000,
+      failure: null,
+    });
   });
 
   it('ignores every event once the match is ready', () => {
@@ -41,10 +53,83 @@ describe('next', () => {
   });
 
   it('leaves the flow it is handed alone', () => {
-    const flow: Flow = { state: 'idle', stampStartedAt: null };
+    const flow: Flow = { state: 'idle', stampStartedAt: null, failure: null };
     const snapshot = { ...flow };
     next(flow, 'press', 1000);
     expect(flow).toEqual(snapshot);
+  });
+});
+
+describe('the reason a failure carries', () => {
+  it('keeps the reason it was given', () => {
+    expect(next(pressed(), 'failed', 1500, 'occupied')).toEqual({
+      state: 'failed',
+      stampStartedAt: null,
+      failure: 'occupied',
+    });
+  });
+
+  it('is the generic one when no reason is given, so the old call sites keep their meaning', () => {
+    expect(next(pressed(), 'failed', 1500).failure).toBe('unavailable');
+  });
+
+  it('is cleared by the next press, so a retry does not show the old line', () => {
+    const failed = next(pressed(), 'failed', 1500, 'occupied');
+    expect(next(failed, 'press', 2000).failure).toBeNull();
+  });
+
+  it('is carried by no state but the failed one', () => {
+    expect(pressed().failure).toBeNull();
+    expect(next(pressed(), 'connected', 1500).failure).toBeNull();
+    expect(IDLE.failure).toBeNull();
+  });
+
+  it('names the failed download the title diagnoses by itself', () => {
+    expect(next(pressed(), 'failed', 1500, 'load-failed').failure).toBe('load-failed');
+  });
+});
+
+describe('failureReason', () => {
+  it('answers the reason the notice shows', () => {
+    expect(failureReason(next(pressed(), 'failed', 1500, 'occupied'))).toBe('occupied');
+    expect(failureReason(next(pressed(), 'failed', 1500, 'load-failed'))).toBe('load-failed');
+  });
+
+  it('answers nothing to show in every other state', () => {
+    expect(failureReason(IDLE)).toBeNull();
+    expect(failureReason(pressed())).toBeNull();
+    expect(failureReason(next(pressed(), 'connected', 1500))).toBeNull();
+  });
+});
+
+describe('dismiss', () => {
+  it('puts a failed flow back to idle, with nothing left to show', () => {
+    const failed = next(pressed(), 'failed', 1500, 'occupied');
+
+    expect(next(failed, 'dismiss', 2000)).toEqual({
+      state: 'idle',
+      stampStartedAt: null,
+      failure: null,
+    });
+  });
+
+  it('is ignored by every state that did not fail', () => {
+    const connecting = pressed();
+    const ready = next(pressed(), 'connected', 1500);
+
+    expect(next(connecting, 'dismiss', 2000)).toBe(connecting);
+    expect(next(IDLE, 'dismiss', 2000)).toBe(IDLE);
+    expect(next(ready, 'dismiss', 2000)).toBe(ready);
+  });
+
+  it('leaves the retry path alone, which is still a press', () => {
+    const failed = next(pressed(), 'failed', 1500, 'occupied');
+
+    expect(next(failed, 'press', 2000)).toEqual({
+      state: 'connecting',
+      stampStartedAt: 2000,
+      failure: null,
+    });
   });
 });
 
