@@ -87,8 +87,8 @@ export const enUS: Record<MessageKey, string> = {
   // The rest of the HUD, and the lines the match shows over it.
   'hud.legend':
     'Ink blue: you · Red: bot · Paper: selected\nBlue highlight: movement · Red highlight: attack',
-  'hud.panel.unit': 'Unit',
   'hud.panel.log': 'Log',
+  'inspect.title': 'Unit sheet',
   'hud.back': 'Back to start',
   // The banner a turn change raises, one line per side.
   'hud.banner.yourTurn': 'Your turn',

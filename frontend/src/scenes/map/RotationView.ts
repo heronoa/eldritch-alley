@@ -10,23 +10,22 @@
 import Phaser from 'phaser';
 import { TILE_PALETTE } from '../../maps/prototype-palette';
 import type { Terrain } from '../../maps/terrain';
-import type { BillboardUnit } from '../../view/billboard';
+import { type BillboardUnit, mirrored } from '../../view/billboard';
 import { CUTAWAY_MIN_LEVEL } from '../../view/cutaway';
 import { LAYER } from '../../view/depth';
 import { NO_FLOOR, type Cell } from '../../view/grid';
 import { CX, HZ, PIXEL, TILE_H, TILE_W, TOP_Y } from '../../view/iso';
 import { CANVAS_HEIGHT, CANVAS_WIDTH } from '../../view/layout';
 import { rotationAngle } from '../../view/rotation-animation';
-import { PAPER_COLOR, TEAM_COLOR, cssColor } from '../../view/theme';
+import { FRAME, SPRITE_SIZE, frameBox, idleFrameOf, spriteSheetOf } from '../../view/unit-look';
 import { drawBackdrop } from './backdrop';
 import { context2d, depthOf, drawnLevel, letterOf, poly, px, type Point } from './cell';
 
 /** How opaque a tall building the turn swings through is drawn, as the prototype draws it. */
 const BUILDING_ALPHA = 0.55;
 
-/** The flat figure a unit is drawn as while the view turns: a shadow, a body and a head. */
+/** The patch of shade a figure casts, which is all that is drawn of a unit whose sheet is missing. */
 const SHADOW = { width: 10, height: 3, color: 'rgba(0,0,0,.4)' };
-const FIGURE = { width: 12, height: 18, head: 6 };
 
 /** Counts the turns drawn in this run, so two of them never ask Phaser for the same texture key. */
 let turns = 0;
@@ -47,6 +46,8 @@ export class RotationView {
   private readonly image: Phaser.GameObjects.Image;
   /** The units of the match by the view cell they stand on, so a cell's block can carry its figure. */
   private readonly standing: Map<string, BillboardUnit>;
+  /** The same units as the list they came in, which is what they face each other across. */
+  private readonly units: readonly BillboardUnit[];
   /** How far the view swings over the whole turn, in degrees: a quarter turn, signed by the way. */
   private readonly degrees: number;
   /** Set by every `draw`, and read by the projection of that same drawing. */
@@ -60,6 +61,7 @@ export class RotationView {
     this.scene = scene;
     this.terrain = terrain;
     this.degrees = degrees;
+    this.units = units;
     this.standing = new Map(units.map((unit) => [`${unit.position.x},${unit.position.y}`, unit]));
 
     const canvas = document.createElement('canvas');
@@ -156,23 +158,53 @@ export class RotationView {
     this.drawFigure(cell, middle);
   }
 
-  /** The unit standing on a cell, as a flat figure facing the camera, or nothing at all. */
+  /**
+   * The unit standing on a cell, as its own sprite, or nothing at all.
+   *
+   * The figure is the one the board draws when the view stands still: the same sheet, the same frame
+   * and the same mirror, cut out of the loaded texture and drawn at the size of a unit (slice A of the
+   * smoke test 2 feedback). The pose is the resting one — the unit is not walking, shooting or
+   * reloading while the camera turns — and the two idle poses differ by one column, so the sheet is
+   * read at the first of them.
+   */
   private drawFigure(cell: Cell, middle: Point): void {
     const unit = this.standing.get(`${cell.x},${cell.y}`);
     if (unit === undefined) return;
 
     const { ctx } = this;
     const [x, y] = middle;
-    const half = FIGURE.width / 2;
-    const shoulders = y - FIGURE.height;
 
     px(ctx, x - SHADOW.width / 2, y - SHADOW.height / 2, SHADOW.width, SHADOW.height, SHADOW.color);
-    // The paper is what makes a figure read over a dark tile as well as a light one, as the sprite's
-    // own outline does when the view stands still.
-    const paper = cssColor(PAPER_COLOR);
-    px(ctx, x - half - 1, shoulders - 1, FIGURE.width + 2, FIGURE.height + 1, paper);
-    px(ctx, x - half, shoulders, FIGURE.width, FIGURE.height, cssColor(TEAM_COLOR[unit.team]));
-    px(ctx, x - FIGURE.head / 2 - 1, shoulders - FIGURE.head - 1, FIGURE.head + 2, FIGURE.head + 1, paper);
+
+    // Phaser types a sheet's source as possibly a `RenderTexture`, which `drawImage` cannot take; the
+    // two unit sheets are images the boot scene loads, so the cast states what the texture holds.
+    const sheet = this.scene.textures
+      .get(spriteSheetOf(unit.team))
+      .getSourceImage() as CanvasImageSource;
+    const frame = frameBox(idleFrameOf(unit));
+    const left = x - SPRITE_SIZE.width / 2;
+    const top = y - SPRITE_SIZE.height;
+
+    // The mirror is the sprite's own `setFlipX`, done as a transform because the sprite is a canvas
+    // drawing here rather than a game object. Both sides of the flip ask `mirrored`, so a unit cannot
+    // face one way at rest and the other way while the view turns.
+    ctx.save();
+    if (mirrored(unit, this.units)) {
+      ctx.translate(2 * x, 0);
+      ctx.scale(-1, 1);
+    }
+    ctx.drawImage(
+      sheet,
+      frame.column * FRAME.width,
+      frame.row * FRAME.height,
+      FRAME.width,
+      FRAME.height,
+      left,
+      top,
+      SPRITE_SIZE.width,
+      SPRITE_SIZE.height,
+    );
+    ctx.restore();
   }
 
   /**

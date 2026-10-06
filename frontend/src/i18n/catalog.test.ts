@@ -214,7 +214,6 @@ describe('the pt-BR the game shows', () => {
     expect(ptBR['hud.legend']).toBe(
       'Azul-tinta: você · Vermelho: bot · Papel: selecionado\nRealce azul: movimento · Realce vermelho: ataque',
     );
-    expect(ptBR['hud.panel.unit']).toBe('Unidade');
     expect(ptBR['hud.panel.log']).toBe('Registro');
     expect(ptBR['hud.back']).toBe('Voltar ao início');
   });

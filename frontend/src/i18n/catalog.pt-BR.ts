@@ -93,8 +93,8 @@ export const ptBR = {
   // refused protocol version raises, and the two states of a dropped connection.
   'hud.legend':
     'Azul-tinta: você · Vermelho: bot · Papel: selecionado\nRealce azul: movimento · Realce vermelho: ataque',
-  'hud.panel.unit': 'Unidade',
   'hud.panel.log': 'Registro',
+  'inspect.title': 'Ficha da unidade',
   'hud.back': 'Voltar ao início',
   // The banner a turn change raises, one line per side. It names the side that just took the turn
   // rather than the unit, which the carousel already tells apart.

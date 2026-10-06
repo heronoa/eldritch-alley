@@ -83,23 +83,6 @@ Planned features are not debt: they live in [backlog.md](./backlog.md).
 - **Trigger:** when the symmetry sweep is reused by EA-5 or EA-6, or the next change to `backend/game-server/src/maps/prototype-maps.ts`.
 - **Evidence:** `backend/engine/src/sight.test.ts:6` imports `PROTOTYPE_MAPS` from `../../game-server/src/maps/prototype-maps`; `backend/engine/src/actions.test.ts` builds its boards from literal heights.
 
-### DT-72 · Prévia do primeiro toque não mostra caminho nem custo (EA-7)
-
-- **Categoria**: Aderência
-- **Risco se não tratado**: o EA-7 fica incompleto — o jogador não vê o caminho nem o custo
-  antes de confirmar; o primeiro toque não dá feedback visual algum.
-- **Esforço estimado**: P
-- **Gatilho para tratar**: antes de fechar o EA-7 / antes do deploy do lote 1.
-- **Evidência**: frontend/src/scenes/MatchScene.ts:242-244; frontend/src/game/selection.ts:72
-
-### DT-79 · The inspection gesture has no scene-level test
-
-- **Category:** Testing
-- **Risk if untreated:** the long press (400 ms), the right button, the 6 px drift that turns a press into a pan, and the release that must not click again after a long press (`MatchScene.ts:259-308`) are untested. This is the most fragile input path, and a regression there would pass the suite.
-- **Effort:** M
-- **Trigger:** the first pointer or touch bug, or a Phaser pointer harness in the project.
-- **Evidence:** `frontend/src/scenes/MatchScene.ts:259-308`; `frontend/src/scenes/MatchScene.test.ts` has no gesture case. The pure part, `resolveInspect`, is covered in `frontend/src/game/selection.test.ts`.
-
 ### DT-80 · Highlight and click disagree on reach with an empty magazine, until EA-14
 
 - **Category:** Aderência
@@ -115,30 +98,26 @@ Planned features are not debt: they live in [backlog.md](./backlog.md).
 - **Verified so far:** the engine and the client's state are correct for a full spend. A temporary test (removed afterwards) moved a unit with 3 points over 3 cells: `movementLeft` 0, `pendingMove` `{from:(0,0), cost:3}`, `moveChips` returns 2 chips, `canStillAct` true, so the countdown does not start. The chips are dropped after that point, in the scene or the HUD.
 - **Not yet explained:** the code does not show the cause by reading. Two things differ on a full spend: the Move button turns off and `settleMode` moves the mode to `inspect` (`MatchScene.ts:492-493`), and the events arrive before the state that carries them (`MatchScene.ts:548-553`, `:744-746`).
 - **What settles it:** in the browser, after a full-budget move, log `state.pendingMove` and `chipModel.length` inside `pushHud` and `HudScene.render`, then compare with a partial move.
+- **Narrowed on 2026-10-06** (smoke test 2 feedback, slice F): the scene's half of the path is now pinned by a test — `keeps the two chips of a pending move that spent the whole budget (DT-81)` in `frontend/src/scenes/MatchScene.test.ts` hands the HUD a full-spend state with the mode on `move`, and asserts that the mode falls back to `inspect` while `moveChips` still carries the two chips. The chips therefore reach `HudScene.render` in the scene's own view. What is left to explain is the HUD's drawing (`drawMoveChips`) or what the server sends, and neither can be settled without the browser run above.
 - **Effort:** P to M
 - **Trigger:** now. It blocks EA-5 acceptance.
-- **Evidence:** `frontend/src/game/actions.ts:145-155` (`moveChips`); `frontend/src/scenes/HudScene.ts:323-326` (`drawMoveChips`); `frontend/src/scenes/MatchScene.ts:492-493`, `:744-746`.
+- **Evidence:** `frontend/src/game/actions.ts:145-155` (`moveChips`); `frontend/src/scenes/HudScene.ts:323-326` (`drawMoveChips`); `frontend/src/scenes/MatchScene.ts:492-493`, `:744-746`; `frontend/src/scenes/MatchScene.test.ts` (`keeps the two chips of a pending move that spent the whole budget`).
 
-### DT-82 · BUG (serious): Attack stays disabled unless an enemy is already in reach
+### DT-85 · The EA-8 hit test and refusal intent are in the EA-12 branch
 
-- **Category:** Aderência (bug, found in the smoke test)
-- **Severity:** serious. The Atacar button is greyed out whenever no enemy is in reach from the current cell. The attack area of EA-5 cannot be opened, so the button looks inaccessible.
-- **Cause (verified):** `canAttack` is `canAct && hasTarget(...)` (`frontend/src/game/actions.ts:105`). Commit `5bb129b` (EA-5) changed it from `highlightedCells(...).length > 0`, which enabled the button whenever an attack area existed. The test `refuses an attack when no enemy is inside the reach` (`frontend/src/game/actions.test.ts:129-138`) locks in the new rule.
-- **Conflicts with the plan:** EA-5 section 1 has `Idle ──Attack──▶ (red only: attackArea from the current cell)`, with no condition on an enemy being in reach. The code comment calls the new rule deliberate, so the owner decides between the two.
-- **Recommended:** restore "enabled when the attack area is not empty", which matches the plan, and change the test to match.
+- **Category:** Aderência
+- **Risk if untreated:** one diff carries two subjects, against rule 5 of `CLAUDE.md`. The EA-8 review is diluted in the EA-12 review, and the history does not isolate the subject.
 - **Effort:** P
-- **Trigger:** now. It blocks EA-5 acceptance.
-- **Evidence:** `frontend/src/game/actions.ts:105`; `frontend/src/game/actions.test.ts:129-138`; `git show 5bb129b -- frontend/src/game/actions.ts`; `.ia_context/plans/ea-5-range-display.plan.md` section 1.
+- **Trigger:** before the merge request of `fix/camera-controls` is opened, when deciding whether to split EA-8 out or absorb it into EA-12 and say so in the plan.
+- **Evidence:** `frontend/src/game/hit.ts`; `frontend/src/game/selection.ts:19-24`, `:61-95`, `:131`; commit `48d6851`.
 
-### DT-83 · Confirm and Cancel chips have no padding, so the labels spill out of the box
+### DT-88 · The rotation redraws a full-canvas texture on every frame
 
-- **Category:** Aderência (UI, minor)
-- **Risk if untreated:** the chips look broken on the board. The labels "Confirmar movimento" and "Cancelar movimento" are wider and taller than the box.
-- **Cause:** `MOVE_CHIP` is 184 × 24 (`frontend/src/view/layout.ts:157`). The caption uses the 18 px body font (`frontend/src/view/theme.ts:94`) centred on the box, with no inner padding.
-- **Proposed:** shorten the labels to "Confirmar" and "Cancelar", since the chips only appear after a move and the context gives the rest. Give the chips a height that fits the text, or a smaller font. The copy is the owner's call.
+- **Category:** Performance
+- **Risk if untreated:** about 27 uploads of a full-size texture per turn, with the cost not measured on a device.
 - **Effort:** P
-- **Trigger:** together with DT-81 and DT-82, before the next smoke test.
-- **Evidence:** `frontend/src/view/layout.ts:157`; `frontend/src/view/theme.ts:94`; `frontend/src/i18n/catalog.pt-BR.ts` (`action.confirmMove`, `action.cancelMove`).
+- **Trigger:** if a profile on iOS or Android shows dropped frames during a rotation.
+- **Evidence:** `frontend/src/scenes/map/RotationView.ts:82-114`.
 
 ---
 

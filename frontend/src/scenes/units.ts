@@ -35,15 +35,17 @@ import {
   healthFraction,
   markerStyle,
   pipsFor,
+  rowIdleFrame,
   spriteSheetOf,
   turnLook,
   type Pips,
 } from '../view/unit-look';
 
-/** Columns of the sheet, in the order the characters README lists them. */
+/**
+ * Columns of the sheet, in the order the characters README lists them. The two idle poses are not
+ * here: which one is drawn is `rowIdleFrame`'s answer, shared with the turn (slice A).
+ */
 const COLUMN = {
-  idle1: 0,
-  idle2: 1,
   walk1: 2,
   walk2: 3,
   melee1: 4,
@@ -304,11 +306,15 @@ export class UnitSprite extends Phaser.GameObjects.Container {
       if (frame !== 0) return frameIndex(this.row, frame === 1 ? COLUMN.resource1 : COLUMN.resource2);
     }
 
-    return frameIndex(this.row, this.idleColumn(now));
+    return this.idleFrame(now);
   }
 
-  private idleColumn(now: number): number {
-    return idleFrame(now - this.bornAt) === 1 ? COLUMN.idle1 : COLUMN.idle2;
+  /**
+   * The resting pose, chosen by the same function the flat figure of a turn is drawn from (slice A of
+   * the smoke test 2 feedback), so the unit the turn shows is the unit standing on the board.
+   */
+  private idleFrame(now: number): number {
+    return rowIdleFrame(this.row, idleFrame(now - this.bornAt) - 1);
   }
 
   /** A hit is a white silhouette and a one-pixel shake, so it reads over any tile. */

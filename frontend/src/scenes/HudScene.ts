@@ -5,7 +5,8 @@ import Phaser from 'phaser';
 import type { ActionButton, ActionMode, MoveChip } from '../game/actions';
 import type { AutoEndPhase } from '../game/autoEndTurn';
 import { bannerFor } from '../game/banner';
-import { unitPanel } from '../game/panel';
+import { unitSheet } from '../game/inspect-window';
+import { unitPanel, type PanelRow } from '../game/panel';
 import { activeSlot, turnOrder, type TurnSlot } from '../game/turn-order';
 import { t } from '../i18n';
 import type { PublicState, Team } from '../protocol';
@@ -22,10 +23,16 @@ import {
   LEGEND_RECT,
   LOG_RECT,
   LOG_TEXT_POINT,
+  LOG_TOGGLE_POINT,
+  CELL_BAR_HEIGHT,
+  DASHBOARD_AMMO_RECT,
+  DASHBOARD_HEALTH_RECT,
+  DASHBOARD_RECT,
+  DASHBOARD_TURN_POINT,
+  INSPECT_CLOSE_RECT,
+  INSPECT_RECT,
+  INSPECT_VALUE_X,
   PADDING,
-  PANEL_BAR_HEIGHT,
-  PANEL_BAR_OFFSET,
-  PANEL_RECT,
   RESULT_BUTTON_RECT,
   SETTINGS_BUTTON_RECT,
   SETTINGS_PANEL_RECT,
@@ -34,8 +41,13 @@ import {
   buttonRect,
   cameraControlRect,
   carouselSlotRect,
+  cellBarPoint,
+  cellBarWidth,
+  cellLabelPoint,
+  cellValuePoint,
+  inspectRowPoint,
+  logRect,
   moveChipRect,
-  panelRowPoint,
   type CameraControl,
   type Rect,
 } from '../view/layout';
@@ -46,6 +58,7 @@ import {
   FONT_SIZE,
   FONT_TITLE,
   PANEL_FILL,
+  PANEL_INNER_STROKE,
   PANEL_STROKE,
   PAPER_COLOR,
   STAMP_COLOR,
@@ -54,7 +67,7 @@ import {
   TEXT_COLOR_ALERT,
   TEXT_COLOR_DISABLED,
 } from '../view/theme';
-import { Banner, Button, createPanel, createTurnChip } from './widgets';
+import { Banner, Button, OVERLAY_PANEL, createPanel, createTurnChip } from './widgets';
 
 /** Space between the result text and the frame drawn around it. */
 const STAMP_PADDING = 16;
@@ -63,6 +76,12 @@ const STAMP_PADDING = 16;
 const GEAR_TEETH = 8;
 const GEAR_HUB_RADIUS = 6;
 const GEAR_RIM_RADIUS = 10;
+
+/** What the button that closes the inspection window carries. A mark, so it has no catalog entry. */
+const INSPECT_CLOSE_LABEL = 'X';
+
+/** Half the width of the chevron in the log's header, and how far its point reaches from the middle. */
+const LOG_CHEVRON = { halfWidth: 7, height: 5 };
 
 /** How big the box of the settings toggle is, and how far its label starts after it. */
 const TOGGLE_BOX = 16;
@@ -104,12 +123,16 @@ export interface HudView {
   /** The side the person at the keyboard plays, which is what the turn banner names. */
   humanTeam: Team;
   selectedId: string | null;
+  /** The unit whose sheet is open in the inspection window, or null while there is none. */
+  inspectedId: string | null;
   mode: ActionMode;
   finished: boolean;
   buttons: readonly ActionButton[];
   /** The two controls of a pending move, drawn over the board above the Move button (EA-5, D6). */
   moveChips: readonly MoveChip[];
   logLines: readonly string[];
+  /** Whether the log shows every line it keeps, or only its header and the last one (Q3). */
+  logOpen: boolean;
   status: string;
   result: string;
   /** Whether the way out of a finished match is on the screen, and whether the settings panel is. */
@@ -131,11 +154,13 @@ const EMPTY_VIEW: HudView = {
   state: null,
   humanTeam: 'A',
   selectedId: null,
+  inspectedId: null,
   mode: 'inspect',
   finished: false,
   buttons: [],
   moveChips: [],
   logLines: [],
+  logOpen: false,
   status: '',
   result: '',
   wayOutVisible: false,
@@ -151,6 +176,10 @@ export class HudScene extends Phaser.Scene {
 
   private chips!: Phaser.GameObjects.Container;
   private panelRows!: Phaser.GameObjects.Container;
+  /** The inspection window: its frame, the X that closes it, and the rows drawn inside it. */
+  private inspectPanel!: Phaser.GameObjects.Container;
+  private inspectClose!: Button;
+  private inspectRows!: Phaser.GameObjects.Container;
   private banner!: Banner;
   /**
    * The unit the last drawn state had on turn, so the HUD can tell a hand-over from a redraw of the
@@ -161,6 +190,14 @@ export class HudScene extends Phaser.Scene {
   /** The two controls of a pending move, rebuilt on every view because they come and go. */
   private moveChipButtons: Button[] = [];
   private logText!: Phaser.GameObjects.Text;
+  /**
+   * The box of the log, drawn once and resized on every view: it is as tall as it is open, which a
+   * panel built from a fixed rectangle cannot follow.
+   */
+  private logFrame!: Phaser.GameObjects.Rectangle;
+  private logInner!: Phaser.GameObjects.Graphics;
+  /** The chevron of the header, saying whether the box is open. */
+  private logMark!: Phaser.GameObjects.Graphics;
   private status!: Phaser.GameObjects.Text;
   private result!: Phaser.GameObjects.Text;
   private stamp!: Phaser.GameObjects.Graphics;
@@ -188,8 +225,10 @@ export class HudScene extends Phaser.Scene {
   }
 
   create(): void {
-    createPanel(this, PANEL_RECT, t('hud.panel.unit'));
-    createPanel(this, LOG_RECT, t('hud.panel.log'));
+    // The dashboard carries no title: the line under its buttons says what every part of it is, and a
+    // heading over a band the player reads at a glance would only take room from the numbers.
+    createPanel(this, DASHBOARD_RECT, '');
+    this.createLog();
     this.chips = this.add.container(0, 0);
     this.panelRows = this.add.container(0, 0);
 
@@ -256,12 +295,79 @@ export class HudScene extends Phaser.Scene {
     this.cameraView = this.centredLine(CAMERA_VIEW_RECT, FONT_SIZE.log, TEXT_COLOR);
     this.cameraZoom = this.centredLine(CAMERA_ZOOM_RECT, FONT_SIZE.log, TEXT_COLOR);
 
+    // The inspection window (smoke test 2, slice E) is built with the rest and shown only while a unit
+    // is being inspected: it floats over the board and over every panel of the HUD, so it is built
+    // after them. The X is the only thing in it that takes a press, and the scene above reads it.
+    this.inspectPanel = createPanel(this, INSPECT_RECT, t('inspect.title')).setVisible(false);
+    this.inspectClose = new Button(this, INSPECT_CLOSE_RECT, INSPECT_CLOSE_LABEL).setVisible(false);
+    this.inspectRows = this.add.container(0, 0);
+
     // Added last: a turn change floats over the panels, and it is gone before the next one comes.
     this.banner = new Banner(this, BANNER_RECT);
 
     this.built = true;
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.teardown());
     this.apply(this.view);
+  }
+
+  /**
+   * The log (smoke test 2, slice C): a box in the left column, as tall as it is open, with its own
+   * header as the toggle. `createPanel` cannot draw it — a panel is built from a rectangle that never
+   * changes — so the frame, the line inside it and the heading are drawn here once and resized on
+   * every view, and the text under them is the one object the scene moves.
+   */
+  private createLog(): void {
+    this.logFrame = this.add
+      .rectangle(LOG_RECT.x, LOG_RECT.y, LOG_RECT.width, LOG_RECT.height, PANEL_FILL)
+      .setOrigin(0)
+      .setStrokeStyle(1, PANEL_STROKE)
+      .setAlpha(OVERLAY_PANEL.fillAlpha);
+    this.logInner = this.add.graphics();
+    this.add.text(LOG_RECT.x + PADDING, LOG_RECT.y + PADDING, t('hud.panel.log'), {
+      fontFamily: FONT_TITLE,
+      fontSize: FONT_SIZE.unit,
+      color: TEXT_COLOR,
+    });
+    this.logMark = this.add.graphics();
+  }
+
+  /** The box at the size it is drawn now, and the lines the view is showing inside it. */
+  private drawLog(view: HudView): void {
+    const box = logRect(view.logOpen);
+    const inset = OVERLAY_PANEL.innerInset;
+
+    this.logFrame.setSize(box.width, box.height);
+    this.logInner.clear();
+    this.logInner.lineStyle(1, PANEL_INNER_STROKE, OVERLAY_PANEL.innerAlpha);
+    this.logInner.strokeRect(
+      box.x + inset,
+      box.y + inset,
+      box.width - 2 * inset,
+      box.height - 2 * inset,
+    );
+    this.drawLogMark(view.logOpen);
+
+    // Closed, the box keeps its header and the last thing said: the line the player missed least.
+    this.logText.setText((view.logOpen ? view.logLines : view.logLines.slice(-1)).join('\n'));
+  }
+
+  /**
+   * The chevron at the right end of the header: it points down while the box is closed and up while it
+   * is open. It is drawn rather than lettered for the reason the cog and the rotation arrows are —
+   * neither face the HUD carries has a triangle in it, and a glyph borrowed from whatever font the
+   * machine falls back to would be the one thing on the screen in another typeface.
+   */
+  private drawLogMark(open: boolean): void {
+    const { x, y } = LOG_TOGGLE_POINT;
+    const way = open ? -1 : 1;
+
+    this.logMark.clear();
+    this.logMark.lineStyle(2, PAPER_COLOR, 1);
+    this.logMark.beginPath();
+    this.logMark.moveTo(x - LOG_CHEVRON.halfWidth, y + (way * LOG_CHEVRON.height) / 2);
+    this.logMark.lineTo(x, y - (way * LOG_CHEVRON.height) / 2);
+    this.logMark.lineTo(x + LOG_CHEVRON.halfWidth, y + (way * LOG_CHEVRON.height) / 2);
+    this.logMark.strokePath();
   }
 
   /** Shows the view. Before `create` the view is only kept, and shown once the scene is built. */
@@ -282,15 +388,16 @@ export class HudScene extends Phaser.Scene {
 
   private apply(view: HudView): void {
     this.drawChips(view.state);
-    this.drawPanel(view.state, view.selectedId);
+    this.drawDashboard(view.state, view.selectedId);
+    this.drawInspection(view.state, view.inspectedId);
     this.drawButtons(view);
     this.drawMoveChips(view);
     this.drawSettings(view);
     this.drawAutoEndTurn(view);
     this.drawCamera(view);
+    this.drawLog(view);
     this.drawBanner(view);
 
-    this.logText.setText(view.logLines.join('\n'));
     this.status.setText(view.status);
     this.result.setText(view.result);
     this.drawStamp();
@@ -322,36 +429,102 @@ export class HudScene extends Phaser.Scene {
     if (banner !== null) this.banner.show(banner.text, banner.durationMs);
   }
 
-  private drawPanel(state: PublicState | null, selectedId: string | null): void {
+  /**
+   * The unit's data along the bottom edge (smoke test 2, slice B). The rows are the ones the panel
+   * model produces — this only lays them out: the health in the left cell, the resource in the right
+   * one, and the movement, the action and the reaction on the line under the buttons, which is the
+   * whole of the turn at a glance.
+   *
+   * The dashboard is redrawn whole on every view, so a row that has nothing to say is left out rather
+   * than drawn dimmed in a place of its own: the two cells hold one number each, and a unit that is
+   * not on turn has no movement or action to show.
+   */
+  private drawDashboard(state: PublicState | null, selectedId: string | null): void {
     this.panelRows.removeAll(true);
     if (state === null) return;
 
-    const barWidth = PANEL_RECT.width - 2 * PADDING;
-    const valueX = PANEL_RECT.x + PANEL_RECT.width - PADDING;
+    const rows = unitPanel(state, selectedId);
+    const health = rows.find((row) => row.key === 'hp');
+    const resources = rows.filter((row) => row.key === 'ammo' || row.key === 'mana');
+    // The resource the unit actually carries, or the last of the rows as a placeholder: a class with
+    // no magazine has an ammunition row saying nothing and a mana row waiting on the engine (DT-57).
+    const resource = resources.find((row) => row.fill !== null) ?? resources[resources.length - 1];
 
-    unitPanel(state, selectedId).forEach((row, index) => {
-      const rowPoint = panelRowPoint(index);
-      const color = row.enabled ? TEXT_COLOR : TEXT_COLOR_DISABLED;
+    if (health !== undefined) this.drawCell(health, DASHBOARD_HEALTH_RECT);
+    if (resource !== undefined) this.drawCell(resource, DASHBOARD_AMMO_RECT);
 
-      const label = this.add.text(rowPoint.x, rowPoint.y, row.label, {
-        fontFamily: FONT_BODY,
-        fontSize: FONT_SIZE.log,
-        color,
-      });
-      const value = this.add
-        .text(valueX, rowPoint.y, row.value, { fontFamily: FONT_BODY, fontSize: FONT_SIZE.log, color })
-        .setOrigin(1, 0);
-      this.panelRows.add([label, value]);
+    const turn = rows.filter(
+      (row) => row.key === 'movement' || row.key === 'action' || row.key === 'reaction',
+    );
+    if (turn.length === 0) return;
 
-      if (row.fill === null) return;
+    const color = turn.some((row) => row.enabled) ? TEXT_COLOR : TEXT_COLOR_DISABLED;
+    const line = turn.map((row) => `${row.label} ${row.value}`).join(' · ');
+    const point = DASHBOARD_TURN_POINT;
 
-      const barY = rowPoint.y + PANEL_BAR_OFFSET;
-      const track = this.add.rectangle(rowPoint.x, barY, barWidth, PANEL_BAR_HEIGHT, PANEL_STROKE).setOrigin(0);
-      const filled = this.add
-        .rectangle(rowPoint.x, barY, barWidth * row.fill, PANEL_BAR_HEIGHT, CURRENT_TURN_COLOR)
-        .setOrigin(0);
-      this.panelRows.add([track, filled]);
+    this.panelRows.add(
+      this.add
+        .text(point.x, point.y, line, { fontFamily: FONT_BODY, fontSize: FONT_SIZE.log, color })
+        .setOrigin(0.5, 0),
+    );
+  }
+
+  /**
+   * The inspection window (smoke test 2, slice E): the sheet a right-click on a unit opens, over the
+   * board. It draws and it asks nothing — the sheet comes from the tested model and the scene above
+   * decides when the window is open — so the X is drawn here and pressed there.
+   */
+  private drawInspection(state: PublicState | null, inspectedId: string | null): void {
+    this.inspectRows.removeAll(true);
+
+    const sheet = state === null ? null : unitSheet(state, inspectedId);
+    this.inspectPanel.setVisible(sheet !== null);
+    this.inspectClose.setVisible(sheet !== null);
+    if (sheet === null) return;
+
+    sheet.rows.forEach((row, index) => {
+      const point = inspectRowPoint(index);
+
+      this.inspectRows.add([
+        this.add.text(point.x, point.y, row.label, {
+          fontFamily: FONT_BODY,
+          fontSize: FONT_SIZE.log,
+          color: TEXT_COLOR,
+        }),
+        this.add
+          .text(INSPECT_VALUE_X, point.y, row.value, {
+            fontFamily: FONT_BODY,
+            fontSize: FONT_SIZE.log,
+            color: TEXT_COLOR,
+          })
+          .setOrigin(1, 0),
+      ]);
     });
+  }
+
+  /** One number of the dashboard: its label, its value at the far end, and its bar under both. */
+  private drawCell(row: PanelRow, cell: Rect): void {
+    const color = row.enabled ? TEXT_COLOR : TEXT_COLOR_DISABLED;
+    const label = cellLabelPoint(cell);
+    const value = cellValuePoint(cell);
+
+    this.panelRows.add([
+      this.add.text(label.x, label.y, row.label, { fontFamily: FONT_BODY, fontSize: FONT_SIZE.log, color }),
+      this.add
+        .text(value.x, value.y, row.value, { fontFamily: FONT_BODY, fontSize: FONT_SIZE.log, color })
+        .setOrigin(1, 0),
+    ]);
+
+    if (row.fill === null) return;
+
+    const bar = cellBarPoint(cell);
+    const width = cellBarWidth(cell);
+    this.panelRows.add([
+      this.add.rectangle(bar.x, bar.y, width, CELL_BAR_HEIGHT, PANEL_STROKE).setOrigin(0),
+      this.add
+        .rectangle(bar.x, bar.y, width * row.fill, CELL_BAR_HEIGHT, CURRENT_TURN_COLOR)
+        .setOrigin(0),
+    ]);
   }
 
   /** Built once, then only refreshed, because a button keeps its own visual state. */

@@ -30,7 +30,6 @@ const COLUMN_WIDTH = 300;
 const LEFT_COLUMN_X = PADDING;
 const RIGHT_COLUMN_X = CANVAS_WIDTH - PADDING - COLUMN_WIDTH;
 const COLUMN_Y = 120;
-const COLUMN_HEIGHT = 300;
 
 /** The way out of a finished match, under the result, centred on the canvas. */
 export const RESULT_BUTTON_RECT: Rect = { x: 540, y: 440, width: 200, height: 56 };
@@ -47,18 +46,90 @@ export const CAROUSEL_RECT: Rect = { x: CENTRED_X, y: PADDING, width: CENTRED_WI
 
 export const CAROUSEL_SLOT = { width: 96, height: 64, gap: 8 };
 
+/**
+ * The dashboard: a band along the bottom edge that holds everything the unit's data used to take a
+ * whole column for (smoke test 2, slice B). The unit's numbers sit at the two ends of it and the turn's
+ * own line under the buttons, so the board keeps the middle of the screen and the columns beside it.
+ *
+ * It is one of `hudRects`, so a press on it is the HUD's and never reaches a tile under it.
+ */
+export const DASHBOARD_HEIGHT = 104;
+
+export const DASHBOARD_RECT: Rect = {
+  x: PADDING,
+  y: CANVAS_HEIGHT - PADDING - DASHBOARD_HEIGHT,
+  width: CANVAS_WIDTH - 2 * PADDING,
+  height: DASHBOARD_HEIGHT,
+};
+
 /** The action bar: four buttons, `Mover` / `Atacar` / `Recarregar` / `Terminar turno`. */
-export const ACTION_BAR_RECT: Rect = { x: CENTRED_X, y: 648, width: CENTRED_WIDTH, height: 56 };
+export const ACTION_BAR_RECT: Rect = {
+  x: CENTRED_X,
+  y: DASHBOARD_RECT.y + 12,
+  width: CENTRED_WIDTH,
+  height: 56,
+};
 
 /** Four buttons and three gaps fill the bar exactly. */
 export const ACTION_BUTTON = { width: 184, height: 56, gap: 16 };
 
-/** The unit panel, over the board on the left. */
-export const PANEL_RECT: Rect = {
-  x: LEFT_COLUMN_X,
-  y: COLUMN_Y,
-  width: COLUMN_WIDTH,
-  height: COLUMN_HEIGHT,
+/** How wide and how tall one of the two cells of the dashboard that hold a number is. */
+export const DASHBOARD_CELL = { width: 208, height: ACTION_BAR_RECT.height, inset: 12 };
+
+/** The cell of the unit's health, at the left end of the dashboard. */
+export const DASHBOARD_HEALTH_RECT: Rect = {
+  x: DASHBOARD_RECT.x + DASHBOARD_CELL.inset,
+  y: ACTION_BAR_RECT.y,
+  width: DASHBOARD_CELL.width,
+  height: DASHBOARD_CELL.height,
+};
+
+/** The cell of the unit's resource — its ammunition, or its mana where it carries no magazine. */
+export const DASHBOARD_AMMO_RECT: Rect = {
+  x: DASHBOARD_RECT.x + DASHBOARD_RECT.width - DASHBOARD_CELL.inset - DASHBOARD_CELL.width,
+  y: ACTION_BAR_RECT.y,
+  width: DASHBOARD_CELL.width,
+  height: DASHBOARD_CELL.height,
+};
+
+/** The line of the turn — its movement, its action and its reaction — under the buttons. */
+export const DASHBOARD_TURN_RECT: Rect = {
+  x: ACTION_BAR_RECT.x,
+  y: ACTION_BAR_RECT.y + ACTION_BAR_RECT.height + 4,
+  width: CENTRED_WIDTH,
+  height: 20,
+};
+
+/** How far inside a cell of the dashboard its own text sits, and where its bar runs under it. */
+export const CELL_PADDING = 12;
+export const CELL_BAR_OFFSET = 34;
+export const CELL_BAR_HEIGHT = 6;
+
+/** The top-left of a cell's label, and the end of the cell its value is aligned against. */
+export function cellLabelPoint(cell: Rect): Pixel {
+  return { x: cell.x + CELL_PADDING, y: cell.y + CELL_PADDING };
+}
+
+export function cellValuePoint(cell: Rect): Pixel {
+  return { x: cell.x + cell.width - CELL_PADDING, y: cell.y + CELL_PADDING };
+}
+
+/** The left end of a cell's bar, and how wide it runs between the cell's own paddings. */
+export function cellBarPoint(cell: Rect): Pixel {
+  return { x: cell.x + CELL_PADDING, y: cell.y + CELL_BAR_OFFSET };
+}
+
+export function cellBarWidth(cell: Rect): number {
+  return cell.width - 2 * CELL_PADDING;
+}
+
+/**
+ * The middle of the turn's line, which is centred on the canvas the way the bar over it is: the two
+ * share a column, so the line reads as the bar's own footnote.
+ */
+export const DASHBOARD_TURN_POINT: Pixel = {
+  x: CANVAS_WIDTH / 2,
+  y: DASHBOARD_TURN_RECT.y + 2,
 };
 
 /**
@@ -68,34 +139,53 @@ export const PANEL_RECT: Rect = {
  */
 export const PANEL_ALPHA = 0.94;
 
-/** The battle log, over the board on the right. */
+/**
+ * The battle log: a small box in the left column, which the dashboard freed (smoke test 2, slices B
+ * and C), with its own header as the toggle that opens it (decision Q3).
+ *
+ * Closed, which is how it starts, it shows its header and the last thing said; open, it shows the last
+ * `LOG_LINES` of them. The header is what the player presses either way, so it is the one part that is
+ * always in the same place.
+ *
+ * The log is deliberately not one of `hudRects`: it is as tall as it is open, so the scene reads its
+ * own box — `logRect` — before the pieces that are always the same size.
+ */
+export const LOG_HEADER_HEIGHT = 46;
+export const LOG_LINE_HEIGHT = 22;
+export const LOG_LINES = 6;
+
+/** The open box: the header, and the lines under it. */
 export const LOG_RECT: Rect = {
-  x: RIGHT_COLUMN_X,
+  x: LEFT_COLUMN_X,
   y: COLUMN_Y,
   width: COLUMN_WIDTH,
-  height: COLUMN_HEIGHT,
+  height: LOG_HEADER_HEIGHT + LOG_LINES * LOG_LINE_HEIGHT,
 };
+
+/** The header, which is the toggle and takes the same press whether the box is open or closed. */
+export const LOG_TOGGLE_RECT: Rect = { ...LOG_RECT, height: LOG_HEADER_HEIGHT };
+
+/** The box as it is drawn now: the whole of it open, its header and the last line closed. */
+export function logRect(open: boolean): Rect {
+  return open ? LOG_RECT : { ...LOG_RECT, height: LOG_HEADER_HEIGHT + LOG_LINE_HEIGHT };
+}
 
 /** The legend and the status line, under the panel in the left column. */
 export const LEGEND_RECT: Rect = { x: LEFT_COLUMN_X, y: 440, width: COLUMN_WIDTH, height: 44 };
 export const STATUS_RECT: Rect = { x: LEFT_COLUMN_X, y: 492, width: COLUMN_WIDTH, height: 24 };
 
-/** Height of one panel row, and the space the title above both boxes takes. */
+/** Height of one row of a panel, and the space the title above both boxes takes. */
 export const PANEL_ROW_HEIGHT = 40;
 export const TITLE_HEIGHT = 40;
 
-/** The bar of a row sits under its label, inside the row's own height. */
-export const PANEL_BAR_OFFSET = 22;
-export const PANEL_BAR_HEIGHT = 6;
+/** The top-left of the log's first line, under the header. */
+export const LOG_TEXT_POINT: Pixel = { x: LOG_RECT.x + PADDING, y: LOG_RECT.y + LOG_HEADER_HEIGHT };
 
-/** How many lines the log keeps. Twelve 18px lines fit under the title with room to spare. */
-export const LOG_LINES = 12;
-
-/** The top-left of the log's first line, under the title. */
-export const LOG_TEXT_POINT: Pixel = { x: LOG_RECT.x + PADDING, y: LOG_RECT.y + TITLE_HEIGHT };
-
-/** The top-left of the panel's title. */
-export const PANEL_TITLE_POINT: Pixel = { x: PANEL_RECT.x + PADDING, y: PANEL_RECT.y + PADDING };
+/** The right end of the header, where the glyph that says whether the box is open sits. */
+export const LOG_TOGGLE_POINT: Pixel = {
+  x: LOG_RECT.x + LOG_RECT.width - PADDING,
+  y: LOG_RECT.y + PADDING,
+};
 
 /**
  * The automatic end of turn (EA-4): the gear that opens the settings, in the top-right corner of the
@@ -151,16 +241,19 @@ export const COUNTDOWN_LINK_RECT: Rect = {
 /**
  * The two chips of a pending move (EA-5, D6): "Confirm move" and "Cancel move". The action bar is
  * exactly full — four buttons and three gaps fill it — so they sit outside it, over the board, one
- * row above the Move button and starting at its own left edge. They exist only while a move waits to
- * be confirmed, and they take a click, so the scene reads them the way it reads the bar.
+ * row above the dashboard and starting at the bar's own left edge. They exist only while a move waits
+ * to be confirmed, and they take a click, so the scene reads them the way it reads the bar.
+ *
+ * A chip is as tall as the text it carries with room around it (DT-83): at 24 px the labels of the two
+ * chips were clipped by their own box.
  */
-export const MOVE_CHIP = { width: 184, height: 24, gap: 16 };
+export const MOVE_CHIP = { width: 184, height: 32, gap: 16 };
 
 /** The rectangle of the nth chip of a pending move, counting from the left. */
 export function moveChipRect(index: number): Rect {
   return {
     x: ACTION_BAR_RECT.x + index * (MOVE_CHIP.width + MOVE_CHIP.gap),
-    y: ACTION_BAR_RECT.y - 32,
+    y: DASHBOARD_RECT.y - 8 - MOVE_CHIP.height,
     width: MOVE_CHIP.width,
     height: MOVE_CHIP.height,
   };
@@ -185,7 +278,7 @@ export function moveChipIndexAt(point: Pixel): number | null {
  */
 export const ACTION_HINT_RECT: Rect = {
   x: CENTRED_X,
-  y: ACTION_BAR_RECT.y - 64,
+  y: moveChipRect(0).y - 8 - 24,
   width: CENTRED_WIDTH,
   height: 24,
 };
@@ -222,9 +315,13 @@ export function boardBounds(size: BoardSize, levelAt: (cell: Cell) => number, li
   return { x: west, y: north, width: east - west, height: south - north };
 }
 
-/** The six rectangles that cover the board, in the order the scene reads them. */
+/**
+ * The rectangles that cover the board, in the order the scene reads them. The log is not among them:
+ * it is as tall as it is open, so the scene reads `logRect` on its own, the way it reads the settings
+ * panel. Neither is the camera panel, for the same reason.
+ */
 export function hudRects(): Rect[] {
-  return [CAROUSEL_RECT, ACTION_BAR_RECT, PANEL_RECT, LOG_RECT, LEGEND_RECT, STATUS_RECT];
+  return [CAROUSEL_RECT, DASHBOARD_RECT, LEGEND_RECT, STATUS_RECT];
 }
 
 /** The rectangle of the nth button of the action bar, counting from the left. */
@@ -300,13 +397,37 @@ export const TURN_ARROW_POINT: Pixel = { x: 0, y: -72 };
 /** Half the width of that arrow, and how far its base sits above its tip. */
 export const TURN_ARROW = { halfWidth: 9, height: 14 };
 
-/** The top-left of the nth row of the panel, below its title. */
-export function panelRowPoint(index: number): Pixel {
-  return {
-    x: PANEL_RECT.x + PADDING,
-    y: PANEL_RECT.y + TITLE_HEIGHT + index * PANEL_ROW_HEIGHT,
-  };
+/**
+ * The unit inspection window (EA-6, extended by the smoke test 2 feedback): the sheet a right-click on
+ * a unit opens, over the middle of the board, with the button that closes it at the top right.
+ *
+ * It closes with that button and with nothing else (Q4), so a press on the board acts as it always
+ * does and leaves the window standing. Like the settings panel, it is deliberately not one of
+ * `hudRects`: the scene reads it before the board, and it swallows the presses it covers only while it
+ * is open.
+ */
+export const INSPECT_RECT: Rect = { x: 440, y: 168, width: 400, height: 240 };
+
+/** How wide the box of the close button is, at the top right of the window. */
+export const INSPECT_CLOSE = 32;
+
+export const INSPECT_CLOSE_RECT: Rect = {
+  x: INSPECT_RECT.x + INSPECT_RECT.width - PADDING - INSPECT_CLOSE,
+  y: INSPECT_RECT.y + PADDING,
+  width: INSPECT_CLOSE,
+  height: INSPECT_CLOSE,
+};
+
+/** How far under the close button the first row of the sheet starts. */
+const INSPECT_ROWS_TOP = PADDING + INSPECT_CLOSE + 8;
+
+/** The top-left of the nth row of the sheet, below the title and the close button. */
+export function inspectRowPoint(index: number): Pixel {
+  return { x: INSPECT_RECT.x + PADDING, y: INSPECT_RECT.y + INSPECT_ROWS_TOP + index * PANEL_ROW_HEIGHT };
 }
+
+/** The end of the window its values are aligned against, clear of the close button above them. */
+export const INSPECT_VALUE_X = INSPECT_RECT.x + INSPECT_RECT.width - PADDING;
 
 /**
  * The camera panel (EA-12): the two buttons that turn the view with the view they are looking from, the
@@ -333,10 +454,13 @@ export const CAMERA_CONTROLS = {
 
 export type CameraControl = keyof typeof CAMERA_CONTROLS;
 
-/** The panel is a title over those two rows. */
+/**
+ * The panel is a title over those two rows, at the top of the right column: the log used to sit here,
+ * and it has moved to the left one, which the dashboard freed (smoke test 2, slices B, C and D).
+ */
 export const CAMERA_RECT: Rect = {
   x: RIGHT_COLUMN_X,
-  y: LOG_RECT.y + LOG_RECT.height + PADDING,
+  y: COLUMN_Y,
   width: COLUMN_WIDTH,
   height: TITLE_HEIGHT + 2 * CAMERA_BUTTON.height + CAMERA_ROW_GAP + PADDING,
 };

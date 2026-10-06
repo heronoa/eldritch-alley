@@ -79,3 +79,11 @@ Order follows the roadmap: [ROADMAP.md](../../ROADMAP.md).
   - **Rotation** is not a camera change. The prototype draws one orientation. Rotating means four projections, four depth orders for cells and units, four picking functions, and each prop, facade and sprite flip re-read for its side. The prototype's `cars` already carry a `v` (vertical) flag, which shows the orientation work is per-prop. Rotation changes the isometric and picking work done in `view/iso.ts` and `scenes/map/`.
   - A rotation of 90° in one direction is the cheapest first step if rotation is wanted at all.
 - **Evidence:** `.ia_context/prototypes/eldritch-alley-map-prototype/js/app.js` (one projection, `iso()`, and one depth order); `frontend/src/view/iso.ts`; `frontend/src/scenes/map/MapView.ts`.
+
+### DT-89 · The rotation animation is low poly
+- **Category:** Visual
+- **Risk if untreated:** during the quarter turn the map is drawn as flat blocks and flat figures, which reads as a placeholder next to the detailed view. It does not affect play: the view snaps to the detailed drawing when the turn ends.
+- **Effort:** M
+- **Trigger:** after the rotation feature is accepted on device, and once the sprites of the rotation keep the look of the detailed view (see the smoke-test plan, which makes the units match).
+- **Notes:** the turn draws a simplified picture on one canvas (`frontend/src/scenes/map/RotationView.ts`). Richer drawing there (the prototype's windows, kerbs and markings, or a fuller projection of the blocks) would make it closer to the detailed view. Cost is measured under DT-88 before any of this.
+- **Evidence:** `frontend/src/scenes/map/RotationView.ts:82-114` (`draw`, `drawBlock`, `drawFigure`); `frontend/src/view/rotation-animation.ts`.

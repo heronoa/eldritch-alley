@@ -26,6 +26,7 @@ import { HIT_MARGIN_PX, unitAtPoint, type SpriteLayout } from '../game/hit';
 import { highlightedCells, highlightTone } from '../game/highlight';
 import { describeEvent, describeRejection, type UnitNames } from '../game/log';
 import { presentationOf, type Cue, type Snapshot } from '../game/presentation';
+import { Gestures, LONG_PRESS_MS, type Pinch, type PressPointer } from '../game/press';
 import { resolveClick, resolveInspect } from '../game/selection';
 import { activeSlot, isHumanTurn, turnOrder } from '../game/turn-order';
 import { t } from '../i18n';
@@ -46,7 +47,7 @@ import { NO_FLOOR, type Cell, type Pixel } from '../view/grid';
 // The camera itself is still described in `view/camera.ts`; what it does now comes from the pure maths
 // of EA-12, which the scene reads and never works out for itself.
 import { type CameraView } from '../view/camera';
-import { MIN_ZOOM, clampPan, isTap, snapZoom, zoomAround } from '../view/camera-math';
+import { MIN_ZOOM, clampPan, snapZoom, zoomAround } from '../view/camera-math';
 import { facesRight, type BillboardUnit } from '../view/billboard';
 import { VIEWS, rotateCell, unrotateCell, viewDirection } from '../view/rotation';
 import { rotationProgress, simplifiedAt } from '../view/rotation-animation';
@@ -55,9 +56,12 @@ import { covers, type Drawn } from '../view/cutaway';
 import { HZ, TILE_H, TILE_W, cellAt, cellToScreen, depthOfCell, topFace } from '../view/iso';
 import {
   LOG_LINES,
+  LOG_TOGGLE_RECT,
   buttonIndexAt,
   COUNTDOWN_LINK_RECT,
   COUNTDOWN_RECT,
+  INSPECT_CLOSE_RECT,
+  INSPECT_RECT,
   RESULT_BUTTON_RECT,
   SETTINGS_BUTTON_RECT,
   SETTINGS_PANEL_RECT,
@@ -67,6 +71,7 @@ import {
   carouselSlotIndexAt,
   containsPoint,
   hudRects,
+  logRect,
   moveChipIndexAt,
   CANVAS_HEIGHT,
   CANVAS_WIDTH,
@@ -90,15 +95,6 @@ import { UnitSprite, type Placement } from './units';
 
 /** The side the person at the keyboard plays. */
 const HUMAN_TEAM: Team = 'A';
-
-
-/**
- * The secondary gesture of the inspection (EA-6, D4): how long a finger rests on a unit before the
- * gesture is an inspection instead of a tap. A finger that travels is panning the map instead, which
- * is the same threshold a tap is read with (`isTap`), and a tap shorter than the press is an ordinary
- * click.
- */
-const LONG_PRESS_MS = 400;
 
 /** How far an arrow key, or one of WASD, slides the map, in canvas pixels. */
 const PAN_KEY_PX = 80;
@@ -166,27 +162,14 @@ export class MatchScene extends Phaser.Scene {
   private mode: ActionMode = 'inspect';
   /** The unit the secondary gesture is inspecting, or null when no inspection is open (EA-6). */
   private inspectedId: string | null = null;
-  /**
-   * Where the pointer that is down went down, or null when no tap is waiting. A press that is still
-   * standing when the pointer lifts is a tap shorter than the long press, and so an ordinary click; a
-   * press that the long press already answered, or that travelled far enough to be a pan, is taken
-   * down and the release does nothing (EA-6, D4).
-   */
-  private press: Pixel | null = null;
+  /** The timer of the long press, which the rules of `game/press.ts` decide when to arm (EA-6, D4). */
   private pressTimer: Phaser.Time.TimerEvent | null = null;
-
   /**
-   * The pointers that are down, by their own id, and what a drag and a pinch are read from (EA-12).
-   * They are kept here rather than asked of Phaser, so the scene can be driven by a test that hands
-   * it pointers, and so a pointer the browser cancels can be taken away by id like any other.
+   * The gestures of the match, by their own rules (DT-79, DT-84): the fingers that are down, the press
+   * waiting on its own lift and the drag the map follows. The scene asks it what a pointer event means
+   * and does that; nothing of the rule itself is written down here.
    */
-  private pointers = new Map<number, Pixel>();
-  /**
-   * The drag in progress: where the pointer went down and where the camera was then, so the map follows
-   * the finger exactly instead of drifting as the camera moves under it.
-   */
-  private dragFrom: Pixel | null = null;
-  private dragCentre: Pixel | null = null;
+  private readonly gestures = new Gestures();
   /** The pinch in progress: how far apart the two fingers started, and the zoom at that moment. */
   private pinchFrom = 0;
   private pinchZoom = MIN_ZOOM;
@@ -195,6 +178,8 @@ export class MatchScene extends Phaser.Scene {
   /** The turn in progress, or null while the view stands still (EA-12, slice 3). */
   private turn: Turn | null = null;
   private logLines: string[] = [];
+  /** Whether the log is showing every line it keeps, or only its header and the last one (Q3). */
+  private logOpen = false;
   /** Set when the match is over or lost, after which clicks are ignored. */
   private finished = false;
   /** True while waiting for a reconnection, so the first state that arrives can clear the notice. */
@@ -240,16 +225,15 @@ export class MatchScene extends Phaser.Scene {
     this.selectedId = null;
     this.mode = 'inspect';
     this.inspectedId = null;
-    this.cancelPress();
-    this.pointers = new Map();
-    this.dragFrom = null;
-    this.dragCentre = null;
+    this.disarmLongPress();
+    this.gestures.cancel();
     this.pinchFrom = 0;
     this.pinchZoom = MIN_ZOOM;
     // Switching maps resets the view to N, so a match never opens from a side the last one was left on.
     this.viewSteps = 0;
     this.turn = null;
     this.logLines = [];
+    this.logOpen = false;
     this.finished = false;
     this.reconnecting = false;
     // The setting is read again on every match: another tab may have changed it since the last one.
@@ -309,7 +293,8 @@ export class MatchScene extends Phaser.Scene {
     // The map's canvases are textures of the game, not objects of this scene: leaving without taking
     // them out would pile a hundred of them up on the next match.
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
-      this.cancelPress();
+      this.disarmLongPress();
+      this.gestures.cancel();
       this.game.canvas.removeEventListener('pointercancel', this.onPointerCancel);
       this.turn?.view.destroy();
       this.turn = null;
@@ -330,49 +315,46 @@ export class MatchScene extends Phaser.Scene {
   }
 
   /**
-   * A pointer goes down. The right button is the inspection and is read as one at once; a finger may
-   * still become a long press, so a tap waits for its release to act (EA-6, D4). The primary gesture is
-   * never the inspection: on an enemy it is the action itself.
-   *
-   * The second finger of a pinch takes down whatever the first had armed, so lifting them never picks a
-   * cell, and a third finger is ignored: the camera has no use for it.
+   * A pointer goes down. The rules of what that means are `game/press.ts`; the scene only does what
+   * they answer: an inspection read at once, a press that waits, or the beginning of a pinch.
    */
   private handlePointerDown(pointer: Phaser.Input.Pointer): void {
-    if (pointer.rightButtonDown()) {
-      this.handlePress(pointer, true);
-      return;
+    const outcome = this.gestures.down(pressPointer(pointer));
+    if (!this.gestures.waiting()) this.disarmLongPress();
+
+    switch (outcome.kind) {
+      case 'inspect':
+        this.handlePress(pointer, true);
+        return;
+      case 'begin':
+        if (outcome.longPress) this.armLongPress(pointer);
+        return;
+      case 'pinchBegin':
+        this.pinchFrom = outcome.pinch.distance;
+        this.pinchZoom = this.camera.zoom;
+        return;
+      default:
+        return;
     }
-
-    this.pointers.set(pointer.id, { x: pointer.x, y: pointer.y });
-
-    if (this.pointers.size === 2) {
-      this.cancelPress();
-      this.dragFrom = null;
-      this.dragCentre = null;
-      this.beginPinch();
-      return;
-    }
-    if (this.pointers.size > 2) return;
-
-    this.dragFrom = { x: pointer.x, y: pointer.y };
-    this.dragCentre = { ...this.camera.centre };
-    this.armPress(pointer);
   }
 
-  /** A finger that has rested long enough on a unit is inspecting it, not tapping the board (D4). */
-  private armPress(pointer: Phaser.Input.Pointer): void {
-    this.cancelPress();
-    this.press = { x: pointer.x, y: pointer.y };
-    // Only a finger rests: a mouse button is a click, and the long press is the touch answer to hover.
-    if (!pointer.wasTouch) return;
-
+  /**
+   * A finger that rests long enough on a unit is inspecting it, not tapping the board (D4). Only a
+   * finger ever gets here: a mouse button is a click, and the long press is the touch answer to hover.
+   */
+  private armLongPress(pointer: Phaser.Input.Pointer): void {
+    this.disarmLongPress();
     this.pressTimer = this.time.delayedCall(LONG_PRESS_MS, () => {
       // The timer is spent, and taking the press down here is what keeps the release that follows from
       // clicking as well: one gesture, one meaning (D4).
       this.pressTimer = null;
-      this.press = null;
-      this.handlePress(pointer, true);
+      if (this.gestures.longPress().kind === 'inspect') this.handlePress(pointer, true);
     });
+  }
+
+  private disarmLongPress(): void {
+    this.pressTimer?.remove(false);
+    this.pressTimer = null;
   }
 
   /**
@@ -381,20 +363,11 @@ export class MatchScene extends Phaser.Scene {
    * click never nudges the map and panning never picks a cell by accident (EA-12).
    */
   private handlePointerMove(pointer: Phaser.Input.Pointer): void {
-    if (this.pointers.has(pointer.id)) this.pointers.set(pointer.id, { x: pointer.x, y: pointer.y });
+    const outcome = this.gestures.move(pressPointer(pointer));
+    if (!this.gestures.waiting()) this.disarmLongPress();
 
-    if (this.pointers.size === 2) {
-      this.pinchTo();
-      return;
-    }
-
-    if (this.press !== null && !isTap(this.press, pointer)) this.cancelPress();
-    if (this.pointers.size !== 1 || this.dragFrom === null || this.dragCentre === null) return;
-    if (isTap(this.dragFrom, pointer)) return;
-
-    // The world point under the pointer stays under it: the camera moves by what the pointer travelled,
-    // which is read in canvas pixels and turns into world ones at the zoom the map is drawn at.
-    this.moveCameraBy(this.dragFrom.x - pointer.x, this.dragFrom.y - pointer.y);
+    if (outcome.kind === 'pinch') this.pinchTo(outcome.pinch);
+    else if (outcome.kind === 'pan') this.moveCameraBy(outcome.by.x, outcome.by.y);
   }
 
   /**
@@ -403,15 +376,11 @@ export class MatchScene extends Phaser.Scene {
    * that travelled was panning the map, and it does nothing else (D4, EA-12).
    */
   private handlePointerUp(pointer: Phaser.Input.Pointer): void {
-    this.pointers.delete(pointer.id);
-    if (this.pointers.size < 2) this.endPinch();
+    const outcome = this.gestures.up(pressPointer(pointer));
+    this.disarmLongPress();
+    this.endPinch();
 
-    const tap = this.press !== null && this.dragFrom !== null && isTap(this.dragFrom, pointer);
-    this.cancelPress();
-    this.dragFrom = null;
-    this.dragCentre = null;
-
-    if (tap) this.handlePress(pointer, false);
+    if (outcome.kind === 'tap') this.handlePress(pointer, false);
   }
 
   /**
@@ -419,36 +388,18 @@ export class MatchScene extends Phaser.Scene {
    * gesture it was part of ends here, so nothing is left waiting for a lift that will not come.
    */
   private onPointerCancel = (): void => {
-    this.pointers.clear();
-    this.cancelPress();
-    this.dragFrom = null;
-    this.dragCentre = null;
+    this.gestures.cancel();
+    this.disarmLongPress();
     this.endPinch();
   };
 
-  private cancelPress(): void {
-    this.pressTimer?.remove(false);
-    this.pressTimer = null;
-    this.press = null;
-  }
-
-  /** Two fingers land: the pinch is measured from how far apart they are now, and the zoom they found. */
-  private beginPinch(): void {
-    const [first, second] = [...this.pointers.values()];
-    this.pinchFrom = Math.hypot(second.x - first.x, second.y - first.y);
-    this.pinchZoom = this.camera.zoom;
-  }
-
   /** Two fingers move: the zoom follows how far apart they are, about the point between them. */
-  private pinchTo(): void {
+  private pinchTo(pinch: Pinch): void {
     if (this.state === null || this.pinchFrom <= 0) return;
 
-    const [first, second] = [...this.pointers.values()];
-    const distance = Math.hypot(second.x - first.x, second.y - first.y);
-    const focal = { x: (first.x + second.x) / 2, y: (first.y + second.y) / 2 };
-    const zoom = (this.pinchZoom * distance) / this.pinchFrom;
+    const zoom = (this.pinchZoom * pinch.distance) / this.pinchFrom;
 
-    this.camera = zoomAround(this.camera, focal, zoom, this.bounds(), this.canvasSize());
+    this.camera = zoomAround(this.camera, pinch.focal, zoom, this.bounds(), this.canvasSize());
     this.applyCamera();
   }
 
@@ -468,6 +419,15 @@ export class MatchScene extends Phaser.Scene {
    * lets a click through to the tile. Only a point none of them takes reaches the board.
    */
   private hudTakesPress(point: Pixel): boolean {
+    // The inspection window floats over the board and over every panel of the HUD, so it is read
+    // first: the X closes it, and a press anywhere else inside it is the window's own and reaches
+    // nothing under it. Nothing else closes it — a press on the board acts as it always does and
+    // leaves the window standing (Q4 of the smoke test 2 feedback).
+    if (this.inspectedId !== null && containsPoint(INSPECT_RECT, point)) {
+      if (containsPoint(INSPECT_CLOSE_RECT, point)) this.closeInspection();
+      return true;
+    }
+
     // The countdown of the automatic end of turn floats over the board (EA-4), so it is read before
     // anything it covers: the line keeps the turn, and the link under it turns the feature off.
     if (this.autoEndTurn.phase === 'counting') {
@@ -492,6 +452,18 @@ export class MatchScene extends Phaser.Scene {
     }
     if (this.settingsOpen && containsPoint(SETTINGS_PANEL_RECT, point)) {
       if (containsPoint(SETTINGS_TOGGLE_RECT, point)) this.setAutoEndTurn(!this.autoEndTurn.enabled);
+      return true;
+    }
+
+    // The log is not in `hudRects` either, because it is as tall as it is open (Q3): its own box is
+    // read here, so the header that toggles it and the band its line occupies reach no tile under it.
+    // The header is read first and is in the same place either way, so the toggle is always the press
+    // the player has learnt.
+    if (containsPoint(logRect(this.logOpen), point)) {
+      if (containsPoint(LOG_TOGGLE_RECT, point)) {
+        this.logOpen = !this.logOpen;
+        this.pushHud();
+      }
       return true;
     }
 
@@ -601,6 +573,12 @@ export class MatchScene extends Phaser.Scene {
     secondary: boolean,
     named: UnitState | null = null,
   ): void {
+    // A turn of the view is a quarter turn on its way: until it arrives, the board on the screen is the
+    // one being drawn away from, and the map underneath is already read through the view the turn is
+    // heading for. A press read here would name a cell of neither, so no board press is taken while the
+    // view swings (DT-86). The HUD is unaffected: it is hit-tested before the board is reached.
+    if (this.turn !== null) return;
+
     // The secondary gesture asks about the unit on the cell and stops there: it is not a selection and
     // not an action, so it never reaches `resolveClick` and never sends anything (EA-6, D2/D4).
     if (secondary) {
@@ -608,9 +586,9 @@ export class MatchScene extends Phaser.Scene {
       return;
     }
 
-    // A primary click on the board is an action, so whatever the secondary gesture left on the screen
-    // goes away first: the inspection is a question being held, not something the turn carries on with.
-    this.closeInspection();
+    // A primary click on the board is an action, and the inspection it may have opened stays where it
+    // is: the sheet closes by its own X and by nothing else (Q4 of the smoke test 2 feedback), so the
+    // highlight it put on the board stays until the player closes it.
 
     // The armed mode decides what the click may send: a move only with `Mover` armed, an attack only
     // with `Atacar` armed (EA-7 as amended: the destination is the move, Confirmar commits it).
@@ -780,6 +758,7 @@ export class MatchScene extends Phaser.Scene {
         team: unit.team,
         position: this.viewCell(unit.position),
         permanentlyDead: unit.permanentlyDead,
+        primaryClass: unit.primaryClass,
       }));
   }
 
@@ -1107,11 +1086,13 @@ export class MatchScene extends Phaser.Scene {
       state: this.state,
       humanTeam: HUMAN_TEAM,
       selectedId: this.selectedId,
+      inspectedId: this.inspectedId,
       mode: this.mode,
       finished: this.finished,
       buttons: this.buttonModel,
       moveChips: this.chipModel,
       logLines: this.logLines,
+      logOpen: this.logOpen,
       status: this.statusText,
       result: this.resultText,
       wayOutVisible: this.finished,
@@ -1273,6 +1254,7 @@ export class MatchScene extends Phaser.Scene {
       team: unit.team,
       position: this.viewCell(unit.position),
       permanentlyDead: unit.permanentlyDead,
+      primaryClass: unit.primaryClass,
     }));
 
     for (const [index, unit] of state.units.entries()) {
@@ -1318,5 +1300,14 @@ export class MatchScene extends Phaser.Scene {
     turn.view.draw(elapsed);
     if (!simplifiedAt(rotationProgress(elapsed))) this.settleTurn(turn);
   }
+}
 
+/** What Phaser reports about a pointer, reduced to the little that the rules of a press need. */
+function pressPointer(pointer: Phaser.Input.Pointer): PressPointer {
+  return {
+    id: pointer.id,
+    at: { x: pointer.x, y: pointer.y },
+    rightButton: pointer.rightButtonDown(),
+    touch: pointer.wasTouch,
+  };
 }

@@ -66,6 +66,54 @@ export function frameIndex(row: number, column: number): number {
   return row * FRAMES_PER_ROW + column;
 }
 
+/** The row a frame index falls in, which is the row of the class that owns it. */
+export function frameRow(frame: number): number {
+  return Math.floor(frame / FRAMES_PER_ROW);
+}
+
+/** The column a frame index falls in, counted from the left of the row. */
+export function frameColumn(frame: number): number {
+  return frame % FRAMES_PER_ROW;
+}
+
+/** Where a frame sits in its sheet: the box a drawing cuts out of it, in the sheet's own pixels. */
+export interface FrameBox {
+  column: number;
+  row: number;
+  width: number;
+  height: number;
+}
+
+/** The box of a frame in the sheet, which is what a `drawImage` of one needs. */
+export function frameBox(frame: number): FrameBox {
+  return { column: frameColumn(frame), row: frameRow(frame), width: FRAME.width, height: FRAME.height };
+}
+
+/**
+ * The columns of a row that hold the two idle poses. A row starts with them, so the resting pose of
+ * every class is next to the left edge of the sheet.
+ */
+export const IDLE_COLUMNS: readonly number[] = [0, 1];
+
+/**
+ * The idle frame of one row. `phase` is which of the two poses: the breathing cycle the animation
+ * module works out, or a plain turn count. Any integer is read as one of the two.
+ */
+export function rowIdleFrame(row: number, phase: number): number {
+  return frameIndex(row, IDLE_COLUMNS[((phase % IDLE_COLUMNS.length) + IDLE_COLUMNS.length) % IDLE_COLUMNS.length]);
+}
+
+/**
+ * The frame a unit is drawn with when it is doing nothing: the idle pose of its class, in the row of
+ * that class, or the first row for a class the sheet does not carry.
+ *
+ * This is the one place that answers it, so the sprite standing on the board and the flat figure the
+ * turn draws (smoke test 2, slice A) are the same drawing of the same character.
+ */
+export function idleFrameOf(unit: { primaryClass: string }, phase = 0): number {
+  return rowIdleFrame(classRow(unit.primaryClass) ?? 0, phase);
+}
+
 /** How much of the health the unit entered the match with it still has, 0..1. */
 export function healthFraction(unit: { health: number; maxHealth: number }): number {
   if (unit.maxHealth <= 0) return 0;
@@ -107,5 +155,5 @@ export function markerStyle(team: Team): MarkerStyle {
 
 /** The frame a turn-order chip shows: the idle pose of the unit's class. Unknown classes use row 0. */
 export function chipFrameOf(unit: UnitState): number {
-  return frameIndex(classRow(unit.primaryClass) ?? 0, 0);
+  return idleFrameOf(unit);
 }

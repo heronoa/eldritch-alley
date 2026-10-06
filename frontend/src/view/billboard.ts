@@ -13,6 +13,17 @@ export interface BillboardUnit {
   team: Team;
   position: Position;
   permanentlyDead: boolean;
+  /** The class the unit's sheet row comes from, which is what decides the frame drawn for it. */
+  primaryClass: string;
+}
+
+/**
+ * Whether the drawing of a unit has to be mirrored. The sprite standing on the board does it with
+ * `setFlipX`; the flat figure of a turn does it with a canvas transform. Both ask this one question,
+ * so a unit cannot face one way at rest and the other way while the view turns.
+ */
+export function mirrored(unit: BillboardUnit, units: readonly BillboardUnit[]): boolean {
+  return !facesRight(unit, units);
 }
 
 /**

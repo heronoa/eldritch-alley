@@ -2,12 +2,19 @@ import type { UnitState } from '../protocol';
 import { describe, expect, it } from 'vitest';
 import {
   DIM_ALPHA,
+  FRAME,
+  IDLE_COLUMNS,
   chipFrameOf,
   classRow,
+  frameBox,
+  frameColumn,
   frameIndex,
+  frameRow,
   healthFraction,
+  idleFrameOf,
   markerStyle,
   pipsFor,
+  rowIdleFrame,
   spriteSheetOf,
   turnLook,
 } from './unit-look';
@@ -88,6 +95,63 @@ describe('chipFrameOf', () => {
     const unknown = { primaryClass: 'soldier' } as UnitState;
 
     expect(chipFrameOf(unknown)).toBe(frameIndex(0, 0));
+  });
+});
+
+describe('rowIdleFrame', () => {
+  it('is one of the two idle columns of the row, and nothing else', () => {
+    expect(IDLE_COLUMNS).toEqual([0, 1]);
+    expect(frameColumn(rowIdleFrame(3, 0))).toBe(IDLE_COLUMNS[0]);
+    expect(frameColumn(rowIdleFrame(3, 1))).toBe(IDLE_COLUMNS[1]);
+  });
+
+  it('stays in the row it was given', () => {
+    for (const phase of [0, 1]) expect(frameRow(rowIdleFrame(5, phase))).toBe(5);
+  });
+
+  it('reads a phase of any size as one of the two poses', () => {
+    expect(rowIdleFrame(3, 2)).toBe(rowIdleFrame(3, 0));
+    expect(rowIdleFrame(3, 97)).toBe(rowIdleFrame(3, 1));
+  });
+});
+
+describe('idleFrameOf', () => {
+  const CLASSES = ['sniper', 'wizard', 'priest', 'soldier'];
+
+  it('is the idle pose of the class, in the class’s own row', () => {
+    expect(idleFrameOf({ primaryClass: 'sniper' })).toBe(frameIndex(3, 0));
+    expect(idleFrameOf({ primaryClass: 'wizard' })).toBe(frameIndex(4, 0));
+    expect(idleFrameOf({ primaryClass: 'priest' })).toBe(frameIndex(5, 0));
+  });
+
+  it('falls back to the first row for a class the sheet does not carry', () => {
+    expect(idleFrameOf({ primaryClass: 'soldier' })).toBe(frameIndex(0, 0));
+    expect(idleFrameOf({ primaryClass: '' })).toBe(frameIndex(0, 0));
+  });
+
+  it('takes the second pose on an odd phase', () => {
+    expect(idleFrameOf({ primaryClass: 'priest' }, 1)).toBe(frameIndex(5, 1));
+  });
+
+  it('is the frame the turn-order chip shows, for every class and both teams', () => {
+    // Slice A's rule: the figure the rotation draws is the figure the unit is drawn with at rest, so
+    // the two have to come out of one function. The chip is the only other caller of the same choice.
+    for (const primaryClass of CLASSES) {
+      for (const team of ['A', 'B'] as const) {
+        const unit = { primaryClass, team } as UnitState;
+        expect(idleFrameOf(unit)).toBe(chipFrameOf(unit));
+      }
+    }
+  });
+});
+
+describe('frameBox', () => {
+  it('cuts a frame out of the sheet where the index says it is', () => {
+    expect(frameBox(frameIndex(3, 5))).toEqual({ column: 5, row: 3, width: FRAME.width, height: FRAME.height });
+  });
+
+  it('gives the first frame of the sheet for the first index', () => {
+    expect(frameBox(0)).toEqual({ column: 0, row: 0, width: FRAME.width, height: FRAME.height });
   });
 });
 
