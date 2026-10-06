@@ -34,4 +34,7 @@ export const enUS: Partial<Record<MessageKey, string>> = {
   'title.footerVersion': 'v0.1',
   'title.footerPlace': 'Belém · the small hours',
   'title.language': 'Language',
+
+  // The battle log's line-of-sight refusal, which this feature adds to the game.
+  'log.rejection.no-line-of-sight': 'No line of sight',
 };

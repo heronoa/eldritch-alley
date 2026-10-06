@@ -57,6 +57,7 @@ export function describeRejection(reason: RejectReason): string {
     case 'not-enough-movement':
     case 'already-acted':
     case 'target-out-of-range':
+    case 'no-line-of-sight':
     case 'target-invalid':
     case 'no-magazine':
     case 'magazine-full':

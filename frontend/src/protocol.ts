@@ -1,8 +1,9 @@
 // Keep in sync with backend/game-server/src/protocol.ts.
 //
 // The engine's data types are copied here as plain types instead of imported, so the browser bundle
-// carries no dependency on the engine package. Only the shapes a client has to read are copied: the
-// engine's rng and its rules stay on the server.
+// carries none of the engine package. Only the shapes a client has to read are copied: the engine's
+// rng and its rules stay on the server. The one exception is the line of sight, a pure rule the
+// preview has to answer exactly as the server does (`game/selection.ts`, EA-1 D1).
 
 /** Identifies a unit inside one match. */
 export type UnitId = string;
@@ -129,6 +130,7 @@ export type RejectReason =
   | 'not-enough-movement'
   | 'already-acted'
   | 'target-out-of-range'
+  | 'no-line-of-sight'
   | 'target-invalid'
   | 'no-magazine'
   | 'magazine-full'

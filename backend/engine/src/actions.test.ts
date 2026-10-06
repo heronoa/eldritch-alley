@@ -273,6 +273,62 @@ describe('actions: attack', () => {
   });
 });
 
+describe('actions: attack and line of sight', () => {
+  /** A sniper on the ground, and a target two cells away with a building on the cell between them. */
+  const throughABuilding = (sniper: Partial<Unit> = {}) =>
+    twoUnitSetup({ range: 3, magazine: 3, ...sniper }, { position: { x: 2, y: 0 } }, { '1,0': 5 });
+
+  it('rejects a shot through a building', () => {
+    const result = rejected(
+      applyAction(newMatch(throughABuilding()), { type: 'attack', actor: 'a1', target: 'b1' }),
+    );
+
+    expect(result.reason).toBe('no-line-of-sight');
+  });
+
+  it('accepts the shot when the same buildings are out of the line', () => {
+    // The control for the case above: the same distance, the same reach, no building in between.
+    const state = newMatch(
+      twoUnitSetup({ range: 3, magazine: 3 }, { position: { x: 2, y: 0 } }, { '1,0': 0 }),
+    );
+    const result = accepted(applyAction(state, { type: 'attack', actor: 'a1', target: 'b1' }));
+
+    expect(result.events).toEqual([
+      expect.objectContaining({ type: 'attacked', actor: 'a1', target: 'b1', ammoSpent: true }),
+    ]);
+  });
+
+  it('accepts the sniper shot across the rooftop gap: the playtest case', () => {
+    // The playtest cells (5,2) to (7,2) of the roof map, levelled: the two roofs at 6, the gap between
+    // them at 0. The gap is below the sight line, so it does not block.
+    const state = newMatch(
+      twoUnitSetup({ range: 3, magazine: 3 }, { position: { x: 2, y: 0 } }, { '0,0': 6, '2,0': 6 }),
+    );
+    const result = accepted(applyAction(state, { type: 'attack', actor: 'a1', target: 'b1' }));
+
+    expect(result.events).toEqual([
+      expect.objectContaining({ type: 'attacked', actor: 'a1', target: 'b1', ammoSpent: true }),
+    ]);
+  });
+
+  it('refuses the same shot from an empty magazine, as melee reach 1', () => {
+    // The reach check comes before sight, and a spent magazine turns the sniper into melee. EA-14
+    // replaces this answer with `no-ammunition`; this test changes with it.
+    const state = newMatch(throughABuilding());
+    const empty = {
+      ...state,
+      units: state.units.map((unit) => (unit.id === 'a1' ? { ...unit, ammo: 0 } : unit)),
+    };
+
+    expect(rejected(applyAction(empty, { type: 'attack', actor: 'a1', target: 'b1' })).reason).toBe(
+      'target-out-of-range',
+    );
+  });
+
+  it.todo('a wizard at range 2 shoots across the rooftop gap (EA-14)');
+  it.todo('a priest at range 2 shoots across the rooftop gap (EA-14)');
+});
+
 describe('resolveHit', () => {
   const attacker = makeUnit({ id: 'a1', team: 'A', position: { x: 0, y: 0 }, hitChance: 100 });
   const target = makeUnit({ id: 'b1', team: 'B', position: { x: 0, y: 1 } });
@@ -416,6 +472,11 @@ describe('rejections', () => {
       reason: 'target-invalid',
       setup: twoUnitSetup(),
       action: { type: 'attack', actor: 'a1', target: 'ghost' },
+    },
+    {
+      reason: 'no-line-of-sight',
+      setup: twoUnitSetup({ range: 2 }, { position: { x: 2, y: 0 } }, { '1,0': 5 }),
+      action: { type: 'attack', actor: 'a1', target: 'b1' },
     },
     {
       reason: 'game-over',

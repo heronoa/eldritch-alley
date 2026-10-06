@@ -3,6 +3,7 @@
 import { distance, inBounds, levelAt } from './board';
 import { currentUnitId, isAlive, unitById } from './initiative';
 import { nextInt } from './rng';
+import { hasLineOfSight } from './sight';
 import type {
   Action,
   Board,
@@ -114,6 +115,7 @@ function validateAttack(state: MatchState, action: AttackAction): RejectReason |
   if (target.id === attacker.id || target.team === attacker.team) return 'target-invalid';
   const reach = isMelee(attacker) ? 1 : attacker.range;
   if (distance(attacker.position, target.position) > reach) return 'target-out-of-range';
+  if (!hasLineOfSight(state.board, attacker.position, target.position)) return 'no-line-of-sight';
   return null;
 }
 

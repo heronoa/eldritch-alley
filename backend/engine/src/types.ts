@@ -151,6 +151,7 @@ export type RejectReason =
   | 'not-enough-movement'
   | 'already-acted'
   | 'target-out-of-range'
+  | 'no-line-of-sight'
   | 'target-invalid'
   | 'no-magazine'
   | 'magazine-full'

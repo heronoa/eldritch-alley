@@ -84,6 +84,7 @@ describe('describeRejection', () => {
     'not-enough-movement': 'Movimento insuficiente',
     'already-acted': 'Ação já usada',
     'target-out-of-range': 'Alvo fora de alcance',
+    'no-line-of-sight': 'Sem linha de visão',
     'target-invalid': 'Alvo inválido',
     'no-magazine': 'Sem carregador',
     'magazine-full': 'Carregador cheio',

@@ -6,3 +6,5 @@ export const ENGINE_VERSION = '0.0.0';
 
 export type * from './types';
 export { newMatch, applyAction, applyEvents, publicState, hashState } from './match';
+// Read by the client as well as the server, so the preview and the refusal use one rule (EA-1 D1).
+export { hasLineOfSight } from './sight';

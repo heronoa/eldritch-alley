@@ -151,11 +151,17 @@ describe('the pt-BR the game shows', () => {
       'not-adjacent',
       'game-over',
       'malformed-action',
+      'no-line-of-sight',
     ];
 
     for (const reason of reasons) {
       expect(describeRejection(reason), reason).toBe(message('pt-BR', `log.rejection.${reason}`));
     }
+  });
+
+  it('carries the line-of-sight refusal in both catalogs', () => {
+    expect(message('pt-BR', 'log.rejection.no-line-of-sight')).toBe('Sem linha de visão');
+    expect(message('en-US', 'log.rejection.no-line-of-sight')).toBe('No line of sight');
   });
 
   it('carries the unit panel labels, keyed by the row they belong to', () => {

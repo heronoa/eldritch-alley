@@ -1,5 +1,8 @@
 // Click to intent. Pure: it reads the public state and answers what the click means, so the scene
 // only has to draw the result. The server still decides whether the action is legal.
+// The engine's own rule, imported rather than copied: the preview has to refuse exactly what the
+// server refuses (EA-1 D1). The engine ships no Node and no package dependency, so the bundle is safe.
+import { hasLineOfSight } from '../../../backend/engine/src/sight';
 import type { ClientAction, PublicState, Team, UnitState } from '../protocol';
 import type { Cell } from '../view/grid';
 
@@ -51,6 +54,7 @@ export function resolveClick({ state, selectedId, cell, humanTeam }: ClickInput)
 
   if (occupant && !occupant.defeated && occupant.team !== humanTeam) {
     if (chebyshev(selected.position, cell) > reachOf(selected)) return { kind: 'none' };
+    if (!hasLineOfSight(state.board, selected.position, cell)) return { kind: 'none' };
     return { kind: 'send', action: { type: 'attack', target: occupant.id } };
   }
 

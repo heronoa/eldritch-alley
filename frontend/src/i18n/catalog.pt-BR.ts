@@ -58,6 +58,7 @@ export const ptBR = {
   'log.rejection.not-enough-movement': 'Movimento insuficiente',
   'log.rejection.already-acted': 'Ação já usada',
   'log.rejection.target-out-of-range': 'Alvo fora de alcance',
+  'log.rejection.no-line-of-sight': 'Sem linha de visão',
   'log.rejection.target-invalid': 'Alvo inválido',
   'log.rejection.no-magazine': 'Sem carregador',
   'log.rejection.magazine-full': 'Carregador cheio',

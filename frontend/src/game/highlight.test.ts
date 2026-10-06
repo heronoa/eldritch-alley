@@ -5,6 +5,16 @@ import { resolveClick } from './selection';
 
 const BOARD: Board = { width: 8, height: 8, levels: new Array<number>(64).fill(0) };
 
+/** A flat board with the given cells raised, keyed by `x,y`. */
+function makeBoard(heights: Record<string, number>): Board {
+  const levels = new Array<number>(64).fill(0);
+  for (const [key, level] of Object.entries(heights)) {
+    const [x, y] = key.split(',').map(Number);
+    levels[y * 8 + x] = level;
+  }
+  return { width: 8, height: 8, levels };
+}
+
 interface UnitSpec {
   id: UnitId;
   team: Team;
@@ -37,10 +47,10 @@ function makeUnit(spec: UnitSpec): UnitState {
   };
 }
 
-function makeState(units: readonly UnitState[], currentIndex = 0): PublicState {
+function makeState(units: readonly UnitState[], currentIndex = 0, board: Board = BOARD): PublicState {
   return {
     seed: 1,
-    board: BOARD,
+    board,
     units: [...units],
     initiative: units.map((unit) => unit.id),
     currentIndex,
@@ -114,6 +124,26 @@ describe('highlightedCells', () => {
     const cells = highlightedCells({ state, selectedId: 'A-sniper', mode: 'attack', humanTeam: 'A' });
 
     expect(cells).toEqual([{ x: 3, y: 0 }]);
+  });
+
+  it('does not paint an enemy behind a building', () => {
+    const sniper = makeUnit({ id: 'A-sniper', team: 'A', at: { x: 0, y: 0 }, range: 3 });
+    const enemy = makeUnit({ id: 'B-priest', team: 'B', at: { x: 2, y: 0 }, range: 1 });
+    const state = makeState([sniper, enemy], 0, makeBoard({ '1,0': 5 }));
+
+    const cells = highlightedCells({ state, selectedId: 'A-sniper', mode: 'attack', humanTeam: 'A' });
+
+    expect(cells).toEqual([]);
+  });
+
+  it('paints the enemy across the rooftop gap', () => {
+    const sniper = makeUnit({ id: 'A-sniper', team: 'A', at: { x: 5, y: 2 }, range: 3 });
+    const enemy = makeUnit({ id: 'B-priest', team: 'B', at: { x: 7, y: 2 }, range: 1 });
+    const state = makeState([sniper, enemy], 0, makeBoard({ '5,2': 6, '6,2': 0, '7,2': 6 }));
+
+    const cells = highlightedCells({ state, selectedId: 'A-sniper', mode: 'attack', humanTeam: 'A' });
+
+    expect(cells).toEqual([{ x: 7, y: 2 }]);
   });
 
   it('highlights exactly the cells that would send that action', () => {
