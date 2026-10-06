@@ -277,6 +277,21 @@ export function carouselSlotRect(index: number): Rect {
 }
 
 /**
+ * The slot under a point, or null when the point is on none of them. `slots` is how many the queue
+ * has now: the carousel shrinks as units fall, and a press right of the last portrait is on the empty
+ * part of the strip, which is no unit at all (EA-8).
+ *
+ * The result is the same rectangle `carouselSlotRect` draws, so the portrait a player presses is the
+ * unit they pressed (DT-30, the rule the action bar follows).
+ */
+export function carouselSlotIndexAt(point: Pixel, slots: number): number | null {
+  for (let index = 0; index < slots; index += 1) {
+    if (containsPoint(carouselSlotRect(index), point)) return index;
+  }
+  return null;
+}
+
+/**
  * The tip of the arrow that marks the unit on turn, in the sprite's own coordinates: straight above
  * the feet of the figure, clear of its head (48 px up), its health bar (54) and its pips (64).
  */

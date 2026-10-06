@@ -19,6 +19,7 @@ import {
   boardBounds,
   buttonIndexAt,
   buttonRect,
+  carouselSlotIndexAt,
   carouselSlotRect,
   hudRects,
   panelRowPoint,
@@ -272,5 +273,33 @@ describe('buttonIndexAt', () => {
     expect(r.y + r.height).toBeLessThanOrEqual(CANVAS_HEIGHT);
     expect(overlaps(r, CAROUSEL_RECT)).toBe(false);
     expect(overlaps(r, ACTION_BAR_RECT)).toBe(false);
+  });
+});
+
+// EA-8: the same rule the buttons follow, for the portraits of the turn queue — a press is read from
+// the rectangle that draws the slot, so the portrait a player presses is the unit they pressed.
+describe('carouselSlotIndexAt', () => {
+  const centre = (index: number) => {
+    const rect = carouselSlotRect(index);
+    return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+  };
+
+  it('finds each slot of a full queue under its own centre', () => {
+    for (let index = 0; index < CAROUSEL_SLOTS; index += 1) {
+      expect(carouselSlotIndexAt(centre(index), CAROUSEL_SLOTS), `slot ${index}`).toBe(index);
+    }
+  });
+
+  it('never names a slot the queue does not have', () => {
+    expect(carouselSlotIndexAt(centre(CAROUSEL_SLOTS - 1), CAROUSEL_SLOTS - 4)).toBeNull();
+  });
+
+  it('answers nothing for the gap between two slots', () => {
+    const gapX = right(carouselSlotRect(0)) + CAROUSEL_SLOT.gap / 2;
+    expect(carouselSlotIndexAt({ x: gapX, y: carouselSlotRect(0).y + 1 }, CAROUSEL_SLOTS)).toBeNull();
+  });
+
+  it('answers nothing for a click on the board', () => {
+    expect(carouselSlotIndexAt({ x: 640, y: 300 }, CAROUSEL_SLOTS)).toBeNull();
   });
 });

@@ -22,11 +22,12 @@ import {
   type AutoEndTurn,
   type AutoEndTurnEvent,
 } from '../game/autoEndTurn';
+import { HIT_MARGIN_PX, unitAtPoint, type SpriteLayout } from '../game/hit';
 import { highlightedCells, highlightTone } from '../game/highlight';
 import { describeEvent, describeRejection, type UnitNames } from '../game/log';
 import { presentationOf, type Cue, type Snapshot } from '../game/presentation';
 import { resolveClick, resolveInspect } from '../game/selection';
-import { activeSlot, isHumanTurn } from '../game/turn-order';
+import { activeSlot, isHumanTurn, turnOrder } from '../game/turn-order';
 import { t } from '../i18n';
 import { terrainOf, type Terrain } from '../maps/terrain';
 import { Session } from '../net/session';
@@ -39,6 +40,7 @@ import {
   type RejectReason,
   type StateMessage,
   type Team,
+  type UnitState,
 } from '../protocol';
 import { NO_FLOOR, type Cell, type Pixel } from '../view/grid';
 import { MIN_ZOOM, zoomAbout, type CameraView } from '../view/camera';
@@ -53,6 +55,7 @@ import {
   SETTINGS_BUTTON_RECT,
   SETTINGS_PANEL_RECT,
   SETTINGS_TOGGLE_RECT,
+  carouselSlotIndexAt,
   containsPoint,
   hudRects,
   moveChipIndexAt,
@@ -66,10 +69,11 @@ import {
   HIGHLIGHT_MOVE_ALPHA,
   HIGHLIGHT_MOVE_COLOR,
 } from '../view/theme';
+import { BODY_HEIGHT } from '../view/unit-look';
 import { playEffect } from './effects';
 import { MapView } from './map/MapView';
 import { HudScene } from './HudScene';
-import { BODY_HEIGHT, UnitSprite, type Placement } from './units';
+import { UnitSprite, type Placement } from './units';
 
 /** The side the person at the keyboard plays. */
 const HUMAN_TEAM: Team = 'A';
@@ -375,22 +379,66 @@ export class MatchScene extends Phaser.Scene {
       return;
     }
     if (this.finished || this.state === null) return;
+
+    const state = this.state;
+
+    // The turn queue floats over the board and is drawn above it, so a portrait is read before the
+    // board is: pressing one is pressing the unit the slot shows, and the rest of the press is the
+    // press on that unit's own cell (EA-8). The gaps between the portraits stay the HUD's, as they
+    // always were, and `hudTakesPress` swallows them.
+    const portrait = this.portraitAt(state, point);
+    if (portrait !== null) {
+      this.pressOnCell(state, portrait.position, secondary, portrait);
+      return;
+    }
+
     if (this.hudTakesPress(point)) return;
+
+    // The figure of a unit stands over the cells behind the one its feet rest on, so a press that
+    // covers one names its unit: the target is the unit the player sees, not the cell the finger
+    // happens to cover (EA-8). Only a press that covers no figure is read against the cell under it,
+    // which is what walking onto free ground needs.
+    const hit = unitAtPoint(state.units, world, this.spriteLayout);
 
     // The board the state carries says how big it is; what each cell is drawn at comes from the map,
     // lift included, so a click lands on the cell the player aimed at.
-    const cell = cellAt(
-      world,
-      this.state.board,
-      (candidate) => this.levelAt(candidate),
-      this.lift,
-    );
+    const cell =
+      hit?.position ??
+      cellAt(world, state.board, (candidate) => this.levelAt(candidate), this.lift);
     if (cell === null) return;
 
+    this.pressOnCell(state, cell, secondary, hit);
+  }
+
+  /**
+   * The unit whose portrait of the turn queue sits under a point, or null when the point is on none
+   * of them. The slots are drawn in turn order, which is the order the queue is read in (EA-8).
+   */
+  private portraitAt(state: PublicState, point: Pixel): UnitState | null {
+    const queue = turnOrder(state);
+    const index = carouselSlotIndexAt(point, queue.length);
+
+    return index === null ? null : (queue[index]?.unit ?? null);
+  }
+
+  /**
+   * A press that named a unit and a cell: the figure standing on the board (EA-8), or a portrait of
+   * the turn queue that shows the same unit. A press that named no unit is the empty cell under the
+   * finger. The secondary gesture asks about the cell, the primary one acts on what was named.
+   *
+   * A press on a figure is handed the cell the unit stands on, because that is the cell its target
+   * is: the figure covers the cells behind it, and those are not where the unit or its reach is.
+   */
+  private pressOnCell(
+    state: PublicState,
+    cell: Cell,
+    secondary: boolean,
+    named: UnitState | null = null,
+  ): void {
     // The secondary gesture asks about the unit on the cell and stops there: it is not a selection and
     // not an action, so it never reaches `resolveClick` and never sends anything (EA-6, D2/D4).
     if (secondary) {
-      this.inspect(this.state, cell);
+      this.inspect(state, cell);
       return;
     }
 
@@ -402,21 +450,44 @@ export class MatchScene extends Phaser.Scene {
     // with `Atacar` armed (EA-7 as amended: the destination is the move, Confirmar commits it).
     const intent = applyMode(
       this.mode,
-      resolveClick({ state: this.state, selectedId: this.selectedId, cell, humanTeam: HUMAN_TEAM }),
+      resolveClick({
+        state,
+        selectedId: this.selectedId,
+        cell,
+        targetId: named?.id ?? null,
+        humanTeam: HUMAN_TEAM,
+      }),
     );
 
     switch (intent.kind) {
       case 'select':
         this.selectedId = intent.unitId;
-        this.redraw(this.state);
+        this.redraw(state);
         break;
       case 'send':
         this.session.send(intent.action);
+        break;
+      case 'refused':
+        // The turn can use no target there, and nothing is sent: the log says which rule turned the
+        // press down, in the engine's own words (EA-8).
+        this.appendLog(describeRejection(intent.reason));
         break;
       case 'inspect':
       case 'none':
         break;
     }
+  }
+
+  /**
+   * The board as the hit test of a press reads it: where the feet of a unit are drawn, and how far
+   * outside its figure a press still counts. The margin is in screen pixels, so it is divided by the
+   * zoom: a thumb covers the same part of a sprite whatever the board is scaled to (EA-8, D1).
+   */
+  private get spriteLayout(): SpriteLayout {
+    return {
+      anchorOf: (unit) => this.placementOf(unit.position).anchor,
+      margin: HIT_MARGIN_PX / this.camera.zoom,
+    };
   }
 
   /**

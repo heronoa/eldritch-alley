@@ -28,6 +28,8 @@ import {
   WARM_COLOR,
 } from '../view/theme';
 import {
+  BODY_HEIGHT,
+  BODY_SCALE,
   classRow,
   frameIndex,
   healthFraction,
@@ -65,15 +67,6 @@ const DIAMOND = [
   { x: 0, y: 1 },
   { x: -1, y: 0 },
 ];
-
-/**
- * Geometry of a drawn unit, in pixels. The body is a 16x24 frame drawn at twice its size, which is
- * the size the prototype's own figures take at its scale: the tile of the map is 64 by 32.
- */
-const BODY_SCALE = 2;
-
-/** How tall the figure stands above its feet, which is what the bars and the shot leave from. */
-export const BODY_HEIGHT = 24 * BODY_SCALE;
 
 /** The ground marker lies flat on the tile, so its two axes follow the two axes of the top face. */
 const MARKER_HALF_WIDTH = TILE_W * 0.22;

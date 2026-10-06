@@ -23,6 +23,22 @@ export interface MarkerStyle {
  */
 const FRAMES_PER_ROW = 10;
 
+/** One frame of a sheet, in its own pixels: the box every pose of the character art is drawn in. */
+export const FRAME = { width: 16, height: 24 };
+
+/** How much bigger than its own pixels the board draws a frame: twice, the prototype's own size. */
+export const BODY_SCALE = 2;
+
+/**
+ * The box a figure is drawn in, standing on its feet: the frame at the scale of the board. It is the
+ * one place that says how big a unit is, so what the player sees and what a press lands on cannot
+ * drift apart (EA-8).
+ */
+export const SPRITE_SIZE = { width: FRAME.width * BODY_SCALE, height: FRAME.height * BODY_SCALE };
+
+/** How tall the figure stands above its feet, which is what the bars and the shot leave from. */
+export const BODY_HEIGHT = SPRITE_SIZE.height;
+
 /** The sheet of a team. A is the human side, B the bot. */
 export function spriteSheetOf(team: Team): SpriteSheet {
   return team === 'A' ? 'ally' : 'enemy';
