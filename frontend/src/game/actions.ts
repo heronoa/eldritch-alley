@@ -6,8 +6,7 @@
 //
 // The labels come from the catalog, keyed by the button's own id, so a button cannot be added
 // without a word for it.
-import { canStillAct } from '../../../backend/engine/src/actions';
-import { reachableCells } from '../../../backend/engine/src/movement';
+import { canStillAct, reachableCells } from '@eldritch-alley/engine';
 import { t } from '../i18n';
 import type { PublicState, Team, UnitState } from '../protocol';
 import { highlightedCells } from './highlight';
@@ -55,7 +54,29 @@ export function applyMode(mode: ActionMode, intent: Intent): Intent {
   return allowsIntent(mode, intent) ? intent : { kind: 'none' };
 }
 
+/** The answers already given for each state and team, by the state's identity (see `highlight.ts`). */
+const answeredActions = new WeakMap<PublicState, Map<Team, AvailableActions>>();
+
+/**
+ * What the human may do now. A match asks this three times for every state (the handover, the
+ * countdown and the action bar), so the answer is kept per state and team (DT-74).
+ */
 export function availableActions(state: PublicState, humanTeam: Team): AvailableActions {
+  let byTeam = answeredActions.get(state);
+  if (byTeam === undefined) {
+    byTeam = new Map();
+    answeredActions.set(state, byTeam);
+  }
+
+  const known = byTeam.get(humanTeam);
+  if (known !== undefined) return known;
+
+  const available = computeAvailableActions(state, humanTeam);
+  byTeam.set(humanTeam, available);
+  return available;
+}
+
+function computeAvailableActions(state: PublicState, humanTeam: Team): AvailableActions {
   const actor = actorOf(state);
   if (!actor || actor.defeated || actor.team !== humanTeam) {
     return {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { reachableCells } from '../../../backend/engine/src/movement';
+import { reachableCells } from '@eldritch-alley/engine';
 import { PROTOTYPE_MAPS, type PrototypeMap } from '../maps/prototype-maps';
 import type { Board, PublicState, Team, UnitId, UnitState } from '../protocol';
 import { highlightedCells } from './highlight';
@@ -92,6 +92,19 @@ const NEAR = makeUnit({ id: 'B-priest', team: 'B', at: { x: 3, y: 0 }, range: 1 
 const FAR = makeUnit({ id: 'B-wizard', team: 'B', at: { x: 7, y: 7 }, range: 1 });
 
 describe('highlightedCells', () => {
+  it('answers the same question for the same state from memory, and a new state afresh', () => {
+    const state = makeState([CORNER, NEAR]);
+    const ask = { state, selectedId: 'A-sniper', mode: 'move' as const, humanTeam: 'A' as const };
+
+    const first = highlightedCells(ask);
+    expect(highlightedCells(ask)).toBe(first);
+
+    // A new state object is a new question: the answer is worked out again, and it is the same.
+    const again = highlightedCells({ ...ask, state: { ...state } });
+    expect(again).not.toBe(first);
+    expect(again).toEqual(first);
+  });
+
   it('highlights nothing while nothing is armed', () => {
     const state = makeState([CORNER, NEAR]);
 

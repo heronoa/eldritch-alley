@@ -1,9 +1,9 @@
 // Click to intent. Pure: it reads the public state and answers what the click means, so the scene
 // only has to draw the result. The server still decides whether the action is legal.
 // The engine's own rules, imported rather than copied: the preview has to refuse exactly what the
-// server refuses (EA-1 D1). The engine ships no Node and no package dependency, so the bundle is safe.
-import { findPath } from '../../../backend/engine/src/movement';
-import { hasLineOfSight } from '../../../backend/engine/src/sight';
+// server refuses (EA-1 D1). The import goes through the engine's package entry, so the client sees
+// only what `index.ts` exports; the engine ships no Node, so the bundle is safe.
+import { findPath, hasLineOfSight } from '@eldritch-alley/engine';
 import type { ClientAction, Position, PublicState, Team, UnitState } from '../protocol';
 import type { Cell } from '../view/grid';
 import type { ActionMode } from './actions';
