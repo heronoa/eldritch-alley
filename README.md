@@ -49,6 +49,15 @@ The backend services read the root `.env` (copied from `.env.example`). The fron
 - **Backend:** images from `backend/Dockerfile` published to ECR and run on ECS (Fargate) behind an Application Load Balancer. The first public version's infrastructure is described in the roadmap (M2).
 - **Frontend:** `npm run build -w @eldritch-alley/frontend` and `npm run deploy -w @eldritch-alley/frontend` (Cloudflare Workers with Static Assets).
 
+## Manual Deploy for homelab (dev)
+
+```bash
+TAG=1.1.0
+REG=registry.snake-carob.ts.net
+
+for svc in platform-api game-server; do   docker build -f backend/Dockerfile --build-arg SERVICE=$svc -t $REG/eldritch-alley/$svc:$TAG .;   docker push $REG/eldritch-alley/$svc:$TAG; done
+```
+
 ## License
 
 MIT. See [LICENSE](LICENSE).

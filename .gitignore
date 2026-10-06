@@ -8,3 +8,9 @@ dist/
 .wrangler/
 .DS_Store
 coverage/
+
+# Terraform: state and local variables never enter the repository; the lock file does.
+*.tfstate
+*.tfstate.*
+.terraform/
+*.tfvars

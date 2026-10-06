@@ -1,0 +1,18 @@
+# Staging stack on the EC2 instance. The Terraform boot script writes this file to
+# /opt/eldritch/docker-compose.yml and the .env beside it (infra/terraform/modules/ec2).
+# No port is published to the host: cloudflared reaches game-server on the compose network.
+name: eldritch-stg
+
+services:
+  game-server:
+    image: ${GAME_SERVER_IMAGE:?set by the boot script}
+    restart: unless-stopped
+    environment:
+      GAME_SERVER_PORT: 2567
+
+  cloudflared:
+    image: cloudflare/cloudflared:${CLOUDFLARED_TAG:?set by the boot script}
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARED_TOKEN:?set by the boot script}

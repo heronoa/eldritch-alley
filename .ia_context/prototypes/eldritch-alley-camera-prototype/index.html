@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mobile · Eldritch Alley: Tactics, mapas urbanos</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Special+Elite&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<nav class="tabs" aria-label="Mapas">
+  <button data-m="street">Rua e beco</button>
+  <button data-m="park">Praça da cidade</button>
+  <button data-m="roof">Telhado</button>
+</nav>
+
+<canvas id="map" aria-label="Mapa isométrico"></canvas>
+<div class="vignette"></div>
+
+<div class="hud">
+  <section class="case"><p class="meta" id="m-meta"></p><h1 id="m-title"></h1><p id="m-desc"></p></section>
+  <div class="turn" id="turn"><span class="label">Fila de atendimento · senha 001</span></div>
+  <div class="cell" id="cell">Célula <b>—</b></div>
+  <section class="unit">
+    <div class="unit-head">
+      <div class="portrait ally"><canvas id="u-portrait"></canvas></div>
+      <div><h2>Agente nº 0427</h2><small>Sniper, licença classe B · você</small></div>
+    </div>
+    <div class="stat"><span>HP</span><span class="bar" style="--bar:var(--ally)"><i style="width:100%"></i></span><b>12/12</b></div>
+    <div class="stat"><span>Movimento</span><span class="bar"><i style="width:100%"></i></span><b>3/3</b></div>
+    <div class="stat"><span>Munição</span><span class="bar"><i style="width:66%"></i></span><b>2/3</b></div>
+    <div class="stat"><span>Ação</span><span></span><b>Pronta</b></div>
+    <div class="stat dim"><span>Reação</span><span></span><b>—</b></div>
+  </section>
+  <nav class="actions" aria-label="Ações">
+    <button class="primary">Mover<span class="key">1</span></button>
+    <button>Atacar<span class="key">2</span></button>
+    <button disabled>Recarregar<span class="key">3</span></button>
+    <button>Terminar turno<span class="key">Espaço</span></button>
+  </nav>
+  <section class="log"><h3 id="log-title"></h3><ol id="log"></ol></section>
+  <div class="cam" id="cam" aria-label="Câmera">
+    <button id="c-rl" title="Girar à esquerda (Q)" aria-label="Girar à esquerda">⟲</button>
+    <button id="c-rr" title="Girar à direita (E)" aria-label="Girar à direita">⟳</button>
+    <div class="view" id="c-view">VISTA N</div>
+    <button id="c-zi" title="Aproximar (+)" aria-label="Aproximar">+</button>
+    <div class="zl" id="c-zl">1x</div>
+    <button id="c-zo" title="Afastar (−)" aria-label="Afastar">−</button>
+    <button id="c-ce" title="Centralizar (C)" aria-label="Centralizar">◎</button>
+  </div>
+</div>
+
+<script src="js/maps-camera.js"></script>
+</body>
+</html>

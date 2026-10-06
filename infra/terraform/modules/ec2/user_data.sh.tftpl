@@ -1,0 +1,37 @@
+#!/bin/bash
+# Runs once, on the first boot. Changing the image or the Compose file later means
+# pulling again on the instance (see .ia_context/plans/m2b-ec2.plan.md), not replacing it.
+set -euo pipefail
+
+# Amazon Linux 2023 already ships the AWS CLI v2 and SSM agent.
+dnf install -y docker
+systemctl enable --now docker
+
+mkdir -p /usr/libexec/docker/cli-plugins
+curl -fsSL -o /usr/libexec/docker/cli-plugins/docker-compose \
+  "https://github.com/docker/compose/releases/download/${compose_version}/docker-compose-linux-aarch64"
+chmod 0755 /usr/libexec/docker/cli-plugins/docker-compose
+
+mkdir -p /opt/eldritch
+cat > /opt/eldritch/docker-compose.yml <<'COMPOSE'
+${compose_file}
+COMPOSE
+
+# Secrets are read from SSM at boot and written only to a file readable by root.
+TUNNEL_TOKEN=$(aws ssm get-parameter --region ${region} --name ${cloudflared_token_param} \
+  --with-decryption --query Parameter.Value --output text)
+
+umask 077
+cat > /opt/eldritch/.env <<ENV
+GAME_SERVER_IMAGE=${game_server_image}
+CLOUDFLARED_TAG=${cloudflared_tag}
+CLOUDFLARED_TOKEN=$TUNNEL_TOKEN
+ENV
+umask 022
+
+aws ecr get-login-password --region ${region} | docker login --username AWS --password-stdin ${ecr_registry}
+
+cd /opt/eldritch
+# The image may not exist yet on the first boot; the first push is followed by a manual "docker compose up -d".
+docker compose pull || echo "game-server image not in ECR yet; push it, then run: cd /opt/eldritch && docker compose up -d"
+docker compose up -d || true
