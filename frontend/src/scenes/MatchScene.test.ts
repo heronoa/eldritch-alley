@@ -18,10 +18,13 @@ import { MatchScene } from './MatchScene';
 
 vi.mock('phaser', async () => ({ default: (await import('./testing/phaser-stub')).stub() }));
 // The map is painted on canvases the Node run does not have: the scene's wiring does not depend on it.
+// `setCovered` is the call that would paint the building the view cuts down (EA-12, slice 4): here it
+// only has to exist, because the canvas is not there to be set translucent.
 vi.mock('./map/MapView', () => ({
   MapView: class {
     destroy() {}
     update() {}
+    setCovered(_cells: readonly { x: number; y: number }[]) {}
   },
 }));
 

@@ -43,9 +43,16 @@ import {
   type UnitState,
 } from '../protocol';
 import { NO_FLOOR, type Cell, type Pixel } from '../view/grid';
-import { MIN_ZOOM, zoomAbout, type CameraView } from '../view/camera';
+// The camera itself is still described in `view/camera.ts`; what it does now comes from the pure maths
+// of EA-12, which the scene reads and never works out for itself.
+import { type CameraView } from '../view/camera';
+import { MIN_ZOOM, clampPan, isTap, snapZoom, zoomAround } from '../view/camera-math';
+import { facesRight, type BillboardUnit } from '../view/billboard';
+import { VIEWS, rotateCell, unrotateCell, viewDirection } from '../view/rotation';
+import { rotationProgress, simplifiedAt } from '../view/rotation-animation';
 import { LAYER } from '../view/depth';
-import { cellAt, cellToScreen, topFace } from '../view/iso';
+import { covers, type Drawn } from '../view/cutaway';
+import { HZ, TILE_H, TILE_W, cellAt, cellToScreen, depthOfCell, topFace } from '../view/iso';
 import {
   LOG_LINES,
   buttonIndexAt,
@@ -55,6 +62,8 @@ import {
   SETTINGS_BUTTON_RECT,
   SETTINGS_PANEL_RECT,
   SETTINGS_TOGGLE_RECT,
+  CAMERA_RECT,
+  cameraControlAt,
   carouselSlotIndexAt,
   containsPoint,
   hudRects,
@@ -62,6 +71,8 @@ import {
   CANVAS_HEIGHT,
   CANVAS_WIDTH,
   boardBounds,
+  type CameraControl,
+  type Rect,
 } from '../view/layout';
 import {
   HIGHLIGHT_ATTACK_ALPHA,
@@ -69,9 +80,11 @@ import {
   HIGHLIGHT_MOVE_ALPHA,
   HIGHLIGHT_MOVE_COLOR,
 } from '../view/theme';
-import { BODY_HEIGHT } from '../view/unit-look';
+import { BODY_HEIGHT, SPRITE_SIZE } from '../view/unit-look';
 import { playEffect } from './effects';
 import { MapView } from './map/MapView';
+import { RotationView } from './map/RotationView';
+import { drawnLevel, letterOf } from './map/cell';
 import { HudScene } from './HudScene';
 import { UnitSprite, type Placement } from './units';
 
@@ -79,17 +92,28 @@ import { UnitSprite, type Placement } from './units';
 const HUMAN_TEAM: Team = 'A';
 
 
-/** How far one wheel notch, and one key press, zoom the map. */
-const WHEEL_ZOOM_STEP = 1.15;
-const KEY_ZOOM_STEP = 1.25;
-
 /**
  * The secondary gesture of the inspection (EA-6, D4): how long a finger rests on a unit before the
- * gesture is an inspection instead of a tap, and how far it may drift while it rests. A finger that
- * travels further is panning the map, and a tap shorter than the press is an ordinary click.
+ * gesture is an inspection instead of a tap. A finger that travels is panning the map instead, which
+ * is the same threshold a tap is read with (`isTap`), and a tap shorter than the press is an ordinary
+ * click.
  */
 const LONG_PRESS_MS = 400;
-const PRESS_SLOP_PX = 6;
+
+/** How far an arrow key, or one of WASD, slides the map, in canvas pixels. */
+const PAN_KEY_PX = 80;
+
+/** Which way each key slides the camera over the map, in canvas pixels. */
+const KEY_PAN: Record<string, Pixel> = {
+  arrowright: { x: PAN_KEY_PX, y: 0 },
+  d: { x: PAN_KEY_PX, y: 0 },
+  arrowleft: { x: -PAN_KEY_PX, y: 0 },
+  a: { x: -PAN_KEY_PX, y: 0 },
+  arrowdown: { x: 0, y: PAN_KEY_PX },
+  s: { x: 0, y: PAN_KEY_PX },
+  arrowup: { x: 0, y: -PAN_KEY_PX },
+  w: { x: 0, y: -PAN_KEY_PX },
+};
 
 /** The state carries no display name for a unit, so the log falls back to the id. */
 const UNIT_NAMES: UnitNames = {};
@@ -123,6 +147,17 @@ function secondsLeft(machine: AutoEndTurn): number {
   return Math.ceil(machine.remainingMs / 1000);
 }
 
+/**
+ * A turn of the view while it is happening (EA-12, slice 3): the map being turned away from, the way
+ * round the map goes, when the turn began, and the simplified drawing that carries it.
+ */
+interface Turn {
+  readonly from: Terrain;
+  readonly steps: number;
+  readonly startedAt: number;
+  readonly view: RotationView;
+}
+
 export class MatchScene extends Phaser.Scene {
   private session!: Session;
   private state: PublicState | null = null;
@@ -132,13 +167,33 @@ export class MatchScene extends Phaser.Scene {
   /** The unit the secondary gesture is inspecting, or null when no inspection is open (EA-6). */
   private inspectedId: string | null = null;
   /**
-   * Where the finger that is down went down, or null when no tap is waiting. A press that is still
-   * standing when the finger lifts is a tap shorter than the long press, and so an ordinary click; a
+   * Where the pointer that is down went down, or null when no tap is waiting. A press that is still
+   * standing when the pointer lifts is a tap shorter than the long press, and so an ordinary click; a
    * press that the long press already answered, or that travelled far enough to be a pan, is taken
    * down and the release does nothing (EA-6, D4).
    */
   private press: Pixel | null = null;
   private pressTimer: Phaser.Time.TimerEvent | null = null;
+
+  /**
+   * The pointers that are down, by their own id, and what a drag and a pinch are read from (EA-12).
+   * They are kept here rather than asked of Phaser, so the scene can be driven by a test that hands
+   * it pointers, and so a pointer the browser cancels can be taken away by id like any other.
+   */
+  private pointers = new Map<number, Pixel>();
+  /**
+   * The drag in progress: where the pointer went down and where the camera was then, so the map follows
+   * the finger exactly instead of drifting as the camera moves under it.
+   */
+  private dragFrom: Pixel | null = null;
+  private dragCentre: Pixel | null = null;
+  /** The pinch in progress: how far apart the two fingers started, and the zoom at that moment. */
+  private pinchFrom = 0;
+  private pinchZoom = MIN_ZOOM;
+  /** Which of the four views the map is drawn from (EA-12). */
+  private viewSteps = 0;
+  /** The turn in progress, or null while the view stands still (EA-12, slice 3). */
+  private turn: Turn | null = null;
   private logLines: string[] = [];
   /** Set when the match is over or lost, after which clicks are ignored. */
   private finished = false;
@@ -186,6 +241,14 @@ export class MatchScene extends Phaser.Scene {
     this.mode = 'inspect';
     this.inspectedId = null;
     this.cancelPress();
+    this.pointers = new Map();
+    this.dragFrom = null;
+    this.dragCentre = null;
+    this.pinchFrom = 0;
+    this.pinchZoom = MIN_ZOOM;
+    // Switching maps resets the view to N, so a match never opens from a side the last one was left on.
+    this.viewSteps = 0;
+    this.turn = null;
     this.logLines = [];
     this.finished = false;
     this.reconnecting = false;
@@ -218,24 +281,38 @@ export class MatchScene extends Phaser.Scene {
     this.hud = this.scene.get('hud') as HudScene;
     this.applyCamera();
 
+    // A second pointer, so two fingers are reported at once and a pinch is possible at all (EA-12).
+    this.input.addPointer(1);
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => this.handlePointerDown(pointer));
-    this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => this.trackPress(pointer));
+    this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => this.handlePointerMove(pointer));
     this.input.on('pointerup', (pointer: Phaser.Input.Pointer) => this.handlePointerUp(pointer));
     // The right button is the inspection on a desktop, so the menu of the browser must not eat it.
     this.input.mouse?.disableContextMenu();
+    // Phaser has no event for a pointer the browser takes away: it is read straight off the canvas,
+    // because a finger lost mid-gesture — a call, a system gesture — must not leave the map stuck.
+    this.game.canvas.addEventListener('pointercancel', this.onPointerCancel);
     this.input.on('wheel', (pointer: Phaser.Input.Pointer, _objects: unknown, _dx: number, dy: number) => {
-      this.zoomBy(dy < 0 ? WHEEL_ZOOM_STEP : 1 / WHEEL_ZOOM_STEP, { x: pointer.x, y: pointer.y });
+      this.stepZoom(dy < 0 ? 1 : -1, { x: pointer.x, y: pointer.y });
     });
     this.input.keyboard?.on('keydown', (event: KeyboardEvent) => {
       const centre = { x: this.scale.width / 2, y: this.scale.height / 2 };
-      if (event.key === '+' || event.key === '=') this.zoomBy(KEY_ZOOM_STEP, centre);
-      if (event.key === '-') this.zoomBy(1 / KEY_ZOOM_STEP, centre);
+      if (event.key === '+' || event.key === '=') this.stepZoom(1, centre);
+      if (event.key === '-' || event.key === '_') this.stepZoom(-1, centre);
+      const pan = KEY_PAN[event.key.toLowerCase()];
+      if (pan !== undefined) this.moveCameraBy(pan.x, pan.y);
+      // Q and E turn the view, the two keys either side of W A S D: the same pair the panel's two
+      // arrows are, for a desktop with no pinch and no room for a panel (EA-12).
+      if (event.key.toLowerCase() === 'q') this.rotateView(-1);
+      if (event.key.toLowerCase() === 'e') this.rotateView(1);
     });
 
     // The map's canvases are textures of the game, not objects of this scene: leaving without taking
     // them out would pile a hundred of them up on the next match.
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.cancelPress();
+      this.game.canvas.removeEventListener('pointercancel', this.onPointerCancel);
+      this.turn?.view.destroy();
+      this.turn = null;
       this.mapView?.destroy();
       this.mapView = null;
       this.map = null;
@@ -253,9 +330,12 @@ export class MatchScene extends Phaser.Scene {
   }
 
   /**
-   * A press begins. The right button is the inspection and is read as one at once; a finger may still
-   * become a long press, so a tap waits for its release to act; anything else clicks here and now
-   * (EA-6, D4). The primary click is never the inspection: on an enemy it is the action itself.
+   * A pointer goes down. The right button is the inspection and is read as one at once; a finger may
+   * still become a long press, so a tap waits for its release to act (EA-6, D4). The primary gesture is
+   * never the inspection: on an enemy it is the action itself.
+   *
+   * The second finger of a pinch takes down whatever the first had armed, so lifting them never picks a
+   * cell, and a third finger is ignored: the camera has no use for it.
    */
   private handlePointerDown(pointer: Phaser.Input.Pointer): void {
     if (pointer.rightButtonDown()) {
@@ -263,18 +343,29 @@ export class MatchScene extends Phaser.Scene {
       return;
     }
 
-    if (pointer.wasTouch) {
-      this.armPress(pointer);
+    this.pointers.set(pointer.id, { x: pointer.x, y: pointer.y });
+
+    if (this.pointers.size === 2) {
+      this.cancelPress();
+      this.dragFrom = null;
+      this.dragCentre = null;
+      this.beginPinch();
       return;
     }
+    if (this.pointers.size > 2) return;
 
-    this.handlePress(pointer, false);
+    this.dragFrom = { x: pointer.x, y: pointer.y };
+    this.dragCentre = { ...this.camera.centre };
+    this.armPress(pointer);
   }
 
   /** A finger that has rested long enough on a unit is inspecting it, not tapping the board (D4). */
   private armPress(pointer: Phaser.Input.Pointer): void {
     this.cancelPress();
     this.press = { x: pointer.x, y: pointer.y };
+    // Only a finger rests: a mouse button is a click, and the long press is the touch answer to hover.
+    if (!pointer.wasTouch) return;
+
     this.pressTimer = this.time.delayedCall(LONG_PRESS_MS, () => {
       // The timer is spent, and taking the press down here is what keeps the release that follows from
       // clicking as well: one gesture, one meaning (D4).
@@ -284,28 +375,88 @@ export class MatchScene extends Phaser.Scene {
     });
   }
 
-  /** A finger that travels is panning the map, so the press is neither an inspection nor a tap. */
-  private trackPress(pointer: Phaser.Input.Pointer): void {
-    if (this.press === null) return;
+  /**
+   * A pointer moves. Two of them pinch the map; one of them drags it, and the drag begins only once the
+   * gesture is no longer a tap — which is also when the press waiting under it is taken down, so a
+   * click never nudges the map and panning never picks a cell by accident (EA-12).
+   */
+  private handlePointerMove(pointer: Phaser.Input.Pointer): void {
+    if (this.pointers.has(pointer.id)) this.pointers.set(pointer.id, { x: pointer.x, y: pointer.y });
 
-    const drift = Math.max(
-      Math.abs(pointer.x - this.press.x),
-      Math.abs(pointer.y - this.press.y),
-    );
-    if (drift > PRESS_SLOP_PX) this.cancelPress();
+    if (this.pointers.size === 2) {
+      this.pinchTo();
+      return;
+    }
+
+    if (this.press !== null && !isTap(this.press, pointer)) this.cancelPress();
+    if (this.pointers.size !== 1 || this.dragFrom === null || this.dragCentre === null) return;
+    if (isTap(this.dragFrom, pointer)) return;
+
+    // The world point under the pointer stays under it: the camera moves by what the pointer travelled,
+    // which is read in canvas pixels and turns into world ones at the zoom the map is drawn at.
+    this.moveCameraBy(this.dragFrom.x - pointer.x, this.dragFrom.y - pointer.y);
   }
 
+  /**
+   * A pointer lifts, or the browser takes it away. Lifting one finger of a pinch ends the pinch, and the
+   * zoom settles onto a whole step. A gesture that stayed a tap is an ordinary click, and it acts; one
+   * that travelled was panning the map, and it does nothing else (D4, EA-12).
+   */
   private handlePointerUp(pointer: Phaser.Input.Pointer): void {
-    const tap = this.press !== null;
+    this.pointers.delete(pointer.id);
+    if (this.pointers.size < 2) this.endPinch();
+
+    const tap = this.press !== null && this.dragFrom !== null && isTap(this.dragFrom, pointer);
     this.cancelPress();
-    // A tap shorter than the long press is an ordinary click, and it acts (D4).
+    this.dragFrom = null;
+    this.dragCentre = null;
+
     if (tap) this.handlePress(pointer, false);
   }
+
+  /**
+   * The browser took a pointer away — a call, a system gesture — and Phaser never says so. Every
+   * gesture it was part of ends here, so nothing is left waiting for a lift that will not come.
+   */
+  private onPointerCancel = (): void => {
+    this.pointers.clear();
+    this.cancelPress();
+    this.dragFrom = null;
+    this.dragCentre = null;
+    this.endPinch();
+  };
 
   private cancelPress(): void {
     this.pressTimer?.remove(false);
     this.pressTimer = null;
     this.press = null;
+  }
+
+  /** Two fingers land: the pinch is measured from how far apart they are now, and the zoom they found. */
+  private beginPinch(): void {
+    const [first, second] = [...this.pointers.values()];
+    this.pinchFrom = Math.hypot(second.x - first.x, second.y - first.y);
+    this.pinchZoom = this.camera.zoom;
+  }
+
+  /** Two fingers move: the zoom follows how far apart they are, about the point between them. */
+  private pinchTo(): void {
+    if (this.state === null || this.pinchFrom <= 0) return;
+
+    const [first, second] = [...this.pointers.values()];
+    const distance = Math.hypot(second.x - first.x, second.y - first.y);
+    const focal = { x: (first.x + second.x) / 2, y: (first.y + second.y) / 2 };
+    const zoom = (this.pinchZoom * distance) / this.pinchFrom;
+
+    this.camera = zoomAround(this.camera, focal, zoom, this.bounds(), this.canvasSize());
+    this.applyCamera();
+  }
+
+  /** The pinch is over, so the zoom settles onto a whole step and the next drag starts from nothing. */
+  private endPinch(): void {
+    if (this.pinchFrom === 0) return;
+    this.pinchFrom = 0;
+    this.snapToWholeStep();
   }
 
   /**
@@ -348,6 +499,15 @@ export class MatchScene extends Phaser.Scene {
     if (buttonIndex !== null) {
       const button = this.buttonModel[buttonIndex];
       if (button !== undefined && button.enabled) this.pressAction(button.id, button.mode);
+      return true;
+    }
+
+    // The camera panel floats over the board against the right edge (EA-12), so it is read before
+    // `hudRects` the way the countdown is: what it covers is the board, not the HUD. Every press it
+    // covers belongs to the panel, its controls and the gaps between them alike.
+    if (containsPoint(CAMERA_RECT, point)) {
+      const control = cameraControlAt(point);
+      if (control !== null) this.pressCamera(control);
       return true;
     }
 
@@ -398,16 +558,22 @@ export class MatchScene extends Phaser.Scene {
     // covers one names its unit: the target is the unit the player sees, not the cell the finger
     // happens to cover (EA-8). Only a press that covers no figure is read against the cell under it,
     // which is what walking onto free ground needs.
-    const hit = unitAtPoint(state.units, world, this.spriteLayout);
-
-    // The board the state carries says how big it is; what each cell is drawn at comes from the map,
-    // lift included, so a click lands on the cell the player aimed at.
-    const cell =
+    //
+    // The figures are read where they are drawn — in the view — so both the anchor and the order two
+    // figures covering one point are drawn in are the view's own (EA-12). The cell is then read back
+    // through the rotation, because the state knows only the map's own coordinates.
+    const hit = unitAtPoint(this.inView(state.units), world, this.spriteLayout);
+    const view =
       hit?.position ??
-      cellAt(world, state.board, (candidate) => this.levelAt(candidate), this.lift);
-    if (cell === null) return;
+      cellAt(world, this.map?.size ?? state.board, (candidate) => this.levelAt(candidate), this.lift);
+    if (view === null) return;
 
-    this.pressOnCell(state, cell, secondary, hit);
+    this.pressOnCell(state, this.mapCell(view), secondary, hit);
+  }
+
+  /** The units of the state as the view sees them: the cells they stand on turned to face the camera. */
+  private inView(units: readonly UnitState[]): UnitState[] {
+    return units.map((unit) => ({ ...unit, position: this.viewCell(unit.position) }));
   }
 
   /**
@@ -480,12 +646,14 @@ export class MatchScene extends Phaser.Scene {
 
   /**
    * The board as the hit test of a press reads it: where the feet of a unit are drawn, and how far
-   * outside its figure a press still counts. The margin is in screen pixels, so it is divided by the
-   * zoom: a thumb covers the same part of a sprite whatever the board is scaled to (EA-8, D1).
+   * outside its figure a press still counts. The units the hit test is handed are the view's own, so
+   * the anchor is read from the cell as it is given and never turned twice (EA-12). The margin is in
+   * screen pixels, so it is divided by the zoom: a thumb covers the same part of a sprite whatever the
+   * board is scaled to (EA-8, D1).
    */
   private get spriteLayout(): SpriteLayout {
     return {
-      anchorOf: (unit) => this.placementOf(unit.position).anchor,
+      anchorOf: (unit) => this.feetOf(unit.position),
       margin: HIT_MARGIN_PX / this.camera.zoom,
     };
   }
@@ -573,8 +741,61 @@ export class MatchScene extends Phaser.Scene {
     if (this.map !== null && this.map.id === mapId) return;
 
     this.mapView?.destroy();
-    this.map = terrainOf(mapId);
+    this.map = terrainOf(mapId, this.viewSteps);
     this.mapView = new MapView(this, this.map);
+  }
+
+  /**
+   * Starts a turn of the view a quarter to the left or to the right (EA-12). The map itself is never
+   * changed: it is read again from the side the view looks from, which is what makes every drawing
+   * that asks the map about its neighbours — the kerbs, the parapets, the fences, the road markings,
+   * the stripes of the crosswalk — answer in the new view.
+   *
+   * The reading happens at the end of the turn, not here: while the view swings, the simplified
+   * drawing of `RotationView` carries it, and a second turn asked for in the middle of one is refused
+   * — there is no view to turn away from until this one arrives.
+   */
+  private rotateView(steps: number): void {
+    if (this.map === null || this.turn !== null) return;
+
+    const from = this.map;
+    this.turn = {
+      from,
+      steps,
+      startedAt: this.time.now,
+      view: new RotationView(this, from, this.billboards(), steps * (360 / VIEWS)),
+    };
+  }
+
+  /**
+   * The units as the view being turned away from sees them: the billboards the turn carries. A unit
+   * whose body has left the map is left out, exactly as its sprite is.
+   */
+  private billboards(): BillboardUnit[] {
+    if (this.state === null) return [];
+
+    return this.state.units
+      .filter((unit) => !unit.permanentlyDead)
+      .map((unit) => ({
+        team: unit.team,
+        position: this.viewCell(unit.position),
+        permanentlyDead: unit.permanentlyDead,
+      }));
+  }
+
+  /**
+   * The turn is over: the detailed map of the view it arrived at takes the place of the simplified
+   * one, and everything that was placed in the old view is placed again in the new.
+   */
+  private settleTurn(turn: Turn): void {
+    turn.view.destroy();
+    this.turn = null;
+
+    this.viewSteps += turn.steps;
+    this.map = terrainOf(turn.from.id, this.viewSteps);
+    this.mapView?.destroy();
+    this.mapView = new MapView(this, this.map);
+    if (this.state !== null) this.redraw(this.state);
   }
 
   /**
@@ -590,9 +811,29 @@ export class MatchScene extends Phaser.Scene {
     return this.map?.lift ?? 0;
   }
 
-  /** Where a unit's feet rest on a cell: the centre of its top face, lifted by the cell's level. */
+  /** Where a unit's feet rest on a cell of the view: the centre of its top face, lifted by its level. */
+  private feetOf(view: Cell): Pixel {
+    return cellToScreen(view, this.levelAt(view), this.lift);
+  }
+
+  /** Where a unit of the state stands in the view: its cell turned, and the point its feet rest on. */
   private placementOf(cell: Cell): Placement {
-    return { cell, anchor: cellToScreen(cell, this.levelAt(cell), this.lift) };
+    const view = this.viewCell(cell);
+    return { cell: view, anchor: this.feetOf(view) };
+  }
+
+  /**
+   * The cell of the view a cell of the map is drawn at. Everything the server sends is stated in the
+   * map's own coordinates, and the view is the only thing the rotation moves: the state is read through
+   * this on the way to the screen, and through `mapCell` on the way back (EA-12).
+   */
+  private viewCell(cell: Cell): Cell {
+    return this.map === null ? cell : rotateCell(cell, this.viewSteps, this.map.mapSize);
+  }
+
+  /** The cell of the map a cell of the view names: what a tap on the canvas has to answer. */
+  private mapCell(cell: Cell): Cell {
+    return this.map === null ? cell : unrotateCell(cell, this.viewSteps, this.map.size);
   }
 
   /**
@@ -799,7 +1040,63 @@ export class MatchScene extends Phaser.Scene {
   private redraw(state: PublicState): void {
     this.drawHighlights(state);
     this.redrawUnits(state);
+    this.drawCoveredBuildings(state);
     this.pushHud();
+  }
+
+  /**
+   * The buildings the player cannot see past, drawn translucent so what they hide shows through: the
+   * ones standing over a unit's figure (EA-12, slice 4). Only the view is touched — for the rules the
+   * building is whole — and a building the view has already cut down is left solid, because there is
+   * nothing left behind it to hide.
+   *
+   * The cell under the pointer is not among them yet: the client has no hover to read one from.
+   */
+  private drawCoveredBuildings(state: PublicState): void {
+    const { map, mapView } = this;
+    if (map === null || mapView === null) return;
+
+    const figures: Drawn[] = state.units
+      .filter((unit) => !unit.permanentlyDead)
+      .map((unit) => {
+        const view = this.viewCell(unit.position);
+        const { anchor } = this.placementOf(unit.position);
+
+        return {
+          box: {
+            x: anchor.x - SPRITE_SIZE.width / 2,
+            y: anchor.y - SPRITE_SIZE.height,
+            width: SPRITE_SIZE.width,
+            height: SPRITE_SIZE.height,
+          },
+          depth: depthOfCell(view),
+        };
+      });
+
+    const covered: Cell[] = [];
+    for (let y = 0; y < map.size.height; y += 1) {
+      for (let x = 0; x < map.size.width; x += 1) {
+        const cell = { x, y };
+        if (letterOf(map, cell) !== 'B') continue;
+        if (drawnLevel(map, cell) < this.levelAt(cell)) continue;
+
+        const level = this.levelAt(cell);
+        const centre = cellToScreen(cell, level, this.lift);
+        const column: Drawn = {
+          box: {
+            x: centre.x - TILE_W / 2,
+            y: centre.y - TILE_H / 2,
+            width: TILE_W,
+            height: TILE_H + (level + 1) * HZ,
+          },
+          depth: depthOfCell(cell),
+        };
+
+        if (figures.some((figure) => covers(column, figure))) covered.push(cell);
+      }
+    }
+
+    mapView.setCovered(covered);
   }
 
   /** Hands the HUD what it shows now, and keeps the model of its buttons for the clicks. */
@@ -819,6 +1116,7 @@ export class MatchScene extends Phaser.Scene {
       result: this.resultText,
       wayOutVisible: this.finished,
       settingsOpen: this.settingsOpen,
+      camera: { view: viewDirection(this.viewSteps), zoom: snapZoom(this.camera.zoom) },
       autoEndTurn: {
         phase: this.autoEndTurn.phase,
         seconds: secondsLeft(this.autoEndTurn),
@@ -827,14 +1125,90 @@ export class MatchScene extends Phaser.Scene {
     });
   }
 
-  /** Zooms the map about a point of the screen. The HUD is not in the map camera, so it stays put. */
-  private zoomBy(factor: number, screen: Pixel): void {
+  /**
+   * One whole step of zoom about a point of the screen: the cursor for the wheel, the middle of the
+   * canvas for a key or a button. The HUD is not in the map camera, so it stays put.
+   */
+  private stepZoom(steps: number, screen: Pixel): void {
     if (this.state === null) return;
 
-    const canvas = { width: this.scale.width, height: this.scale.height };
-    const bounds = boardBounds(this.state.board, (cell) => this.levelAt(cell), this.lift);
-    this.camera = zoomAbout(this.camera, screen, { x: canvas.width / 2, y: canvas.height / 2 }, factor, bounds, canvas);
+    const zoom = snapZoom(this.camera.zoom + steps);
+    this.camera = zoomAround(this.camera, screen, zoom, this.bounds(), this.canvasSize());
     this.applyCamera();
+  }
+
+  /**
+   * Settles the zoom onto a whole step, about the middle of the canvas. Fractional zoom leaves the pixel
+   * art with seams, which is why a pinch is only fractional while the fingers are still moving.
+   */
+  private snapToWholeStep(): void {
+    if (this.state === null) return;
+
+    const canvas = this.canvasSize();
+    const zoom = snapZoom(this.camera.zoom);
+    if (zoom === this.camera.zoom) return;
+
+    this.camera = zoomAround(
+      this.camera,
+      { x: canvas.width / 2, y: canvas.height / 2 },
+      zoom,
+      this.bounds(),
+      canvas,
+    );
+    this.applyCamera();
+  }
+
+  /** Slides the camera over the map by a number of canvas pixels, kept inside the pan limit. */
+  private moveCameraBy(dx: number, dy: number): void {
+    if (this.state === null) return;
+
+    const canvas = this.canvasSize();
+    const bounds = this.bounds();
+    const centre = {
+      x: this.camera.centre.x + dx / this.camera.zoom,
+      y: this.camera.centre.y + dy / this.camera.zoom,
+    };
+
+    this.camera = { zoom: this.camera.zoom, centre: clampPan(centre, this.camera.zoom, bounds, canvas) };
+    this.applyCamera();
+  }
+
+  /** Brings the map back to the middle of the canvas, at the zoom it is already on. */
+  private centreMap(): void {
+    if (this.state === null) return;
+
+    const canvas = this.canvasSize();
+    const bounds = this.bounds();
+    const middle = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+
+    this.camera = { zoom: this.camera.zoom, centre: clampPan(middle, this.camera.zoom, bounds, canvas) };
+    this.applyCamera();
+  }
+
+  /**
+   * One control of the camera panel (EA-12). The panel is drawn by the HUD, which is told where the
+   * camera ended up on the next redraw; the scene only decides what pressing a control does.
+   */
+  private pressCamera(control: CameraControl): void {
+    const canvas = this.canvasSize();
+    const middle = { x: canvas.width / 2, y: canvas.height / 2 };
+
+    if (control === 'zoomIn') this.stepZoom(1, middle);
+    if (control === 'zoomOut') this.stepZoom(-1, middle);
+    if (control === 'centre') this.centreMap();
+    if (control === 'rotateLeft') this.rotateView(-1);
+    if (control === 'rotateRight') this.rotateView(1);
+  }
+
+  /** The canvas the camera is drawn on, which is the size every screen point is read against. */
+  private canvasSize(): { width: number; height: number } {
+    return { width: this.scale.width, height: this.scale.height };
+  }
+
+  /** The box the map fills in the current view, which is what the camera may not leave. */
+  private bounds(): Rect {
+    if (this.state === null) return { x: 0, y: 0, width: 0, height: 0 };
+    return boardBounds(this.map?.size ?? this.state.board, (cell) => this.levelAt(cell), this.lift);
   }
 
   /** Puts the map camera where the view says. Before the board is known there is nothing to clamp to. */
@@ -866,13 +1240,16 @@ export class MatchScene extends Phaser.Scene {
       humanTeam: HUMAN_TEAM,
     });
 
+    // The areas come from the state, which states them in the map's own coordinates; the wash is drawn
+    // on the cells of the view (EA-12).
     for (const cell of cells) {
-      const level = this.levelAt(cell);
+      const view = this.viewCell(cell);
+      const level = this.levelAt(view);
       // A gap has no top face to wash: nothing is aimed at it and no rule ever offers it.
       if (level === NO_FLOOR) continue;
 
-      const graphic = this.add.graphics().setDepth(LAYER.highlight(cell));
-      const face = topFace(cell, level, this.lift);
+      const graphic = this.add.graphics().setDepth(LAYER.highlight(view));
+      const face = topFace(view, level, this.lift);
 
       graphic.fillStyle(color, alpha);
       graphic.fillPoints(face, true);
@@ -890,17 +1267,26 @@ export class MatchScene extends Phaser.Scene {
     const inPlay = new Set<string>();
     const activeId = activeSlot(state)?.unit.id ?? null;
 
-    for (const unit of state.units) {
+    // Which way round each figure is drawn is read in the view, not on the map: the rotation is what
+    // decides who stands to the left of whom, so a unit turns with the view it is seen in (EA-12).
+    const board = state.units.map((unit) => ({
+      team: unit.team,
+      position: this.viewCell(unit.position),
+      permanentlyDead: unit.permanentlyDead,
+    }));
+
+    for (const [index, unit] of state.units.entries()) {
       if (unit.permanentlyDead) continue;
       inPlay.add(unit.id);
 
       const marks = { selected: unit.id === this.selectedId, active: unit.id === activeId };
+      const facing = facesRight(board[index]!, board);
       let sprite = this.sprites.get(unit.id);
       if (sprite === undefined) {
-        sprite = new UnitSprite(this, unit, marks, this.placementOf(unit.position));
+        sprite = new UnitSprite(this, unit, marks, this.placementOf(unit.position), facing);
         this.sprites.set(unit.id, sprite);
       } else {
-        sprite.sync(unit, marks, this.placementOf(unit.position));
+        sprite.sync(unit, marks, this.placementOf(unit.position), facing);
       }
     }
 
@@ -913,9 +1299,24 @@ export class MatchScene extends Phaser.Scene {
 
   /** One frame of every animation on the board, and one of the countdown. The sprites advance. */
   update(time: number): void {
+    this.advanceTurn(time);
     this.mapView?.update(time);
     for (const sprite of this.sprites.values()) sprite.tick(time);
     this.advanceAutoEndTurn(time);
+  }
+
+  /**
+   * One frame of a turn of the view (EA-12, slice 3): the simplified board is drawn again at the angle
+   * the turn has reached, and the view settles the moment it arrives. Nothing else of the match is
+   * touched while it swings — the turn is a picture over the board, not a state of it.
+   */
+  private advanceTurn(time: number): void {
+    const turn = this.turn;
+    if (turn === null) return;
+
+    const elapsed = time - turn.startedAt;
+    turn.view.draw(elapsed);
+    if (!simplifiedAt(rotationProgress(elapsed))) this.settleTurn(turn);
   }
 
 }

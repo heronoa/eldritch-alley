@@ -307,3 +307,68 @@ export function panelRowPoint(index: number): Pixel {
     y: PANEL_RECT.y + TITLE_HEIGHT + index * PANEL_ROW_HEIGHT,
   };
 }
+
+/**
+ * The camera panel (EA-12): the two buttons that turn the view with the view they are looking from, the
+ * two that zoom with the step they are on, and the one that brings the map back to the middle of the
+ * canvas. It floats over the board against the right edge, under the log, the way the prototype keeps
+ * it on the edge of the screen.
+ *
+ * Like the gear and the panel it opens, it is deliberately not one of `hudRects`: the scene reads it
+ * before the board, and it swallows every press it covers, controls and gaps alike.
+ */
+export const CAMERA_BUTTON = { width: 48, height: 32, gap: 8 };
+
+/** Space between the two rows of the grid the panel is laid out on. */
+export const CAMERA_ROW_GAP = 6;
+
+/** Where each control of the panel sits on that grid: a row, and a column counted from the left. */
+export const CAMERA_CONTROLS = {
+  rotateLeft: { row: 0, column: 0 },
+  rotateRight: { row: 0, column: 1 },
+  zoomIn: { row: 1, column: 0 },
+  zoomOut: { row: 1, column: 2 },
+  centre: { row: 1, column: 3 },
+} as const;
+
+export type CameraControl = keyof typeof CAMERA_CONTROLS;
+
+/** The panel is a title over those two rows. */
+export const CAMERA_RECT: Rect = {
+  x: RIGHT_COLUMN_X,
+  y: LOG_RECT.y + LOG_RECT.height + PADDING,
+  width: COLUMN_WIDTH,
+  height: TITLE_HEIGHT + 2 * CAMERA_BUTTON.height + CAMERA_ROW_GAP + PADDING,
+};
+
+/** The cell of that grid at a row and a column, which is where a control or a label is drawn. */
+function cameraCell(row: number, column: number): Rect {
+  return {
+    x: CAMERA_RECT.x + PADDING + column * (CAMERA_BUTTON.width + CAMERA_BUTTON.gap),
+    y: CAMERA_RECT.y + TITLE_HEIGHT + row * (CAMERA_BUTTON.height + CAMERA_ROW_GAP),
+    width: CAMERA_BUTTON.width,
+    height: CAMERA_BUTTON.height,
+  };
+}
+
+/** The rectangle of a control, which is the rectangle its button is built from (DT-30). */
+export function cameraControlRect(control: CameraControl): Rect {
+  const { row, column } = CAMERA_CONTROLS[control];
+  return cameraCell(row, column);
+}
+
+/**
+ * The two labels of the panel: the view the camera looks from, and the zoom step it is on. Neither is
+ * pressed, so neither is one of the controls `cameraControlAt` answers with.
+ */
+export const CAMERA_VIEW_RECT: Rect = {
+  ...cameraCell(0, 2),
+  width: 2 * CAMERA_BUTTON.width + CAMERA_BUTTON.gap,
+};
+export const CAMERA_ZOOM_RECT: Rect = cameraCell(1, 1);
+
+/** The control of the panel under a point, or null when the point is on none of them. */
+export function cameraControlAt(point: Pixel): CameraControl | null {
+  const controls = Object.keys(CAMERA_CONTROLS) as CameraControl[];
+  return controls.find((control) => containsPoint(cameraControlRect(control), point)) ?? null;
+}

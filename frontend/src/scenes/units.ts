@@ -134,7 +134,13 @@ export class UnitSprite extends Phaser.GameObjects.Container {
   private action: Action | null = null;
   private moving: { start: number } | null = null;
 
-  constructor(scene: Phaser.Scene, unit: UnitState, marks: UnitMarks, placement: Placement) {
+  constructor(
+    scene: Phaser.Scene,
+    unit: UnitState,
+    marks: UnitMarks,
+    placement: Placement,
+    facesRight: boolean,
+  ) {
     super(scene, 0, 0);
     this.bornAt = scene.time.now;
 
@@ -148,11 +154,15 @@ export class UnitSprite extends Phaser.GameObjects.Container {
     this.add([this.marker, this.corpse, this.figure, this.bars, this.arrow, this.ring]);
 
     scene.add.existing(this);
-    this.sync(unit, marks, placement);
+    this.sync(unit, marks, placement, facesRight);
   }
 
-  /** Redraws what the state says about the unit. A unit mid-move is left where its tween has it. */
-  sync(unit: UnitState, marks: UnitMarks, placement: Placement): void {
+  /**
+   * Redraws what the state says about the unit. A unit mid-move is left where its tween has it.
+   * `facesRight` is which way round its figure is drawn, which the view works out: a view turned a
+   * quarter puts the squad that was on the left on the right (EA-12).
+   */
+  sync(unit: UnitState, marks: UnitMarks, placement: Placement, facesRight: boolean): void {
     const look = turnLook(marks.active);
 
     this.team = unit.team;
@@ -166,8 +176,8 @@ export class UnitSprite extends Phaser.GameObjects.Container {
     this.pips = pipsFor(unit);
 
     this.figure.setTexture(`unit-${spriteSheetOf(unit.team)}`);
-    // Each team faces the other from the start, so a unit is never seen from behind by its side.
-    this.figure.setFlipX(unit.team === 'B');
+    // A sprite is drawn facing one way, so the side that faces the other is the one that is mirrored.
+    this.figure.setFlipX(!facesRight);
 
     if (this.moving === null) this.snapTo(placement);
 

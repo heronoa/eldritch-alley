@@ -9,9 +9,14 @@ import { unitPanel } from '../game/panel';
 import { activeSlot, turnOrder, type TurnSlot } from '../game/turn-order';
 import { t } from '../i18n';
 import type { PublicState, Team } from '../protocol';
+import { MIN_ZOOM } from '../view/camera-math';
 import {
   ACTION_HINT_RECT,
   BANNER_RECT,
+  CAMERA_CONTROLS,
+  CAMERA_RECT,
+  CAMERA_VIEW_RECT,
+  CAMERA_ZOOM_RECT,
   COUNTDOWN_LINK_RECT,
   COUNTDOWN_RECT,
   LEGEND_RECT,
@@ -27,11 +32,14 @@ import {
   SETTINGS_TOGGLE_RECT,
   STATUS_RECT,
   buttonRect,
+  cameraControlRect,
   carouselSlotRect,
   moveChipRect,
   panelRowPoint,
+  type CameraControl,
   type Rect,
 } from '../view/layout';
+import type { ViewDirection } from '../view/rotation';
 import {
   CURRENT_TURN_COLOR,
   FONT_BODY,
@@ -59,6 +67,24 @@ const GEAR_RIM_RADIUS = 10;
 /** How big the box of the settings toggle is, and how far its label starts after it. */
 const TOGGLE_BOX = 16;
 const TOGGLE_LABEL_GAP = 12;
+
+/** The radius of the arrow bent round on a rotation button, and of the two circles of the centre mark. */
+const ROTATE_RADIUS = 8;
+const CENTRE_RIM_RADIUS = 9;
+const CENTRE_DOT_RADIUS = 3;
+
+/**
+ * What each control of the camera panel is lettered with. Only the two zoom signs are letters at all;
+ * the rotation buttons and the centre mark are drawn, for the same reason as the cog of the settings:
+ * neither face the HUD carries has those glyphs in it.
+ */
+const CAMERA_LABELS: Record<CameraControl, string> = {
+  rotateLeft: '',
+  rotateRight: '',
+  zoomIn: '+',
+  zoomOut: '−',
+  centre: '',
+};
 
 /**
  * The automatic end of turn (EA-4), as the match scene has it: the phase the countdown is in, and how
@@ -90,6 +116,15 @@ export interface HudView {
   wayOutVisible: boolean;
   settingsOpen: boolean;
   autoEndTurn: AutoEndView;
+  /** Where the map camera is, as the camera panel prints it (EA-12). */
+  camera: CameraPanelView;
+}
+
+/** The camera panel reads the camera: the view it looks from, and the zoom step it is on. */
+export interface CameraPanelView {
+  view: ViewDirection;
+  /** A whole step, 1 to 4, which is what the panel prints. */
+  zoom: number;
 }
 
 const EMPTY_VIEW: HudView = {
@@ -106,6 +141,7 @@ const EMPTY_VIEW: HudView = {
   wayOutVisible: false,
   settingsOpen: false,
   autoEndTurn: { phase: 'idle', seconds: 0, enabled: true },
+  camera: { view: 'north', zoom: MIN_ZOOM },
 };
 
 export class HudScene extends Phaser.Scene {
@@ -138,6 +174,14 @@ export class HudScene extends Phaser.Scene {
   private countdown!: Phaser.GameObjects.Text;
   private countdownLink!: Phaser.GameObjects.Text;
   private hint!: Phaser.GameObjects.Text;
+
+  /**
+   * The camera panel (EA-12): its controls, and the two labels the match scene moves. The buttons are
+   * built once because none of them comes and goes; only the view and the zoom step are written again.
+   */
+  private cameraButtons: Button[] = [];
+  private cameraView!: Phaser.GameObjects.Text;
+  private cameraZoom!: Phaser.GameObjects.Text;
 
   constructor() {
     super('hud');
@@ -200,6 +244,18 @@ export class HudScene extends Phaser.Scene {
       .setText(t('hud.autoEndTurn.hint'))
       .setVisible(false);
 
+    // The camera panel (EA-12), under the log against the right edge. Its controls are always there
+    // and always usable, so they are built here and never again; the two marks that are not letters
+    // are drawn over their own buttons, the way the cog is drawn over the gear's.
+    createPanel(this, CAMERA_RECT, t('hud.camera'));
+    this.cameraButtons = (Object.keys(CAMERA_CONTROLS) as CameraControl[]).map(
+      (control) => new Button(this, cameraControlRect(control), CAMERA_LABELS[control]),
+    );
+    this.drawRotateArrows();
+    this.drawCentreMark();
+    this.cameraView = this.centredLine(CAMERA_VIEW_RECT, FONT_SIZE.log, TEXT_COLOR);
+    this.cameraZoom = this.centredLine(CAMERA_ZOOM_RECT, FONT_SIZE.log, TEXT_COLOR);
+
     // Added last: a turn change floats over the panels, and it is gone before the next one comes.
     this.banner = new Banner(this, BANNER_RECT);
 
@@ -219,6 +275,7 @@ export class HudScene extends Phaser.Scene {
     this.children.removeAll(true);
     this.buttons = [];
     this.moveChipButtons = [];
+    this.cameraButtons = [];
     this.lastActive = null;
     this.built = false;
   }
@@ -230,6 +287,7 @@ export class HudScene extends Phaser.Scene {
     this.drawMoveChips(view);
     this.drawSettings(view);
     this.drawAutoEndTurn(view);
+    this.drawCamera(view);
     this.drawBanner(view);
 
     this.logText.setText(view.logLines.join('\n'));
@@ -375,6 +433,53 @@ export class HudScene extends Phaser.Scene {
     this.countdown.setVisible(counting);
     this.countdownLink.setVisible(counting);
     this.hint.setVisible(view.autoEndTurn.phase === 'hinting');
+  }
+
+  /**
+   * The camera panel (EA-12): the side the camera is looking from, and the step the zoom is on. The
+   * scene hands both over on every redraw, so the panel never reads the camera itself.
+   */
+  private drawCamera(view: HudView): void {
+    const direction = t(`hud.camera.${view.camera.view}`);
+    this.cameraView.setText(t('hud.camera.view', { direction }));
+    this.cameraZoom.setText(t('hud.camera.zoom', { step: view.camera.zoom }));
+  }
+
+  /** The two rotation buttons: an arrow bent three quarters of the way round, mirrored for the other way. */
+  private drawRotateArrows(): void {
+    this.drawRotateArrow('rotateLeft', -1);
+    this.drawRotateArrow('rotateRight', 1);
+  }
+
+  /**
+   * One of them. The head sits at the top of the circle, in the gap the arc leaves there, and points
+   * the way the view turns: a thrown-together arrow reads better here than a glyph borrowed from
+   * whatever face the machine falls back to.
+   */
+  private drawRotateArrow(control: CameraControl, way: 1 | -1): void {
+    const cell = cameraControlRect(control);
+    const centre = { x: cell.x + cell.width / 2, y: cell.y + cell.height / 2 };
+    const top = centre.y - ROTATE_RADIUS;
+    const arrow = this.add.graphics();
+
+    arrow.lineStyle(2, PAPER_COLOR, 1);
+    arrow.beginPath();
+    arrow.arc(centre.x, centre.y, ROTATE_RADIUS, -Math.PI / 2 + 0.6, -Math.PI / 2 - 0.6 + Math.PI * 2);
+    arrow.strokePath();
+    arrow.fillStyle(PAPER_COLOR, 1);
+    arrow.fillTriangle(centre.x - way * 2, top - 4, centre.x - way * 2, top + 4, centre.x + way * 7, top);
+  }
+
+  /** The button that brings the map back to the middle: a target, drawn rather than lettered. */
+  private drawCentreMark(): void {
+    const cell = cameraControlRect('centre');
+    const centre = { x: cell.x + cell.width / 2, y: cell.y + cell.height / 2 };
+    const mark = this.add.graphics();
+
+    mark.lineStyle(2, PAPER_COLOR, 1);
+    mark.strokeCircle(centre.x, centre.y, CENTRE_RIM_RADIUS);
+    mark.fillStyle(PAPER_COLOR, 1);
+    mark.fillCircle(centre.x, centre.y, CENTRE_DOT_RADIUS);
   }
 
   /**

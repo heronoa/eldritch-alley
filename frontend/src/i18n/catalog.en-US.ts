@@ -100,6 +100,15 @@ export const enUS: Record<MessageKey, string> = {
   'hud.autoEndTurn.hint': 'Nothing left to do: end the turn',
   'hud.settings': 'Settings',
   'hud.settings.autoEndTurn': 'Pass the turn automatically',
+  // The camera panel (EA-12): the view the camera looks from, the zoom step it is on, and the letter
+  // each direction is written as.
+  'hud.camera': 'Camera',
+  'hud.camera.view': 'VIEW {direction}',
+  'hud.camera.zoom': '{step}x',
+  'hud.camera.north': 'N',
+  'hud.camera.east': 'E',
+  'hud.camera.south': 'S',
+  'hud.camera.west': 'W',
   'match.versionMismatch': 'Incompatible version',
   'match.victory': 'Victory',
   'match.defeat': 'Defeat',

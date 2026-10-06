@@ -107,6 +107,15 @@ export const ptBR = {
   'hud.autoEndTurn.hint': 'Nada mais a fazer: termine o turno',
   'hud.settings': 'Ajustes',
   'hud.settings.autoEndTurn': 'Passar o turno automaticamente',
+  // The camera panel (EA-12): the view the camera looks from, the zoom step it is on, and the letter
+  // each direction is written as — Norte, Leste, Sul, Oeste, as the prototype prints them.
+  'hud.camera': 'Câmera',
+  'hud.camera.view': 'VISTA {direction}',
+  'hud.camera.zoom': '{step}x',
+  'hud.camera.north': 'N',
+  'hud.camera.east': 'L',
+  'hud.camera.south': 'S',
+  'hud.camera.west': 'O',
   'match.versionMismatch': 'Versão incompatível',
   'match.victory': 'Vitória',
   'match.defeat': 'Derrota',
