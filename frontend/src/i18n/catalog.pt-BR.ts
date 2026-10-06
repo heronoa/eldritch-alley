@@ -63,6 +63,8 @@ export const ptBR = {
   'log.rejection.no-magazine': 'Sem carregador',
   'log.rejection.magazine-full': 'Carregador cheio',
   'log.rejection.game-over': 'Partida encerrada',
+  // A command that names a round the match has left behind: the order arrived too late (EA-4).
+  'log.rejection.stale-turn': 'Ordem atrasada',
   'log.rejection.malformed-action': 'Ação inválida',
   'log.rejection.unknown': 'Ação recusada',
 
@@ -93,6 +95,13 @@ export const ptBR = {
   // rather than the unit, which the carousel already tells apart.
   'hud.banner.yourTurn': 'Sua vez',
   'hud.banner.enemyTurn': 'Vez do inimigo',
+  // The automatic end of turn (EA-4): the countdown, the way out of it, the hint the button shows
+  // when the feature is off, and the one option of the settings panel the gear opens.
+  'hud.autoEndTurn.countdown': 'Turno encerrado em {seconds} s',
+  'hud.autoEndTurn.link': 'Não passar automaticamente',
+  'hud.autoEndTurn.hint': 'Nada mais a fazer: termine o turno',
+  'hud.settings': 'Ajustes',
+  'hud.settings.autoEndTurn': 'Passar o turno automaticamente',
   'match.versionMismatch': 'Versão incompatível',
   'match.victory': 'Vitória',
   'match.defeat': 'Derrota',

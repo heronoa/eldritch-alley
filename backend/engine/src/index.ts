@@ -10,3 +10,6 @@ export { newMatch, applyAction, applyEvents, publicState, hashState } from './ma
 export { hasLineOfSight } from './sight';
 // The same, for movement: the client paints the cells the engine says a unit reaches (EA-2, EA-7).
 export { findPath, reachableCells } from './movement';
+// And the same for the whole turn: the client ends a turn nobody can use by itself (EA-4), and the
+// question has to be the engine's so the two sides answer it alike.
+export { canStillAct } from './actions';

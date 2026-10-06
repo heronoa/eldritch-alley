@@ -98,6 +98,68 @@ export const LOG_TEXT_POINT: Pixel = { x: LOG_RECT.x + PADDING, y: LOG_RECT.y + 
 export const PANEL_TITLE_POINT: Pixel = { x: PANEL_RECT.x + PADDING, y: PANEL_RECT.y + PADDING };
 
 /**
+ * The automatic end of turn (EA-4): the gear that opens the settings, in the top-right corner of the
+ * screen and outside the action bar (decision D3), and the panel it opens, in the log's own column.
+ *
+ * Neither the gear nor its panel is one of `hudRects`, which lists the pieces that cover the board
+ * always: the gear is read by the scene the way the way out of a finished match is, before the bar
+ * and the board, and the panel swallows the clicks it covers only while it is open.
+ */
+export const SETTINGS_BUTTON_RECT: Rect = {
+  x: CANVAS_WIDTH - PADDING - 32,
+  y: PADDING,
+  width: 32,
+  height: 32,
+};
+
+/** The panel holds a title and one row, which is all this feature has to offer. */
+export const SETTINGS_PANEL_RECT: Rect = {
+  x: RIGHT_COLUMN_X,
+  y: SETTINGS_BUTTON_RECT.y + SETTINGS_BUTTON_RECT.height + PADDING,
+  width: COLUMN_WIDTH,
+  height: TITLE_HEIGHT + PANEL_ROW_HEIGHT + PADDING,
+};
+
+/** The one row of that panel: the toggle of "Passar o turno automaticamente". */
+export const SETTINGS_TOGGLE_RECT: Rect = {
+  x: SETTINGS_PANEL_RECT.x + PADDING,
+  y: SETTINGS_PANEL_RECT.y + TITLE_HEIGHT,
+  width: SETTINGS_PANEL_RECT.width - 2 * PADDING,
+  height: PANEL_ROW_HEIGHT,
+};
+
+/**
+ * The countdown of that automatic end, under the banner and in the same column: the line the
+ * countdown shows, and the link under it. Both are pressed, so both take the click — the first keeps
+ * the turn, the second turns the feature off — and they are two lines rather than one because those
+ * are two different decisions.
+ */
+export const COUNTDOWN_RECT: Rect = {
+  x: BANNER_RECT.x,
+  y: BANNER_RECT.y + BANNER_RECT.height + 8,
+  width: BANNER_RECT.width,
+  height: 24,
+};
+
+export const COUNTDOWN_LINK_RECT: Rect = {
+  x: COUNTDOWN_RECT.x,
+  y: COUNTDOWN_RECT.y + COUNTDOWN_RECT.height,
+  width: COUNTDOWN_RECT.width,
+  height: COUNTDOWN_RECT.height,
+};
+
+/**
+ * The hint the "End turn" button gives when the automatic end of turn is off (EA-4): one line over
+ * the action bar, which is where the button it is about is. It takes no click of its own.
+ */
+export const ACTION_HINT_RECT: Rect = {
+  x: CENTRED_X,
+  y: ACTION_BAR_RECT.y - 32,
+  width: CENTRED_WIDTH,
+  height: 24,
+};
+
+/**
  * The box that holds every top face of the board: the shape of the map's own relief, not a level
  * range. The westmost corner, the northmost, and so on, over the cells that have a floor — a gap has
  * nothing to aim at and is not part of the area the player plays on.

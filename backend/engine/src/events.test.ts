@@ -104,10 +104,11 @@ describe('events and replay', () => {
 
     session.run({ type: 'move', actor: 'a1', to: { x: 1, y: 0 } });
     session.run({ type: 'attack', actor: 'a1', target: 'b1' });
-    session.run({ type: 'endTurn', actor: 'a1' });
+    // An endTurn names the round it was decided on, so each one reads the round of its own moment.
+    session.run({ type: 'endTurn', actor: 'a1', round: session.state().round });
     session.run({ type: 'move', actor: 'b1', to: { x: 1, y: 1 } });
     session.run({ type: 'attack', actor: 'b1', target: 'a1' });
-    session.run({ type: 'endTurn', actor: 'b1' });
+    session.run({ type: 'endTurn', actor: 'b1', round: session.state().round });
     session.run({ type: 'move', actor: 'a1', to: { x: 2, y: 0 } });
 
     const live = session.state();
@@ -127,7 +128,7 @@ describe('events and replay', () => {
     expect(rejected.ok).toBe(false);
     expect(session.events).toHaveLength(eventsBefore);
 
-    session.run({ type: 'endTurn', actor: 'a1' });
+    session.run({ type: 'endTurn', actor: 'a1', round: session.state().round });
     session.run({ type: 'move', actor: 'b1', to: { x: 1, y: 1 } });
 
     const live = session.state();
@@ -142,8 +143,8 @@ describe('events and replay', () => {
     for (let i = 0; i < 4; i++) {
       const result = session.run({ type: 'attack', actor: 'a1', target: 'b1' });
       if (!result.ok) break;
-      session.run({ type: 'endTurn', actor: 'a1' });
-      session.run({ type: 'endTurn', actor: 'b1' });
+      session.run({ type: 'endTurn', actor: 'a1', round: session.state().round });
+      session.run({ type: 'endTurn', actor: 'b1', round: session.state().round });
     }
 
     const live = session.state();

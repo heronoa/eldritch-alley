@@ -29,7 +29,7 @@ function bothTeamsAlive(state: MatchState): boolean {
 /** Every action the unit on turn could attempt, in a fixed order. Legality is decided by applyAction. */
 function candidateActions(state: MatchState): Action[] {
   const actor = unitOnTurn(state);
-  const candidates: Action[] = [{ type: 'endTurn', actor: actor.id }];
+  const candidates: Action[] = [{ type: 'endTurn', actor: actor.id, round: state.round }];
   for (const offset of NEIGHBOUR_OFFSETS) {
     candidates.push({
       type: 'move',

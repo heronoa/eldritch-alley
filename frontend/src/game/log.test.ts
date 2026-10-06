@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { getLocale, setLocale } from '../i18n/translate';
 import type { Event, RejectReason } from '../protocol';
 import { describeEvent, describeRejection } from './log';
 
@@ -81,6 +82,14 @@ describe('describeEvent', () => {
 });
 
 describe('describeRejection', () => {
+  // The sentences are the pt-BR ones, so the locale is pinned: the test must not depend on the runtime.
+  let previous = getLocale();
+  beforeEach(() => {
+    previous = getLocale();
+    setLocale('pt-BR');
+  });
+  afterEach(() => setLocale(previous));
+
   // Every reason the engine can answer with, so a new one is a compile error here.
   const SENTENCES: Record<RejectReason, string> = {
     'not-your-turn': 'Não é a sua vez',
@@ -95,6 +104,7 @@ describe('describeRejection', () => {
     'no-magazine': 'Sem carregador',
     'magazine-full': 'Carregador cheio',
     'game-over': 'Partida encerrada',
+    'stale-turn': 'Ordem atrasada',
     'malformed-action': 'Ação inválida',
   };
 

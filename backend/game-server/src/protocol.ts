@@ -10,7 +10,9 @@ import type { MapId } from './map';
  * Version 3: the state message carries `mapId`, because the client draws the terrain of the map it is
  * told the match is on rather than a board it is sent cell by cell.
  * Version 4: a move action names only its destination and the `moved` event carries the `path` the
- * engine walked, which the client needs to animate the walk (ADR 0010).
+ * engine walked, which the client needs to animate the walk (ADR 0010). The same decision makes an
+ * `endTurn` name its round, which the client sends on its own once the turn has nothing left (EA-4),
+ * and adds `stale-turn` to the refusal codes: one version covers both payloads.
  */
 export const PROTOCOL_VERSION = 4;
 
@@ -38,7 +40,8 @@ export type ClientAction =
   | { type: 'move'; to: Position }
   | { type: 'attack'; target: UnitId }
   | { type: 'reload' }
-  | { type: 'endTurn' };
+  /** The round it was decided on, so one that arrives late ends nobody's turn (ADR 0010, EA-4). */
+  | { type: 'endTurn'; round: number };
 
 export interface StateMessage {
   version: number;

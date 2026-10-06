@@ -62,6 +62,7 @@ export function describeRejection(reason: RejectReason): string {
     case 'no-magazine':
     case 'magazine-full':
     case 'game-over':
+    case 'stale-turn':
     case 'malformed-action':
       // The key is the code itself, so a new reason cannot arrive without its sentence.
       return t(`log.rejection.${reason}`);

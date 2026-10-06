@@ -52,7 +52,7 @@ describe('resolveHumanAction', () => {
   it('accepts an action while a human unit is on turn', () => {
     const state = newMatch(createMatchSetup(MATCH_SEED));
 
-    const outcome = resolveHumanAction(state, 'A', { type: 'endTurn' });
+    const outcome = resolveHumanAction(state, 'A', { type: 'endTurn', round: state.round });
 
     expect(outcome.ok).toBe(true);
   });
@@ -65,7 +65,10 @@ describe('resolveHumanAction', () => {
       currentIndex: 0,
     };
 
-    const outcome = resolveHumanAction(botOnTurn, 'A', { type: 'endTurn' });
+    const outcome = resolveHumanAction(botOnTurn, 'A', {
+      type: 'endTurn',
+      round: botOnTurn.round,
+    });
 
     expect(outcome).toEqual({ ok: false, reason: 'not-your-turn' });
   });
@@ -120,7 +123,7 @@ describe('BattleRoom', () => {
     /** Hands the turn over and waits for the room to answer with the next state. */
     const endHumanTurn = async (): Promise<void> => {
       const before = states.length;
-      human.send(MESSAGE.action, { type: 'endTurn' });
+      human.send(MESSAGE.action, { type: 'endTurn', round: lastState().state.round });
       await vi.waitFor(() => expect(states.length).toBeGreaterThan(before), { timeout: 10_000 });
     };
 

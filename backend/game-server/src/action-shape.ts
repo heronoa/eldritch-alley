@@ -19,8 +19,11 @@ export function isClientAction(value: unknown): value is ClientAction {
     case 'attack':
       return typeof candidate.target === 'string';
     case 'reload':
-    case 'endTurn':
       return true;
+    case 'endTurn':
+      // An action that names no round would be read as a stale one by the engine, so it is refused
+      // here as malformed instead: the player gets the refusal that says what is actually wrong.
+      return isWholeNumber(candidate.round);
     default:
       return false;
   }

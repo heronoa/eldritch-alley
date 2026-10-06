@@ -190,8 +190,9 @@ describe('magazine', () => {
     const setup = sniperSetup();
     const steps: Action[] = [
       { type: 'attack', actor: 'sniper', target: 'target' },
-      { type: 'endTurn', actor: 'sniper' },
-      { type: 'endTurn', actor: 'target' },
+      // Two units, so the queue never wraps: both turns happen in round 1.
+      { type: 'endTurn', actor: 'sniper', round: 1 },
+      { type: 'endTurn', actor: 'target', round: 1 },
     ];
     let state = newMatch(setup);
     const events = [];

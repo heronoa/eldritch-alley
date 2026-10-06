@@ -114,6 +114,7 @@ Planned features are not debt: they live in [backlog.md](./backlog.md).
 - **Esforço estimado**: P
 - **Gatilho para tratar**: um mapa maior que 8×8, ou um redraw medido como lento.
 - **Evidência**: frontend/src/game/hiame/selection.ts:68
+- **Medição (2026-10-06, DT-78)**: `highlightedCells` em modo ataque leva cerca de 2,3 ms por chamada numa partida de 6 unidades (Node 22), e é quase todo o custo de `availableActions`.
 
 ---
 

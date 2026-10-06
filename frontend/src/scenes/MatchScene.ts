@@ -10,6 +10,16 @@ import {
   type ActionButton,
   type ActionMode,
 } from '../game/actions';
+import {
+  endTurnAction,
+  initialAutoEndTurn,
+  readAutoEndTurn,
+  saveAutoEndTurn,
+  stepAutoEndTurn,
+  type AutoEndStep,
+  type AutoEndTurn,
+  type AutoEndTurnEvent,
+} from '../game/autoEndTurn';
 import { highlightedCells } from '../game/highlight';
 import { describeEvent, describeRejection, type UnitNames } from '../game/log';
 import { presentationOf, type Cue, type Snapshot } from '../game/presentation';
@@ -24,6 +34,7 @@ import {
   type EndedMessage,
   type Event,
   type PublicState,
+  type RejectReason,
   type StateMessage,
   type Team,
 } from '../protocol';
@@ -34,7 +45,12 @@ import { cellAt, cellToScreen, topFace } from '../view/iso';
 import {
   LOG_LINES,
   buttonIndexAt,
+  COUNTDOWN_LINK_RECT,
+  COUNTDOWN_RECT,
   RESULT_BUTTON_RECT,
+  SETTINGS_BUTTON_RECT,
+  SETTINGS_PANEL_RECT,
+  SETTINGS_TOGGLE_RECT,
   containsPoint,
   hudRects,
   CANVAS_HEIGHT,
@@ -74,15 +90,22 @@ function snapshotOf(state: PublicState): Map<string, Snapshot> {
 }
 
 /** The two buttons that act at once, without a board target. The other two arm a mode instead. */
-function immediateAction(id: ActionButton['id']): ClientAction | null {
+function immediateAction(id: ActionButton['id'], round: number): ClientAction | null {
   switch (id) {
     case 'reload':
       return { type: 'reload' };
     case 'endTurn':
-      return { type: 'endTurn' };
+      // The round goes with it, so a press that reaches the server after the match has moved on is
+      // refused instead of ending the turn of whoever is up by then (ADR 0010).
+      return { type: 'endTurn', round };
     default:
       return null;
   }
+}
+
+/** Whole seconds left of the countdown, rounded up: what the player is told, and all they are told. */
+function secondsLeft(machine: AutoEndTurn): number {
+  return Math.ceil(machine.remainingMs / 1000);
 }
 
 export class MatchScene extends Phaser.Scene {
@@ -98,6 +121,15 @@ export class MatchScene extends Phaser.Scene {
   private finished = false;
   /** True while waiting for a reconnection, so the first state that arrives can clear the notice. */
   private reconnecting = false;
+
+  /** The automatic end of turn (EA-4): the countdown nobody has to press, and the setting behind it. */
+  private autoEndTurn: AutoEndTurn = initialAutoEndTurn();
+  /** The unit the machine was last told about, so a hand-over starts the countdown from nothing. */
+  private autoEndTurnUnit: string | null = null;
+  /** Whether the settings panel the gear opens is on the screen. */
+  private settingsOpen = false;
+  /** The clock of the last frame, so the machine is handed elapsed time and never reads the clock. */
+  private lastFrameMs = 0;
 
   /** One sprite per unit, kept for the whole match so an animation is never cut by a redraw. */
   private sprites = new Map<string, UnitSprite>();
@@ -131,6 +163,11 @@ export class MatchScene extends Phaser.Scene {
     this.logLines = [];
     this.finished = false;
     this.reconnecting = false;
+    // The setting is read again on every match: another tab may have changed it since the last one.
+    this.autoEndTurn = initialAutoEndTurn(readAutoEndTurn());
+    this.autoEndTurnUnit = null;
+    this.settingsOpen = false;
+    this.lastFrameMs = 0;
     this.buttonModel = [];
     this.statusText = '';
     this.resultText = '';
@@ -175,7 +212,7 @@ export class MatchScene extends Phaser.Scene {
 
     this.session.onState((message) => this.handleState(message));
     this.session.onEvents((events) => this.handleEvents(events));
-    this.session.onRejected((message) => this.appendLog(describeRejection(message.reason)));
+    this.session.onRejected((message) => this.handleRejected(message.reason));
     this.session.onEnded((message) => this.handleEnded(message));
     this.session.onDrop(() => {
       void this.handleDrop();
@@ -201,6 +238,33 @@ export class MatchScene extends Phaser.Scene {
       return;
     }
     if (this.finished || this.state === null) return;
+
+    // The countdown of the automatic end of turn floats over the board (EA-4), so it is read before
+    // anything it covers: the line keeps the turn, and the link under it turns the feature off.
+    if (this.autoEndTurn.phase === 'counting') {
+      if (containsPoint(COUNTDOWN_LINK_RECT, point)) {
+        this.disableAutoEndTurn();
+        return;
+      }
+      if (containsPoint(COUNTDOWN_RECT, point)) {
+        this.applyAutoEndTurn({ type: 'cancel' });
+        this.pushHud();
+        return;
+      }
+    }
+
+    // The gear and the panel it opens are read the way the way out of a finished match is: they are
+    // not in `hudRects`, which lists the pieces always on the screen. The panel swallows every click
+    // inside it, so nothing under it is pressed while it is open; the gear is what closes it.
+    if (containsPoint(SETTINGS_BUTTON_RECT, point)) {
+      this.settingsOpen = !this.settingsOpen;
+      this.pushHud();
+      return;
+    }
+    if (this.settingsOpen && containsPoint(SETTINGS_PANEL_RECT, point)) {
+      if (containsPoint(SETTINGS_TOGGLE_RECT, point)) this.setAutoEndTurn(!this.autoEndTurn.enabled);
+      return;
+    }
 
     const buttonIndex = buttonIndexAt(point);
     if (buttonIndex !== null) {
@@ -247,16 +311,24 @@ export class MatchScene extends Phaser.Scene {
 
   /** Arms the button's mode, or cancels it when it is already armed, so the bar is its own undo. */
   private pressAction(id: ActionButton['id'], mode: ActionMode | null): void {
-    if (this.finished) return;
+    if (this.finished || this.state === null) return;
 
     if (mode !== null) {
       this.mode = this.mode === mode ? 'inspect' : mode;
-      if (this.state) this.redraw(this.state);
+      this.redraw(this.state);
       return;
     }
 
-    const action = immediateAction(id);
-    if (action) this.session.send(action);
+    const action = immediateAction(id, this.state.round);
+    if (action === null) return;
+
+    // The turn is being handed over by hand: the countdown must not hand it over again behind the
+    // click, which would put a refused order in the log for the player to wonder about.
+    if (action.type === 'endTurn') {
+      this.applyAutoEndTurn({ type: 'cancel' });
+      this.pushHud();
+    }
+    this.session.send(action);
   }
 
   private handleState(message: StateMessage): void {
@@ -279,6 +351,7 @@ export class MatchScene extends Phaser.Scene {
     // A new state is a new board: a destination armed on the old one is stale.
     this.armedMove = null;
     this.mode = settleMode(this.mode, availableActions(message.state, HUMAN_TEAM));
+    this.syncAutoEndTurn();
 
     this.redraw(message.state);
 
@@ -388,6 +461,16 @@ export class MatchScene extends Phaser.Scene {
     if (event.type === 'corpse-removed') this.snapshot.delete(event.target);
   }
 
+  /**
+   * A refused action changes nothing on the board, and the log says why. A refused `endTurn` also
+   * hands the turn back to the player (DT-75): the countdown is over, so the hint takes its place.
+   */
+  private handleRejected(reason: RejectReason): void {
+    this.appendLog(describeRejection(reason));
+    this.applyAutoEndTurn({ type: 'rejected' });
+    this.pushHud();
+  }
+
   /** A rejected action changes nothing: the state, the selection and the armed mode stay as they were. */
   private appendLog(line: string): void {
     this.logLines.push(line);
@@ -413,9 +496,78 @@ export class MatchScene extends Phaser.Scene {
     this.pushHud();
   }
 
-  /** The match is over: clicks stop, and the way out appears. */
+  /** The match is over: clicks stop, the countdown stops with them, and the way out appears. */
   private finish(): void {
     this.finished = true;
+    this.syncAutoEndTurn();
+    this.pushHud();
+  }
+
+  /**
+   * Tells the machine what the turn has left (EA-4). `availableActions` answers with the engine's own
+   * `canStillAct`, so the countdown starts exactly when the server would have nothing left to accept,
+   * and the bot's turn is never counted: what the bot has left is the bot's business.
+   *
+   * The unit on turn is remembered, because a hand-over starts from nothing: a countdown that ran out
+   * on the last unit must not leave the next one already sent, and a cancel belongs to the turn it was
+   * made on.
+   */
+  private syncAutoEndTurn(): void {
+    const state = this.finished ? null : this.state;
+    const actor = state === null ? null : (activeSlot(state)?.unit.id ?? null);
+
+    if (actor !== this.autoEndTurnUnit) {
+      this.autoEndTurnUnit = actor;
+      this.applyAutoEndTurn({ type: 'nothingLeftOff' });
+    }
+
+    const nothingLeft = state !== null && availableActions(state, HUMAN_TEAM).nothingLeft;
+    if (nothingLeft !== this.autoEndTurn.nothingLeft) {
+      this.applyAutoEndTurn({ type: nothingLeft ? 'nothingLeftOn' : 'nothingLeftOff' });
+    }
+  }
+
+  /**
+   * One frame of the countdown. The machine is handed the milliseconds since the last frame, so it
+   * never reads the clock itself, and the turn goes out with the round the state is on: a command that
+   * reaches the server after the match has moved on is refused instead of ending somebody's turn.
+   */
+  private advanceAutoEndTurn(time: number): void {
+    const elapsedMs = this.lastFrameMs === 0 ? 0 : time - this.lastFrameMs;
+    this.lastFrameMs = time;
+
+    const state = this.state;
+    if (state === null || elapsedMs <= 0) return;
+
+    const before = this.autoEndTurn;
+    const step = this.applyAutoEndTurn({ type: 'tick', ms: elapsedMs });
+    if (step.send) this.session.send(endTurnAction(state));
+
+    // The countdown is read a whole second at a time, so a frame that leaves the second where it was
+    // redraws nothing; the phase has to change with it, which is also what takes the line off the
+    // screen once the turn has gone out — reaching zero is a change of phase like any other.
+    const changed = step.machine.phase !== before.phase || secondsLeft(before) !== secondsLeft(step.machine);
+    if (changed) this.pushHud();
+  }
+
+  /** Feeds the machine one event and keeps its answer. Only the countdown acts on `send`. */
+  private applyAutoEndTurn(event: AutoEndTurnEvent): AutoEndStep {
+    const step = stepAutoEndTurn(this.autoEndTurn, event);
+    this.autoEndTurn = step.machine;
+    return step;
+  }
+
+  /** Turns the automatic end of turn off for good, from the link under the countdown (EA-4). */
+  private disableAutoEndTurn(): void {
+    saveAutoEndTurn(false);
+    this.applyAutoEndTurn({ type: 'disable' });
+    this.pushHud();
+  }
+
+  /** The one option of the settings panel, which turns the feature both on and off. */
+  private setAutoEndTurn(enabled: boolean): void {
+    saveAutoEndTurn(enabled);
+    this.applyAutoEndTurn({ type: 'settingChanged', enabled });
     this.pushHud();
   }
 
@@ -461,6 +613,12 @@ export class MatchScene extends Phaser.Scene {
       status: this.statusText,
       result: this.resultText,
       wayOutVisible: this.finished,
+      settingsOpen: this.settingsOpen,
+      autoEndTurn: {
+        phase: this.autoEndTurn.phase,
+        seconds: secondsLeft(this.autoEndTurn),
+        enabled: this.autoEndTurn.enabled,
+      },
     });
   }
 
@@ -542,10 +700,11 @@ export class MatchScene extends Phaser.Scene {
     }
   }
 
-  /** One frame of every animation on the board. The scene decides nothing; the sprites advance. */
+  /** One frame of every animation on the board, and one of the countdown. The sprites advance. */
   update(time: number): void {
     this.mapView?.update(time);
     for (const sprite of this.sprites.values()) sprite.tick(time);
+    this.advanceAutoEndTurn(time);
   }
 
 }

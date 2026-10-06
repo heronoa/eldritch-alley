@@ -13,6 +13,8 @@ import {
   BUTTON_FILL,
   BUTTON_FILL_DISABLED,
   BUTTON_FILL_SELECTED,
+  BUTTON_PULSE_ALPHA,
+  BUTTON_PULSE_MS,
   CORPSE_COLOR,
   CURRENT_TURN_COLOR,
   FONT_BODY,
@@ -45,6 +47,8 @@ export class Button extends Phaser.GameObjects.Container {
   private readonly caption: Phaser.GameObjects.Text;
   private usable = true;
   private armed = false;
+  private hinting = false;
+  private pulse: Phaser.Tweens.Tween | null = null;
 
   constructor(scene: Phaser.Scene, rect: Rect, label: string) {
     super(scene, rect.x, rect.y);
@@ -77,6 +81,30 @@ export class Button extends Phaser.GameObjects.Container {
   setSelected(selected: boolean): void {
     this.armed = selected;
     this.refresh();
+  }
+
+  /**
+   * The pulse of a button that is the only thing left to press (EA-4): the automatic end of turn is
+   * off and the turn has nothing in it, so the button points at itself instead of being pressed for
+   * the player. It breathes the whole button, caption included, and it is started and stopped as
+   * often as the HUD is redrawn without ever stacking a second tween.
+   */
+  setHinting(hinting: boolean): void {
+    if (hinting === this.hinting) return;
+    this.hinting = hinting;
+
+    this.pulse?.remove();
+    this.pulse = null;
+    this.setAlpha(1);
+    if (!hinting) return;
+
+    this.pulse = this.scene.tweens.add({
+      targets: this,
+      alpha: { from: 1, to: BUTTON_PULSE_ALPHA },
+      duration: BUTTON_PULSE_MS,
+      yoyo: true,
+      repeat: -1,
+    });
   }
 
   /** A button nobody may press is never shown as the armed one, so being out of reach wins. */

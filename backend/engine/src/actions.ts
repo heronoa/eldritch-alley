@@ -2,7 +2,7 @@
 // accepted action is turned into events, and events.ts applies them.
 import { distance, inBounds } from './board';
 import { currentUnitId, isAlive, unitById } from './initiative';
-import { findPath, movementProfile, stepAllowed } from './movement';
+import { findPath, movementProfile, reachableCells, stepAllowed } from './movement';
 import { nextInt } from './rng';
 import { hasLineOfSight } from './sight';
 import type {
@@ -10,6 +10,7 @@ import type {
   Event,
   MatchState,
   Position,
+  PublicState,
   RejectReason,
   Rng,
   Team,
@@ -30,15 +31,15 @@ export function resolveHit(attacker: Unit, target: Unit, rng: Rng): boolean {
   return nextInt(rng, 1, 100) <= attacker.hitChance;
 }
 
-function teamHasUnits(state: MatchState, team: Team): boolean {
+function teamHasUnits(state: PublicState, team: Team): boolean {
   return state.units.some((unit) => unit.team === team && isAlive(unit));
 }
 
-export function isGameOver(state: MatchState): boolean {
+export function isGameOver(state: PublicState): boolean {
   return !teamHasUnits(state, 'A') || !teamHasUnits(state, 'B');
 }
 
-function occupantAt(state: MatchState, position: Position): UnitState | undefined {
+function occupantAt(state: PublicState, position: Position): UnitState | undefined {
   // A living unit and a body both occupy their tile; a permanently dead unit does not.
   return state.units.find(
     (unit) =>
@@ -53,6 +54,8 @@ function occupantAt(state: MatchState, position: Position): UnitState | undefine
 export function validateAction(state: MatchState, action: Action): RejectReason | null {
   if (isGameOver(state)) return 'game-over';
   if (action.actor !== currentUnitId(state)) return 'not-your-turn';
+  // A command names the turn it was decided on, so one that arrives late ends nothing (ADR 0010).
+  if (action.type === 'endTurn' && action.round !== state.round) return 'stale-turn';
 
   if (action.type === 'move') return validateMove(state, action);
   if (action.type === 'attack') return validateAttack(state, action);
@@ -75,7 +78,7 @@ function meleeDamage(attack: number): number {
   return attack >> 1;
 }
 
-function validateReload(state: MatchState, action: ReloadAction): RejectReason | null {
+function validateReload(state: PublicState, action: ReloadAction): RejectReason | null {
   const actor = unitById(state, action.actor);
   if (actor.magazine === null) return 'no-magazine';
   if (state.hasActed) return 'already-acted';
@@ -87,12 +90,12 @@ function validateReload(state: MatchState, action: ReloadAction): RejectReason |
  * Whether the refusal is the step's own fault: a forbidden step onto a cell one step away is the
  * height rule (D3), while anything further away is a route the profile does not open.
  */
-function isForbiddenStep(state: MatchState, actor: UnitState, to: Position): boolean {
+function isForbiddenStep(state: PublicState, actor: UnitState, to: Position): boolean {
   if (distance(actor.position, to) !== 1) return false;
   return !stepAllowed(movementProfile(actor), state.board, actor.position, to);
 }
 
-function validateMove(state: MatchState, action: MoveAction): RejectReason | null {
+function validateMove(state: PublicState, action: MoveAction): RejectReason | null {
   const actor = unitById(state, action.actor);
   const to = action.to;
 
@@ -107,7 +110,7 @@ function validateMove(state: MatchState, action: MoveAction): RejectReason | nul
   return null;
 }
 
-function validateAttack(state: MatchState, action: AttackAction): RejectReason | null {
+function validateAttack(state: PublicState, action: AttackAction): RejectReason | null {
   if (state.hasActed) return 'already-acted';
 
   const attacker = unitById(state, action.actor);
@@ -119,6 +122,33 @@ function validateAttack(state: MatchState, action: AttackAction): RejectReason |
   if (distance(attacker.position, target.position) > reach) return 'target-out-of-range';
   if (!hasLineOfSight(state.board, attacker.position, target.position)) return 'no-line-of-sight';
   return null;
+}
+
+/**
+ * Whether the unit with the turn has anything left to do. The engine does not end the turn: it
+ * answers the question, so the client that ends one on a countdown (EA-4) asks exactly the rule the
+ * server would apply, and the two sides cannot disagree (EA-1 D1).
+ *
+ * A turn is spent by walking somewhere, by shooting somebody the rules allow, or by reloading; a
+ * unit with none of the three in front of it is done. Meditation joins this list later (EA-14): the
+ * rule lives here, so that change is local.
+ */
+export function canStillAct(state: PublicState): boolean {
+  if (isGameOver(state)) return false;
+  if (state.hasActed) return false;
+
+  const actor = state.units.find((unit) => unit.id === currentUnitId(state));
+  // A match that is not over always has a unit on turn; the guard keeps the type honest.
+  if (actor === undefined) return false;
+
+  if (reachableCells(state, actor.id).length > 0) return true;
+
+  const aimed = state.units.some(
+    (target) => validateAttack(state, { type: 'attack', actor: actor.id, target: target.id }) === null,
+  );
+  if (aimed) return true;
+
+  return validateReload(state, { type: 'reload', actor: actor.id }) === null;
 }
 
 /** The unit that takes the turn after the current one, wrapping to the start of the queue. */

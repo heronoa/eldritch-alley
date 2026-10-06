@@ -75,7 +75,7 @@ export function chooseBotAction(state: MatchState, team: Team): Action {
   // The candidates are collected in tie-break order: the first one only loses to a strictly higher score.
   const candidates: { action: Action; score: number }[] = [];
 
-  const endTurn: Action = { type: 'endTurn', actor: actor.id };
+  const endTurn: Action = { type: 'endTurn', actor: actor.id, round: state.round };
   if (applyAction(state, endTurn).ok) candidates.push({ action: endTurn, score: SCORE.endTurn });
 
   for (const offset of NEIGHBOUR_OFFSETS) {

@@ -71,6 +71,7 @@ describe('availableActions', () => {
       canAttack: true,
       canReload: false,
       canEndTurn: true,
+      nothingLeft: false,
     });
   });
 
@@ -95,6 +96,7 @@ describe('availableActions', () => {
       canAttack: false,
       canReload: false,
       canEndTurn: true,
+      nothingLeft: true,
     });
   });
 
@@ -136,13 +138,65 @@ describe('availableActions', () => {
       canAttack: false,
       canReload: false,
       canEndTurn: false,
+      nothingLeft: false,
+    });
+  });
+
+  /**
+   * `nothingLeft` is the question the automatic end of turn asks (EA-4). It is answered by the
+   * engine, so the countdown fires exactly when the server would have nothing to accept.
+   */
+  describe('nothingLeft', () => {
+    it('is true when no cell is reachable, no target is in reach and the magazine is full', () => {
+      const far = makeUnit({ id: 'B-priest', team: 'B', at: { x: 7, y: 7 } });
+      const state = makeState([SNIPER, far], 0, { movementLeft: 0 });
+
+      expect(availableActions(state, 'A')).toMatchObject({
+        canMove: false,
+        canAttack: false,
+        canReload: false,
+        nothingLeft: true,
+      });
+    });
+
+    it('is false while a reload is left, even with nowhere to walk and no target in reach', () => {
+      const far = makeUnit({ id: 'B-priest', team: 'B', at: { x: 7, y: 7 } });
+      const state = makeState([{ ...SNIPER, ammo: 0 }, far], 0, { movementLeft: 0 });
+
+      expect(availableActions(state, 'A')).toMatchObject({ canReload: true, nothingLeft: false });
+    });
+
+    it('is false while a target is in reach', () => {
+      const state = makeState([SNIPER, ENEMY], 0, { movementLeft: 0 });
+
+      expect(availableActions(state, 'A')).toMatchObject({ canAttack: true, nothingLeft: false });
+    });
+
+    it('is false on the bot turn, which must never start the countdown for the player', () => {
+      // The bot itself has nothing left, and that is the bot's business, not the player's.
+      const state = makeState([SNIPER, ENEMY], 1, { movementLeft: 0 });
+
+      expect(state.initiative[state.currentIndex]).toBe(ENEMY.id);
+      expect(availableActions(state, 'A').nothingLeft).toBe(false);
     });
   });
 });
 
 describe('settleMode', () => {
-  const ALL: AvailableActions = { canMove: true, canAttack: true, canReload: true, canEndTurn: true };
-  const SPENT: AvailableActions = { canMove: false, canAttack: false, canReload: false, canEndTurn: true };
+  const ALL: AvailableActions = {
+    canMove: true,
+    canAttack: true,
+    canReload: true,
+    canEndTurn: true,
+    nothingLeft: false,
+  };
+  const SPENT: AvailableActions = {
+    canMove: false,
+    canAttack: false,
+    canReload: false,
+    canEndTurn: true,
+    nothingLeft: true,
+  };
 
   it('leaves the inspection mode alone', () => {
     expect(settleMode('inspect', ALL)).toBe('inspect');

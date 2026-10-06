@@ -140,7 +140,11 @@ export type Action =
   | { type: 'move'; actor: UnitId; to: Position }
   | { type: 'attack'; actor: UnitId; target: UnitId }
   | { type: 'reload'; actor: UnitId }
-  | { type: 'endTurn'; actor: UnitId };
+  /**
+   * Passes the turn. It names the round it applies to, so a message that arrives late — the client
+   * sends this one on its own (EA-4) — is refused instead of ending somebody else's turn (ADR 0010).
+   */
+  | { type: 'endTurn'; actor: UnitId; round: number };
 
 export type Event =
   /**
@@ -180,7 +184,8 @@ export type RejectReason =
   | 'target-invalid'
   | 'no-magazine'
   | 'magazine-full'
-  | 'game-over';
+  | 'game-over'
+  | 'stale-turn';
 
 export type ActionResult =
   | { ok: true; state: MatchState; events: Event[] }

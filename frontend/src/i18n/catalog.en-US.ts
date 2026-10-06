@@ -35,11 +35,21 @@ export const enUS: Partial<Record<MessageKey, string>> = {
   'title.footerPlace': 'Belém · the small hours',
   'title.language': 'Language',
 
-  // The battle log's refusals the game itself adds: a blocked shot, and a destination no walk reaches.
+  // The battle log's refusals the game itself adds: a blocked shot, a destination no walk reaches,
+  // and an order that arrived after the round it named had gone by.
   'log.rejection.no-line-of-sight': 'No line of sight',
   'log.rejection.no-path': 'No path',
+  'log.rejection.stale-turn': 'Order too late',
 
   // The banner a turn change raises (EA-3). Short on purpose: it is read at a glance, over the board.
   'hud.banner.yourTurn': 'Your turn',
   'hud.banner.enemyTurn': 'Enemy turn',
+
+  // The automatic end of turn (EA-4): the countdown, the way out of it, the hint the button shows
+  // when the feature is off, and the one option of the settings panel the gear opens.
+  'hud.autoEndTurn.countdown': 'Turn ends in {seconds}s',
+  'hud.autoEndTurn.link': "Don't pass automatically",
+  'hud.autoEndTurn.hint': 'Nothing left to do: end the turn',
+  'hud.settings': 'Settings',
+  'hud.settings.autoEndTurn': 'Pass the turn automatically',
 };

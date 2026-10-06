@@ -6,6 +6,7 @@
 //
 // The labels come from the catalog, keyed by the button's own id, so a button cannot be added
 // without a word for it.
+import { canStillAct } from '../../../backend/engine/src/actions';
 import { reachableCells } from '../../../backend/engine/src/movement';
 import { t } from '../i18n';
 import type { PublicState, Team, UnitState } from '../protocol';
@@ -20,6 +21,12 @@ export interface AvailableActions {
   canAttack: boolean;
   canReload: boolean;
   canEndTurn: boolean;
+  /**
+   * Whether the unit on turn has nothing left to do, as the engine answers it (EA-4). It is the
+   * question the automatic end of turn asks, and it is false on the bot's turn: what the bot has
+   * left is the bot's business, and the player's countdown must never start for it.
+   */
+  nothingLeft: boolean;
 }
 
 export interface ActionButton {
@@ -51,7 +58,13 @@ export function applyMode(mode: ActionMode, intent: Intent): Intent {
 export function availableActions(state: PublicState, humanTeam: Team): AvailableActions {
   const actor = actorOf(state);
   if (!actor || actor.defeated || actor.team !== humanTeam) {
-    return { canMove: false, canAttack: false, canReload: false, canEndTurn: false };
+    return {
+      canMove: false,
+      canAttack: false,
+      canReload: false,
+      canEndTurn: false,
+      nothingLeft: false,
+    };
   }
 
   const canAct = !state.hasActed;
@@ -63,6 +76,8 @@ export function availableActions(state: PublicState, humanTeam: Team): Available
     canReload: canAct && actor.magazine !== null && actor.ammo < actor.magazine,
     // Ending the turn is always legal; it is how a player with nothing left to do passes.
     canEndTurn: true,
+    // The engine decides, so the countdown fires exactly when the server would have nothing to accept.
+    nothingLeft: !canStillAct(state),
   };
 }
 

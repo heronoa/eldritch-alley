@@ -124,7 +124,7 @@ function randomAction(state: MatchState, rng: Rng): Action {
 
   const current = unitById(state, actor);
   const enemies = state.units.filter((unit) => unit.team !== current.team && !unit.defeated);
-  const candidates: Action[] = [{ type: 'endTurn', actor }];
+  const candidates: Action[] = [{ type: 'endTurn', actor, round: state.round }];
 
   for (const [dx, dy] of DIRECTIONS) {
     const to = { x: current.position.x + dx, y: current.position.y + dy };
@@ -235,13 +235,13 @@ describe('properties', () => {
     // The live match rolls twice; the replay rebuilds from the events of the first roll only.
     const firstRoll = play(newMatch(setup), { type: 'attack', actor: 'a1', target: 'b1' });
     const live = play(
-      play(firstRoll.state, { type: 'endTurn', actor: 'a1' }).state,
+      play(firstRoll.state, { type: 'endTurn', actor: 'a1', round: firstRoll.state.round }).state,
       { type: 'attack', actor: 'b1', target: 'a1' },
     );
 
     const rebuilt = applyEvents(setup, firstRoll.events);
     const replayed = play(
-      play(rebuilt, { type: 'endTurn', actor: 'a1' }).state,
+      play(rebuilt, { type: 'endTurn', actor: 'a1', round: rebuilt.round }).state,
       { type: 'attack', actor: 'b1', target: 'a1' },
     );
 

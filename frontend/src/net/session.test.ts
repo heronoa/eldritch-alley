@@ -112,7 +112,7 @@ describe('Session without a server', () => {
   it('is constructed and refuses to send before connect, without touching the storage', () => {
     const session = new Session('ws://localhost:2567');
 
-    expect(() => session.send({ type: 'endTurn' })).not.toThrow();
+    expect(() => session.send({ type: 'endTurn', round: 1 })).not.toThrow();
   });
 
   it('offers a way to reconnect when the storage is unavailable', async () => {
@@ -391,7 +391,7 @@ describe('Session against a room', () => {
 
     session.close();
     session.close();
-    session.send({ type: 'endTurn' });
+    session.send({ type: 'endTurn', round: 1 });
 
     expect(fake.rooms[0].leaves).toBe(1);
     expect(fake.rooms[0].sent).toEqual([]);
