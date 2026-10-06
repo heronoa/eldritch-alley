@@ -2,7 +2,7 @@
 
 **Milestone:** lot 1 (before the AWS staging deploy)
 **Parent feature:** Playtest 1 feedback
-**Closes:** DT-54 (movement is one tile per action; no pathfinding)
+**Closes:** DT-54 (movement is one tile per action; no pathfinding), DT-70 (client imports engine source files), DT-72 (first-tap preview shows no path or cost)
 **Requires:** ADR 0010 accepted before code (written 2026-10-05)
 **Created:** 2026-10-05
 **Status:** ready for implementation (decisions closed 2026-10-05)
@@ -63,7 +63,9 @@ The engine computes the cells a unit can reach this turn and the path to each. A
 | Map view (file to confirm) | modify | Animates the unit along `path`, cell by cell |
 | Tests: `highlight.test.ts`, `selection.test.ts`, `actions.test.ts` | modify | Section 4 |
 
-**Client imports the engine functions** (EA-1 D1): `reachableCells` and `findPath` come from `backend/engine`, not from a copy.
+**Client imports the engine functions** (EA-1 D1): `reachableCells` and `findPath` come from `backend/engine`, not from a copy. The import goes through the package entry `backend/engine/src/index.ts` and not the source files (DT-70). Today `selection.ts:4-5` imports `engine/src/movement` and `engine/src/sight` directly; both move to the entry, which already exports `findPath`, `reachableCells` and `hasLineOfSight`. DT-70 is closed when this PR merges.
+
+**First-tap preview draws the path and the cost** (DT-72). Today `selection.ts` returns the `path` and `cost` in the `move-preview` intent, and `MatchScene.ts:231-232` discards both, keeping only `to`. The scene draws the path cell by cell and the cost next to the destination. DT-72 is closed when this PR merges.
 
 **Two-step tap** (from the camera handoff): first tap selects the destination and draws the path with its cost; second tap on the same cell confirms. One tap never moves a unit. On desktop, hover shows the preview and click confirms.
 

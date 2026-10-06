@@ -82,7 +82,16 @@ describe('BattleRoom', () => {
     const first = await server.connectTo(room);
     first.reconnection.enabled = false;
 
-    await expect(server.sdk.joinById(room.roomId)).rejects.toThrow(/room full/);
+    // Colyseus prints the refused join's stack. The refusal is expected, so the output is held here
+    // and the test checks that the server did log the reason.
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      await expect(server.sdk.joinById(room.roomId)).rejects.toThrow(/room full/);
+      // The server logs the refusal after the client has already been told, so wait for the line.
+      await vi.waitFor(() => expect(logged.mock.calls.flat().map(String).join('\n')).toContain('room full'));
+    } finally {
+      logged.mockRestore();
+    }
     expect(room.clients).toHaveLength(1);
 
     await first.leave(true);

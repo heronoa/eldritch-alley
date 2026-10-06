@@ -1,9 +1,10 @@
 // The single place where match state changes. Live play and replay both go through applyEvent, so a
 // sequence of events always rebuilds the same state (ADR 0005).
 import { corpseRounds } from './corpse';
+import { distance, inBounds } from './board';
 import { advanceIndex, removeFromInitiative, unitById } from './initiative';
-import { movementProfile, stepCost } from './movement';
-import type { Event, MatchState, Position } from './types';
+import { movementProfile, stepAllowed, stepCost } from './movement';
+import type { Board, Event, MatchState, MovementProfile, Position } from './types';
 
 function cloneState(state: MatchState): MatchState {
   return {
@@ -14,6 +15,42 @@ function cloneState(state: MatchState): MatchState {
   };
 }
 
+/**
+ * Refuses a `moved` path that is not a walk the unit can make: each step next to the one before it,
+ * on the board, allowed by the profile, and paid for with the movement left. A replay reads stored
+ * events, so a malformed path must fail here rather than move the unit to the wrong cell (DT-73).
+ */
+function requireWalk(
+  board: Board,
+  profile: MovementProfile,
+  movementLeft: number,
+  from: Position,
+  to: Position,
+  path: readonly Position[],
+): void {
+  if (path.length === 0) throw new Error('moved: the path is empty');
+  const last = path[path.length - 1];
+  if (last.x !== to.x || last.y !== to.y) {
+    throw new Error('moved: the path does not end on the destination');
+  }
+
+  let previous = from;
+  let cost = 0;
+  path.forEach((step, index) => {
+    const n = index + 1;
+    if (!inBounds(board, step)) throw new Error(`moved: step ${n} is outside the board`);
+    if (distance(previous, step) !== 1) {
+      throw new Error(`moved: step ${n} is not next to the cell before it`);
+    }
+    if (!stepAllowed(profile, board, previous, step)) {
+      throw new Error(`moved: step ${n} is not allowed by the movement profile`);
+    }
+    cost += stepCost(profile, board, previous, step);
+    previous = step;
+  });
+  if (cost > movementLeft) throw new Error('moved: the path costs more than the movement left');
+}
+
 /** Applies one event and returns the next state. The state passed in is never changed. */
 export function applyEvent(state: MatchState, event: Event): MatchState {
   const next = cloneState(state);
@@ -22,6 +59,7 @@ export function applyEvent(state: MatchState, event: Event): MatchState {
     case 'moved': {
       const actor = unitById(next, event.actor);
       const profile = movementProfile(actor);
+      requireWalk(next.board, profile, next.movementLeft, event.from, event.to, event.path);
       // The walk pays for every step it takes, and the unit ends on the last cell of it. The
       // destination alone is the degenerate walk, for an event that carries no path.
       const steps: readonly Position[] = event.path.length > 0 ? event.path : [event.to];

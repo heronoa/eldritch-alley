@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { applyEvent } from './events';
-import { applyAction, applyEvents, hashState, newMatch } from './match';
-import type { ActionResult, Board, Event, MatchSetup, Team, Unit } from './types';
+import { applyAction, applyEvents, hashState, newMatch, publicState } from './match';
+import { findPath, reachableCells } from './movement';
+import type { ActionResult, Board, Event, MatchSetup, Position, Team, Unit } from './types';
 
 function makeBoard(heights: Record<string, number> = {}): Board {
   const levels = new Array<number>(64).fill(0);
@@ -148,5 +149,95 @@ describe('events and replay', () => {
     const live = session.state();
     expect(live.units.find((unit) => unit.id === 'b1')?.defeated).toBe(true);
     expect(hashState(applyEvents(setup, session.events))).toBe(hashState(live));
+  });
+});
+
+describe('applyEvent refuses a malformed moved path (DT-73)', () => {
+  /** a1 starts at (0,0) with the given movement; b1 sits in the far corner so it blocks nothing. */
+  function stateWith(heights: Record<string, number>, overrides: Partial<Unit> = {}) {
+    const units = [
+      makeUnit({ id: 'a1', team: 'A', position: { x: 0, y: 0 }, speed: 10, movement: 4, ...overrides }),
+      makeUnit({ id: 'b1', team: 'B', position: { x: 7, y: 7 }, speed: 5, movement: 4 }),
+    ];
+    return newMatch({
+      seed: 1,
+      map: makeBoard(heights),
+      teams: [units.filter((unit) => unit.team === 'A'), units.filter((unit) => unit.team === 'B')],
+    });
+  }
+
+  function moved(path: Position[], to: Position = path[path.length - 1], from = { x: 0, y: 0 }): Event {
+    return { type: 'moved', actor: 'a1', from, to, path };
+  }
+
+  it('accepts a two-step path and charges the climb it makes', () => {
+    const state = stateWith({ '1,0': 1 });
+    // Climbing to level 1 costs 2; stepping back down is free, so the walk costs 3 of 4.
+    const next = applyEvent(state, moved([{ x: 1, y: 0 }, { x: 2, y: 0 }]));
+
+    expect(next.units.find((unit) => unit.id === 'a1')?.position).toEqual({ x: 2, y: 0 });
+    expect(next.movementLeft).toBe(1);
+  });
+
+  it('refuses an empty path', () => {
+    const state = stateWith({});
+    expect(() => applyEvent(state, moved([], { x: 1, y: 0 }))).toThrow(/the path is empty/);
+  });
+
+  it('refuses a path that does not end on the destination', () => {
+    const state = stateWith({});
+    expect(() => applyEvent(state, moved([{ x: 1, y: 0 }], { x: 2, y: 0 }))).toThrow(
+      /does not end on the destination/,
+    );
+  });
+
+  it('refuses a step outside the board', () => {
+    const state = stateWith({});
+    expect(() => applyEvent(state, moved([{ x: -1, y: 0 }]))).toThrow(/step 1 is outside the board/);
+  });
+
+  it('refuses a step that is not next to the cell before it', () => {
+    const state = stateWith({});
+    expect(() => applyEvent(state, moved([{ x: 2, y: 0 }]))).toThrow(
+      /step 1 is not next to the cell before it/,
+    );
+  });
+
+  it('refuses a step the movement profile forbids', () => {
+    // The default profile climbs one level at most; the cell at (1,0) is two levels up.
+    const state = stateWith({ '1,0': 2 });
+    expect(() => applyEvent(state, moved([{ x: 1, y: 0 }]))).toThrow(
+      /step 1 is not allowed by the movement profile/,
+    );
+  });
+
+  it('refuses a path that costs more than the movement left', () => {
+    const state = stateWith({ '1,0': 1 }, { movement: 2 });
+    // Climb (2) plus the step down (1) is 3, one more than the 2 points the unit has.
+    expect(() => applyEvent(state, moved([{ x: 1, y: 0 }, { x: 2, y: 0 }]))).toThrow(
+      /the path costs more than the movement left/,
+    );
+  });
+
+  it('leaves the state untouched when it refuses the event', () => {
+    const state = stateWith({ '1,0': 2 });
+    const before = structuredClone(state);
+
+    expect(() => applyEvent(state, moved([{ x: 1, y: 0 }]))).toThrow();
+    expect(state).toEqual(before);
+  });
+
+  it('accepts every path the engine itself finds, for every cell it can reach', () => {
+    const state = stateWith({ '1,0': 1, '2,1': 2, '3,3': 1, '1,2': 1 });
+    const view = publicState(state);
+
+    for (const cell of reachableCells(view, 'a1')) {
+      const walk = findPath(view, 'a1', cell);
+      if (walk === null) throw new Error(`reachable cell ${cell.x},${cell.y} has no path`);
+
+      const next = applyEvent(state, moved(walk.path, cell));
+      expect(next.units.find((unit) => unit.id === 'a1')?.position).toEqual(cell);
+      expect(next.movementLeft).toBe(4 - walk.cost);
+    }
   });
 });

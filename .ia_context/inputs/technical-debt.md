@@ -26,14 +26,6 @@ Planned features are not debt: they live in [backlog.md](./backlog.md).
 - **Trigger:** any change to the roster or the speeds, or the start of M3.
 - **Evidence:** `backend/game-server/src/battle-room.ts:124,128`.
 
-### DT-22 · ADR 0008 contradicts itself about setMetadata
-
-- **Category:** Documentation
-- **Risk if untreated:** the decision says `setMetadata` replaces the object, and the sentence after it says it merges. Whoever uses `setMetadata` later may follow the wrong one. No code uses it today.
-- **Effort:** P
-- **Trigger:** the first use of room metadata (matchmaking, M5).
-- **Evidence:** `docs/adr/0008-colyseus-0.18.md`, section Decision.
-
 ### DT-23 · The "not-your-turn" refusal is tested only as a pure function
 
 - **Category:** Testing
@@ -41,14 +33,6 @@ Planned features are not debt: they live in [backlog.md](./backlog.md).
 - **Effort:** P
 - **Trigger:** the next change to the message handlers.
 - **Evidence:** `backend/game-server/src/battle-room.test.ts:52`.
-
-### DT-25 · The move-preview intent is declared but never returned
-
-- **Category:** Documentação (código morto)
-- **Risk if untreated:** the type suggests a behaviour that does not exist.
-- **Effort:** P
-- **Trigger:** when the match scene draws the move preview (m2a-integration), or remove the variant before then.
-- **Evidence:** `frontend/src/game/selection.ts:10`.
 
 ### DT-29 · The HUD view plan disagrees with the code on two numbers
 
@@ -98,14 +82,6 @@ Planned features are not debt: they live in [backlog.md](./backlog.md).
 - **Trigger:** if a measurement in a long match shows high cost.
 - **Evidence:** `frontend/src/scenes/map/MapView.ts` (one canvas and one texture per cell, plus the animated layers). Suspected, not measured.
 - **Measured on 2026-10-04**, headless Chrome 150 against the production build, one valid match: 134 canvases created for the match, about 7.3 Mpx, so about 29 MB of canvas memory (estimate: 4 bytes per pixel). JS heap 6 MB, unchanged after 20 s idle. Frame rate 13 fps during the match, but Chrome ran without a GPU (`--disable-gpu`), so that number does not describe a real browser. **Still open:** the next three matches in the same run did not start (see DT-60), so growth across matches is not measured yet.
-
-### DT-66 · The "room full" error is printed by the server test suite
-
-- **Category:** Testing
-- **Risk if untreated:** expected log noise can hide a real server error.
-- **Effort:** P
-- **Trigger:** the next change to `battle-room.test.ts`.
-- **Evidence:** `backend/game-server/src/battle-room.test.ts:75-80` (the test that expects `room full` prints it in the output).
 
 ### DT-70 · The client imports the engine's source file, not the package entry
 
