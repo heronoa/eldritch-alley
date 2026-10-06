@@ -3,7 +3,7 @@ import { attackArea, reachableCells } from '@eldritch-alley/engine';
 import { PROTOTYPE_MAPS, type PrototypeMap } from '../maps/prototype-maps';
 import type { Board, PublicState, Team, UnitId, UnitState } from '../protocol';
 import type { ActionMode } from './actions';
-import { highlightedCells } from './highlight';
+import { highlightedCells, highlightTone } from './highlight';
 import { resolveClick } from './selection';
 
 const BOARD: Board = { width: 8, height: 8, levels: new Array<number>(64).fill(0) };
@@ -333,6 +333,93 @@ describe('the one area of the state', () => {
 
     expect(painted(state, 'move')).toEqual([]);
     expect(painted(state, 'attack')).toEqual([]);
+  });
+});
+
+/**
+ * The inspection (EA-6): the secondary gesture names a unit and the board answers with the one area
+ * that unit covers from where it stands. The state's own question is not asked at the same time, and
+ * nothing about the turn changes to ask it.
+ */
+describe('the inspection of a unit that is not being played', () => {
+  /** The human's sniper on its own turn, in the corner, and the enemy out in the open. */
+  const SNIPER = makeUnit({ id: 'A-sniper', team: 'A', at: { x: 0, y: 0 }, range: 3 });
+  const ENEMY = makeUnit({ id: 'B-priest', team: 'B', at: { x: 3, y: 3 }, range: 2 });
+  /** A reach of two from (3,3): the cells of the 5×5 box around it, its own cell excluded. */
+  const ENEMY_AREA = 24;
+
+  function board(currentIndex = 0, pendingMove: PublicState['pendingMove'] = null): PublicState {
+    return makeState([SNIPER, ENEMY], currentIndex, BOARD, 3, pendingMove);
+  }
+
+  function painted(state: PublicState, mode: ActionMode, inspectedId: string | null): string[] {
+    return keys(highlightedCells({ state, selectedId: 'A-sniper', mode, humanTeam: 'A', inspectedId }));
+  }
+
+  it('paints exactly the area the inspected unit covers from where it stands, and no destination', () => {
+    const state = board();
+
+    const cells = painted(state, 'inspect', 'B-priest');
+
+    expect(cells).toEqual(keys(attackArea(state, ENEMY.position, ENEMY)));
+    expect(cells).toHaveLength(ENEMY_AREA);
+    // Its own cell is not a target, and the area is nothing the inspected unit could walk to.
+    expect(cells).not.toContain('3,3');
+    expect(cells).not.toEqual(keys(reachableCells(state, 'A-sniper')));
+  });
+
+  it('paints the inspection alone, in any mode, and not the set the state was showing', () => {
+    const state = board();
+
+    for (const mode of ['move', 'attack'] as const) {
+      const own = painted(state, mode, null);
+      const inspection = painted(state, mode, 'B-priest');
+
+      // (0,1) is a destination of the sniper and a cell of its own attack; the enemy's reach of two
+      // never gets there, so a union of the two sets is exactly what would show it.
+      expect(own, mode).toContain('0,1');
+      expect(inspection, mode).not.toContain('0,1');
+      expect(inspection, mode).toEqual(keys(attackArea(state, ENEMY.position, ENEMY)));
+    }
+
+    // A move waiting to be confirmed asks for the area of the attack; the inspection answers alone too.
+    const pending = board(0, { from: { x: 0, y: 0 }, cost: 1 });
+    expect(painted(pending, 'inspect', 'B-priest')).toEqual(keys(attackArea(pending, ENEMY.position, ENEMY)));
+  });
+
+  it('paints the attack tone, the one an enemy inside the reach already uses', () => {
+    const target = highlightTone({ mode: 'attack' });
+    const movement = highlightTone({ mode: 'move' });
+
+    expect(target).not.toBe(movement);
+    expect(highlightTone({ mode: 'inspect', inspectedId: 'B-priest' })).toBe(target);
+    // Whatever mode the turn was in, an inspection is drawn in that same tone.
+    expect(highlightTone({ mode: 'move', inspectedId: 'B-priest' })).toBe(target);
+    // With the inspection closed, the mode is the whole answer again.
+    expect(highlightTone({ mode: 'move', inspectedId: null })).toBe(movement);
+  });
+
+  it('paints the inspected unit whatever the turn is doing, so the acting unit is never needed', () => {
+    // The bot is on turn: the state's own question has no answer, and the inspection answers all the same.
+    const state = board(1);
+
+    expect(painted(state, 'inspect', null)).toEqual([]);
+    expect(painted(state, 'inspect', 'B-priest')).toEqual(keys(attackArea(state, ENEMY.position, ENEMY)));
+    // Read-only: asking about the enemy left the turn on the bot.
+    expect(state.initiative[state.currentIndex]).toBe('B-priest');
+  });
+
+  it('gives the state its own answer back the moment the inspection closes', () => {
+    const state = board();
+
+    const before = painted(state, 'move', null);
+    expect(before).toEqual(keys(reachableCells(state, 'A-sniper')));
+
+    // Opening the inspection and closing it again: the answer to the state's own question is untouched,
+    // down to the cells, which is what the board paints the moment the gesture is over (D2).
+    expect(painted(state, 'move', 'B-priest')).not.toEqual(before);
+
+    expect(painted(state, 'move', null)).toEqual(before);
   });
 });
 

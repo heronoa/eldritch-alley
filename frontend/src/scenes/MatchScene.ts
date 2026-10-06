@@ -22,10 +22,10 @@ import {
   type AutoEndTurn,
   type AutoEndTurnEvent,
 } from '../game/autoEndTurn';
-import { highlightedCells, highlightsMovement } from '../game/highlight';
+import { highlightedCells, highlightTone } from '../game/highlight';
 import { describeEvent, describeRejection, type UnitNames } from '../game/log';
 import { presentationOf, type Cue, type Snapshot } from '../game/presentation';
-import { confirmMove, resolveClick } from '../game/selection';
+import { confirmMove, resolveClick, resolveInspect } from '../game/selection';
 import { activeSlot, isHumanTurn } from '../game/turn-order';
 import { t } from '../i18n';
 import { terrainOf, type Terrain } from '../maps/terrain';
@@ -79,6 +79,14 @@ const HUMAN_TEAM: Team = 'A';
 const WHEEL_ZOOM_STEP = 1.15;
 const KEY_ZOOM_STEP = 1.25;
 
+/**
+ * The secondary gesture of the inspection (EA-6, D4): how long a finger rests on a unit before the
+ * gesture is an inspection instead of a tap, and how far it may drift while it rests. A finger that
+ * travels further is panning the map, and a tap shorter than the press is an ordinary click.
+ */
+const LONG_PRESS_MS = 400;
+const PRESS_SLOP_PX = 6;
+
 /** The state carries no display name for a unit, so the log falls back to the id. */
 const UNIT_NAMES: UnitNames = {};
 
@@ -119,6 +127,11 @@ export class MatchScene extends Phaser.Scene {
   private mode: ActionMode = 'inspect';
   /** The destination the first tap of a move armed. The second tap on it sends the move (EA-7). */
   private armedMove: Cell | null = null;
+  /** The unit the secondary gesture is inspecting, or null when no inspection is open (EA-6). */
+  private inspectedId: string | null = null;
+  /** The finger that is down and may still become a long press: where it started, and what it became. */
+  private press: { from: Pixel; inspected: boolean } | null = null;
+  private pressTimer: Phaser.Time.TimerEvent | null = null;
   private logLines: string[] = [];
   /** Set when the match is over or lost, after which clicks are ignored. */
   private finished = false;
@@ -165,6 +178,8 @@ export class MatchScene extends Phaser.Scene {
     this.selectedId = null;
     this.mode = 'inspect';
     this.armedMove = null;
+    this.inspectedId = null;
+    this.cancelPress();
     this.logLines = [];
     this.finished = false;
     this.reconnecting = false;
@@ -197,7 +212,11 @@ export class MatchScene extends Phaser.Scene {
     this.hud = this.scene.get('hud') as HudScene;
     this.applyCamera();
 
-    this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => this.handleClick(pointer));
+    this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => this.handlePointerDown(pointer));
+    this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => this.trackPress(pointer));
+    this.input.on('pointerup', (pointer: Phaser.Input.Pointer) => this.handlePointerUp(pointer));
+    // The right button is the inspection on a desktop, so the menu of the browser must not eat it.
+    this.input.mouse?.disableContextMenu();
     this.input.on('wheel', (pointer: Phaser.Input.Pointer, _objects: unknown, _dx: number, dy: number) => {
       this.zoomBy(dy < 0 ? WHEEL_ZOOM_STEP : 1 / WHEEL_ZOOM_STEP, { x: pointer.x, y: pointer.y });
     });
@@ -210,6 +229,7 @@ export class MatchScene extends Phaser.Scene {
     // The map's canvases are textures of the game, not objects of this scene: leaving without taking
     // them out would pile a hundred of them up on the next match.
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.cancelPress();
       this.mapView?.destroy();
       this.mapView = null;
       this.map = null;
@@ -227,13 +247,68 @@ export class MatchScene extends Phaser.Scene {
   }
 
   /**
+   * A press begins. The right button is the inspection and is read as one at once; a finger may still
+   * become a long press, so a tap waits for its release to act; anything else clicks here and now
+   * (EA-6, D4). The primary click is never the inspection: on an enemy it is the action itself.
+   */
+  private handlePointerDown(pointer: Phaser.Input.Pointer): void {
+    if (pointer.rightButtonDown()) {
+      this.handlePress(pointer, true);
+      return;
+    }
+
+    if (pointer.wasTouch) {
+      this.armPress(pointer);
+      return;
+    }
+
+    this.handlePress(pointer, false);
+  }
+
+  /** A finger that has rested long enough on a unit is inspecting it, not tapping the board (D4). */
+  private armPress(pointer: Phaser.Input.Pointer): void {
+    this.cancelPress();
+    this.press = { from: { x: pointer.x, y: pointer.y }, inspected: false };
+    this.pressTimer = this.time.delayedCall(LONG_PRESS_MS, () => {
+      if (this.press === null) return;
+      this.press.inspected = true;
+      this.handlePress(pointer, true);
+    });
+  }
+
+  /** A finger that travels is panning the map, so the press is neither an inspection nor a tap. */
+  private trackPress(pointer: Phaser.Input.Pointer): void {
+    if (this.press === null) return;
+
+    const drift = Math.max(
+      Math.abs(pointer.x - this.press.from.x),
+      Math.abs(pointer.y - this.press.from.y),
+    );
+    if (drift > PRESS_SLOP_PX) this.cancelPress();
+  }
+
+  private handlePointerUp(pointer: Phaser.Input.Pointer): void {
+    const press = this.press;
+    this.cancelPress();
+    // A tap shorter than the long press is an ordinary click, and it acts (D4).
+    if (press !== null && !press.inspected) this.handlePress(pointer, false);
+  }
+
+  private cancelPress(): void {
+    this.pressTimer?.remove(false);
+    this.pressTimer = null;
+    this.press = null;
+  }
+
+  /**
    * The HUD is tested first and consumes the click: the action bar against the same rectangle that
    * draws each button (DT-30), the two chips of a pending move, then any point inside any HUD
    * rectangle, even where no control is, so a panel floating over a tile never lets a click through to
-   * the tile. Only what is left reaches the board, and what it means there is decided by
-   * `resolveClick`, narrowed by `applyMode`; the server decides the rest.
+   * the tile. Only what is left reaches the board. There the gesture decides: an inspection reads the
+   * unit under the pointer and sends nothing (EA-6), and a primary click is an action, whose meaning
+   * `resolveClick` answers and `applyMode` narrows. The server decides the rest.
    */
-  private handleClick(pointer: Phaser.Input.Pointer): void {
+  private handlePress(pointer: Phaser.Input.Pointer, secondary: boolean): void {
     // The HUD is not zoomed, so its rectangles are tested in screen space; the board is zoomed, so it is
     // tested in the world space the pointer reports for the map camera.
     const point = { x: pointer.x, y: pointer.y };
@@ -300,6 +375,17 @@ export class MatchScene extends Phaser.Scene {
     );
     if (cell === null) return;
 
+    // The secondary gesture asks about the unit on the cell and stops there: it is not a selection and
+    // not an action, so it never reaches `resolveClick` and never sends anything (EA-6, D2/D4).
+    if (secondary) {
+      this.inspect(this.state, cell);
+      return;
+    }
+
+    // A primary click on the board is an action, so whatever the secondary gesture left on the screen
+    // goes away first: the inspection is a question being held, not something the turn carries on with.
+    this.closeInspection();
+
     // A move takes two taps: the first arms the destination, the second on the same cell sends it.
     const pending = resolveClick({
       state: this.state,
@@ -322,6 +408,26 @@ export class MatchScene extends Phaser.Scene {
       case 'none':
         break;
     }
+  }
+
+  /**
+   * The question the secondary gesture asks: which cells the unit on `cell` covers from where it
+   * stands. The answer is the engine's own `attackArea`, drawn alone and in the attack tone; nothing
+   * about the match changes, and the acting unit keeps the turn (EA-6, D1/D2). A cell nobody holds, and
+   * a unit out of the fight, close the inspection instead — there is nothing to ask about.
+   */
+  private inspect(state: PublicState, cell: Cell): void {
+    const intent = resolveInspect(state, cell);
+    this.inspectedId = intent.kind === 'inspect' ? intent.unitId : null;
+    this.redraw(state);
+  }
+
+  /** The state answers its own question again, which is what the board goes back to (EA-6, D2). */
+  private closeInspection(): void {
+    if (this.inspectedId === null) return;
+
+    this.inspectedId = null;
+    if (this.state !== null) this.redraw(this.state);
   }
 
   /** Arms the button's mode, or cancels it when it is already armed, so the bar is its own undo. */
@@ -660,18 +766,20 @@ export class MatchScene extends Phaser.Scene {
    * The cells the state offers, drawn as the top face of each cell they cover. There is one area at a
    * time and which one it is comes from the state, not from the armed mode (EA-5): the destinations
    * while choosing where to walk, and the area the unit covers from where it stands once a move is
-   * waiting to be confirmed. The tone follows the same answer, so the two never mix on the board.
+   * waiting to be confirmed. An inspection (EA-6) replaces that question with the reach of the unit the
+   * player is asking about, drawn alone. The tone follows the same answer, so the two never mix.
    */
   private drawHighlights(state: PublicState): void {
     for (const graphic of this.highlights) graphic.destroy();
     this.highlights = [];
 
-    const move = highlightsMovement(this.mode);
+    const move = highlightTone({ mode: this.mode, inspectedId: this.inspectedId }) === 'move';
     const color = move ? HIGHLIGHT_MOVE_COLOR : HIGHLIGHT_ATTACK_COLOR;
     const alpha = move ? HIGHLIGHT_MOVE_ALPHA : HIGHLIGHT_ATTACK_ALPHA;
     const cells = highlightedCells({
       state,
       selectedId: this.selectedId,
+      inspectedId: this.inspectedId,
       mode: this.mode,
       humanTeam: HUMAN_TEAM,
     });

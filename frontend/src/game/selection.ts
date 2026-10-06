@@ -11,6 +11,11 @@ import type { ActionMode } from './actions';
 export type Intent =
   | { kind: 'none' }
   | { kind: 'select'; unitId: string }
+  /**
+   * The secondary gesture on a unit (EA-6): the inspection names the unit it asks about and carries no
+   * action at all, so it is neither a selection nor a preview of anything. It changes nothing.
+   */
+  | { kind: 'inspect'; unitId: string }
   | { kind: 'send'; action: ClientAction }
   /**
    * The first tap of a move: the destination the tap armed, the walk the engine found to it, and what
@@ -73,6 +78,18 @@ export function resolveClick({ state, selectedId, cell, humanTeam }: ClickInput)
   }
 
   return { kind: 'none' };
+}
+
+/**
+ * What the secondary gesture on `cell` means: the unit standing there, and nothing else (EA-6). A cell
+ * nobody holds, and a unit out of the fight — which covers no cells to show — answer `none`, which is
+ * what closes an inspection that was open.
+ */
+export function resolveInspect(state: PublicState, cell: Cell): Intent {
+  const occupant = occupantOf(state, cell);
+  if (occupant === undefined || occupant.defeated) return { kind: 'none' };
+
+  return { kind: 'inspect', unitId: occupant.id };
 }
 
 /**

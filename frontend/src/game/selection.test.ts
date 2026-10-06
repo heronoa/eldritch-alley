@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Board, PublicState, Team, UnitState } from '../protocol';
-import { confirmMove, resolveClick, type Intent } from './selection';
+import { confirmMove, resolveClick, resolveInspect, type Intent } from './selection';
 
 const BOARD: Board = { width: 8, height: 8, levels: new Array<number>(64).fill(0) };
 
@@ -268,9 +268,65 @@ describe('confirmMove', () => {
     const armed = { x: 0, y: 1 };
     const attack: Intent = { kind: 'send', action: { type: 'attack', target: 'B-priest' } };
     const select: Intent = { kind: 'select', unitId: 'A-sniper' };
+    // The inspection is not a move being confirmed, so a run waiting to be confirmed never turns it
+    // into an action either (EA-6, D4).
+    const inspect: Intent = { kind: 'inspect', unitId: 'B-priest' };
 
     expect(confirmMove(armed, attack)).toEqual(attack);
     expect(confirmMove(armed, select)).toEqual(select);
+    expect(confirmMove(armed, inspect)).toEqual(inspect);
     expect(confirmMove(armed, { kind: 'none' })).toEqual({ kind: 'none' });
+  });
+});
+
+/**
+ * The secondary gesture: the right button on desktop, a long press on a finger (EA-6, D4). It names
+ * the unit it asks about and carries no action at all, so nothing it produces can be sent.
+ */
+describe('resolveInspect', () => {
+  /** The human's sniper on its own turn, and the enemy the gesture asks about. */
+  const SNIPER = makeUnit({ id: 'A-sniper', team: 'A', at: { x: 0, y: 0 }, range: 3 });
+  const ENEMY = makeUnit({ id: 'B-priest', team: 'B', at: { x: 3, y: 0 }, range: 2 });
+  const ENEMY_CELL = { x: 3, y: 0 };
+
+  /** The states of the turn the gesture has to answer the same in, a move pending and the bot included. */
+  const states: { what: string; state: PublicState }[] = [
+    { what: 'idle', state: makeState([SNIPER, ENEMY]) },
+    {
+      what: 'a move pending',
+      state: { ...makeState([SNIPER, ENEMY]), pendingMove: { from: { x: 0, y: 0 }, cost: 1 } },
+    },
+    { what: 'the bot on turn', state: makeState([SNIPER, ENEMY], 1) },
+  ];
+
+  it('names the unit on the cell and never an action, so the gesture sends nothing', () => {
+    for (const { what, state } of states) {
+      const intent = resolveInspect(state, ENEMY_CELL);
+
+      expect(intent, what).toEqual({ kind: 'inspect', unitId: 'B-priest' });
+      // The whole difference from `resolveClick`: there is no action here to send (D2, D4).
+      expect(intent, what).not.toHaveProperty('action');
+    }
+  });
+
+  it('answers nothing on a cell nobody stands on, so the gesture closes the inspection', () => {
+    expect(resolveInspect(makeState([SNIPER, ENEMY]), { x: 1, y: 1 })).toEqual({ kind: 'none' });
+  });
+
+  it('answers nothing for a unit out of the fight, which covers no cells', () => {
+    const body = makeUnit({ id: 'B-priest', team: 'B', at: { x: 3, y: 0 }, defeated: true });
+    const state = makeState([SNIPER, body]);
+
+    expect(resolveInspect(state, ENEMY_CELL)).toEqual({ kind: 'none' });
+  });
+
+  it('leaves the state it read untouched, so the acting unit and the turn stay where they are', () => {
+    for (const { what, state } of states) {
+      const before = structuredClone(state);
+
+      resolveInspect(state, ENEMY_CELL);
+
+      expect(state, what).toEqual(before);
+    }
   });
 });
