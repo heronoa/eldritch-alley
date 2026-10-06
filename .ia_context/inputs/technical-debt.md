@@ -108,14 +108,6 @@ Planned features are not debt: they live in [backlog.md](./backlog.md).
 - **Gatilho para tratar**: antes de fechar o EA-7 / antes do deploy do lote 1.
 - **Evidência**: frontend/src/scenes/MatchScene.ts:242-244; frontend/src/game/selection.ts:72
 
-### DT-73 · applyEvent('moved') confia no path do evento sem validar
-- **Categoria**: Segurança
-- **Risco se não tratado**: no M4, um replay a partir de eventos armazenados com um path
-- malformado produz custo e posição finais errados, sem erro.
-- **Esforço estimado**: P
-- **Gatilho para tratar**: início do M4 (persistência e replay a partir de eventos).
-- **Evidência**: backend/engine/src/events.ts:30-40
-
 ### DT-74 · highlightedCells recomputda redraw
 - **Categoria**: Performance
 - **Risco se não tratado**: custo quaro; imperceptível em 8×8, relevante se os mapas crescerem.

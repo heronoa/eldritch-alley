@@ -3,7 +3,7 @@
 **Milestone:** — (camada única: engine. O gatilho original é o início do M4)
 **Feature pai:** —
 **Criado em:** 2026-10-06
-**Status:** aplicado, aguardando revisão (opção a, lançar `Error`; aplicado por pedido explícito do responsável, com o gate do M2-b/M4 em aberto)
+**Status:** aprovado pelo smoke test do responsável; DT-73 fechado em `technical-debt-closed.md`
 
 > **Alerta de gate (regra do CLAUDE do backend):** o gatilho do DT-73 é o início do M4, e o M4 ainda não começou. Antes dele, o ROADMAP mostra o M2-b com um teste pendente (reconexão através do túnel, `ROADMAP.md`, seção M2-b) e o ponto de comparação do M2 ainda não decidido. O M3 só acontece "se o projeto for escolhido". Este plano está à frente do gatilho. Ele não bloqueia nada e pode ser escrito agora, mas a **execução** precisa do aval explícito do responsável: "prosseguir mesmo assim". Sugestão para desbloquear: fechar o teste de reconexão do M2-b, ou aceitar o trabalho antecipado.
 
