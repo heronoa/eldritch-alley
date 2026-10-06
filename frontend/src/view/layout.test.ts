@@ -33,8 +33,13 @@ import {
   PADDING,
   PANEL_ROW_HEIGHT,
   RESULT_BUTTON_RECT,
+  SETTINGS_BUTTON_RECT,
+  SETTINGS_PANEL_RECT,
+  SETTINGS_TOGGLE_RECT,
   STATUS_RECT,
   CAMERA_CONTROLS,
+  CAMERA_VIEW_RECT,
+  CAMERA_ZOOM_RECT,
   boardBounds,
   buttonIndexAt,
   buttonRect,
@@ -53,6 +58,8 @@ import {
 
 /** Six slots: both squads field three units. */
 const CAROUSEL_SLOTS = 6;
+/** Seven slots: what the strip holds once it is squeezed between the log and the camera panel. */
+const CAROUSEL_CAPACITY = 7;
 /** Mover, Atacar, Recarregar, Terminar turno. */
 const ACTION_BUTTONS = 4;
 /** The four pieces of the HUD, in the order `hudRects` returns them. */
@@ -207,6 +214,17 @@ describe('layout', () => {
     expect(bottom(carouselSlotRect(CAROUSEL_SLOTS - 1))).toBeLessThanOrEqual(bottom(CAROUSEL_RECT));
   });
 
+  it('holds a seventh chip, the headroom the short strip keeps', () => {
+    // The carousel moved between the two columns to clear the top edge for the log and the camera
+    // panel, so it is narrower than it was. The chips narrowed with it, which is what keeps the
+    // seventh slot — one more than the roster fields — inside the strip.
+    const needed = CAROUSEL_CAPACITY * CAROUSEL_SLOT.width + (CAROUSEL_CAPACITY - 1) * CAROUSEL_SLOT.gap;
+
+    expect(needed).toBeLessThanOrEqual(CAROUSEL_RECT.width);
+    expect(right(carouselSlotRect(CAROUSEL_CAPACITY - 1))).toBeLessThanOrEqual(right(CAROUSEL_RECT));
+    expect(bottom(carouselSlotRect(CAROUSEL_CAPACITY - 1))).toBeLessThanOrEqual(bottom(CAROUSEL_RECT));
+  });
+
   it('places the slots from the left edge of the carousel, evenly spaced', () => {
     expect(carouselSlotRect(0).x).toBe(CAROUSEL_RECT.x);
     expect(carouselSlotRect(0).y).toBeGreaterThanOrEqual(CAROUSEL_RECT.y);
@@ -330,6 +348,11 @@ describe('the camera panel', () => {
       expect(right(rect), control).toBeLessThanOrEqual(right(CAMERA_RECT));
       expect(bottom(rect), control).toBeLessThanOrEqual(bottom(CAMERA_RECT));
     }
+
+    // The view label reaches further right than any control does: the panel stops short of the gear,
+    // so the last column of the grid is what says whether it still fits.
+    expect(right(CAMERA_VIEW_RECT)).toBeLessThanOrEqual(right(CAMERA_RECT));
+    expect(right(CAMERA_ZOOM_RECT)).toBeLessThanOrEqual(right(CAMERA_RECT));
   });
 
   it('puts each control under its own centre, and the gaps under none', () => {
@@ -339,6 +362,52 @@ describe('the camera panel', () => {
 
       expect(cameraControlAt(centre), control).toBe(control);
     }
+  });
+});
+
+// The owner's feedback after the smoke test: the log and the buttons of the map leave the middle of
+// the screen to the board and take the top edge, which the carousel shares with them. Three pieces
+// side by side in one band, with the gear in the corner — and no two of them may share a pixel,
+// because `hudTakesPress` tells them apart by the order it reads them in, not by what is drawn last.
+describe('the top edge', () => {
+  const BAND = [logRect(true), CAROUSEL_RECT, CAMERA_RECT, SETTINGS_BUTTON_RECT, SETTINGS_PANEL_RECT];
+
+  it('glues the log to the top of the left column, clear of the carousel', () => {
+    expect(LOG_RECT.y).toBe(PADDING);
+    expect(LOG_TOGGLE_RECT.y).toBe(PADDING);
+    expect(right(LOG_RECT)).toBeLessThanOrEqual(CAROUSEL_RECT.x);
+  });
+
+  it('glues the camera panel to the top of the right column, clear of the carousel', () => {
+    expect(CAMERA_RECT.y).toBe(PADDING);
+    expect(CAMERA_RECT.x).toBeGreaterThanOrEqual(right(CAROUSEL_RECT));
+  });
+
+  it('leaves the corner to the gear, so the gear keeps its place', () => {
+    expect(right(CAMERA_RECT)).toBeLessThanOrEqual(SETTINGS_BUTTON_RECT.x);
+  });
+
+  it('gives each piece of the band a place of its own', () => {
+    for (let i = 0; i < BAND.length; i += 1) {
+      for (let j = i + 1; j < BAND.length; j += 1) {
+        expect(overlaps(BAND[i], BAND[j]), `${i} over ${j}`).toBe(false);
+      }
+    }
+  });
+
+  it('opens the settings under the camera panel, where nothing is drawn over it', () => {
+    // The popup used to open under the gear, half of it behind the camera panel, which the HUD builds
+    // later and draws on top of it. With the panel against the top edge it would hide the whole popup.
+    expect(SETTINGS_PANEL_RECT.y).toBeGreaterThanOrEqual(bottom(CAMERA_RECT));
+    expect(bottom(SETTINGS_PANEL_RECT)).toBeLessThanOrEqual(DASHBOARD_RECT.y);
+  });
+
+  it('keeps the row of the settings inside its own panel, and the panel inside the canvas', () => {
+    expect(SETTINGS_TOGGLE_RECT.x).toBeGreaterThanOrEqual(SETTINGS_PANEL_RECT.x);
+    expect(right(SETTINGS_TOGGLE_RECT)).toBeLessThanOrEqual(right(SETTINGS_PANEL_RECT));
+    expect(SETTINGS_TOGGLE_RECT.y).toBeGreaterThanOrEqual(SETTINGS_PANEL_RECT.y);
+    expect(bottom(SETTINGS_TOGGLE_RECT)).toBeLessThanOrEqual(bottom(SETTINGS_PANEL_RECT));
+    expect(right(SETTINGS_PANEL_RECT)).toBeLessThanOrEqual(CANVAS_WIDTH);
   });
 });
 

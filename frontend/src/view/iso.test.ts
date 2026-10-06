@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { terrainOf } from '../maps/terrain';
 import { PROTOTYPE_MAPS } from '../maps/prototype-maps';
 import { NO_FLOOR, type Cell } from './grid';
-import { CAMERA_RECT, CAROUSEL_RECT, DASHBOARD_RECT, LOG_RECT, PADDING } from './layout';
+import { CAMERA_RECT, CAROUSEL_RECT, DASHBOARD_RECT, PADDING } from './layout';
 import {
   HZ,
   PIXEL,
