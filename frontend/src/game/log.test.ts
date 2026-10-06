@@ -10,6 +10,14 @@ const NAMES: Record<string, string> = {
 };
 
 describe('describeEvent', () => {
+  // The sentences are the pt-BR ones, so the locale is pinned, as it is for the refusals below.
+  let previous = getLocale();
+  beforeEach(() => {
+    previous = getLocale();
+    setLocale('pt-BR');
+  });
+  afterEach(() => setLocale(previous));
+
   it('describes a move with both cells', () => {
     const event: Event = {
       type: 'moved',

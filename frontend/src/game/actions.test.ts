@@ -9,6 +9,10 @@ import {
   settleMode,
   type AvailableActions,
 } from './actions';
+import { setLocale } from '../i18n/translate';
+
+// The cases below assert the Portuguese copy the game shipped with, so they read it on purpose.
+setLocale('pt-BR');
 
 const BOARD: Board = { width: 8, height: 8, levels: new Array<number>(64).fill(0) };
 
@@ -126,11 +130,17 @@ describe('availableActions', () => {
     expect(availableActions(state, 'A').canMove).toBe(false);
   });
 
-  it('refuses an attack when no enemy is inside the reach', () => {
-    const far = makeUnit({ id: 'B-priest', team: 'B', at: { x: 4, y: 0 } });
+  it('offers the attack when cells are in reach, even with no enemy on them: the reach is shown first', () => {
+    const far = makeUnit({ id: 'B-priest', team: 'B', at: { x: 7, y: 7 } });
     const state = makeState([SNIPER, far]);
 
     expect(SNIPER.range).toBe(3);
+    expect(availableActions(state, 'A').canAttack).toBe(true);
+  });
+
+  it('refuses an attack when the sniper has no cell in reach to show', () => {
+    const state = makeState([{ ...SNIPER, range: 0 }, ENEMY]);
+
     expect(availableActions(state, 'A').canAttack).toBe(false);
   });
 
@@ -159,9 +169,10 @@ describe('availableActions', () => {
       const far = makeUnit({ id: 'B-priest', team: 'B', at: { x: 7, y: 7 } });
       const state = makeState([SNIPER, far], 0, { movementLeft: 0 });
 
+      // The attack is offered to show its reach, but the turn has nothing left: nobody can be hit.
       expect(availableActions(state, 'A')).toMatchObject({
         canMove: false,
-        canAttack: false,
+        canAttack: true,
         canReload: false,
         nothingLeft: true,
       });
@@ -198,7 +209,7 @@ describe('availableActions', () => {
 
       expect(availableActions(state, 'A')).toMatchObject({
         canMove: false,
-        canAttack: false,
+        canAttack: true,
         canReload: false,
         nothingLeft: false,
       });
@@ -246,28 +257,11 @@ describe('applyMode', () => {
   const MOVE: Intent = { kind: 'send', action: { type: 'move', to: { x: 1, y: 0 } } };
   const ATTACK: Intent = { kind: 'send', action: { type: 'attack', target: 'B-priest' } };
   const NOTHING: Intent = { kind: 'none' };
-  const PREVIEW: Intent = {
-    kind: 'move-preview',
-    to: { x: 0, y: 2 },
-    path: [
-      { x: 0, y: 1 },
-      { x: 0, y: 2 },
-    ],
-    cost: 2,
-  };
 
-  it('hands every intent back untouched while nothing is armed', () => {
-    for (const intent of [SELECT, MOVE, ATTACK, NOTHING, PREVIEW]) {
-      expect(applyMode('inspect', intent)).toEqual(intent);
-    }
-  });
-
-  it('keeps the preview of a move while the move mode is armed', () => {
-    expect(applyMode('move', PREVIEW)).toEqual(PREVIEW);
-  });
-
-  it('drops a move preview while another mode is armed', () => {
-    expect(applyMode('attack', PREVIEW)).toEqual({ kind: 'none' });
+  it('sends nothing while nothing is armed: a click only selects or inspects', () => {
+    expect(applyMode('inspect', SELECT)).toEqual(SELECT);
+    expect(applyMode('inspect', MOVE)).toEqual({ kind: 'none' });
+    expect(applyMode('inspect', ATTACK)).toEqual({ kind: 'none' });
   });
 
   it('keeps a selection in every mode', () => {
@@ -330,8 +324,8 @@ describe('moveChips', () => {
     const state = makeState([SNIPER, ENEMY], 0, { pendingMove: { from: { x: 0, y: 0 }, cost: 1 } });
 
     expect(moveChips(state, 'A')).toEqual([
-      { id: 'confirmMove', label: 'Confirmar movimento', action: { type: 'commitMove' } },
-      { id: 'cancelMove', label: 'Cancelar movimento', action: { type: 'cancelMove' } },
+      { id: 'confirmMove', label: 'Confirmar', action: { type: 'commitMove' } },
+      { id: 'cancelMove', label: 'Cancelar', action: { type: 'cancelMove' } },
     ]);
   });
 

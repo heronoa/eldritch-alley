@@ -10,6 +10,10 @@ import { PROTOTYPE_MAPS, PROTOTYPE_TILE_LETTERS, type PrototypeMapId } from './p
 // The server's copy of the same data. Comparing the two directly, not only their constants, is what catches
 // an edit that changes one copy and leaves the other alone (DT-62).
 import * as serverCopy from '../../../backend/game-server/src/maps/prototype-maps';
+import { setLocale } from '../i18n/translate';
+
+// The cases below assert the Portuguese copy the game shipped with, so they read it on purpose.
+setLocale('pt-BR');
 
 /** What the generator recorded for one map. */
 interface Checksum {

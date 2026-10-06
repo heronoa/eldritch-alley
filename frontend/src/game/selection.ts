@@ -4,7 +4,7 @@
 // server refuses (EA-1 D1). The import goes through the engine's package entry, so the client sees
 // only what `index.ts` exports; the engine ships no Node, so the bundle is safe.
 import { findPath, hasLineOfSight } from '@eldritch-alley/engine';
-import type { ClientAction, Position, PublicState, Team, UnitState } from '../protocol';
+import type { ClientAction, PublicState, Team, UnitState } from '../protocol';
 import type { Cell } from '../view/grid';
 import type { ActionMode } from './actions';
 
@@ -16,12 +16,7 @@ export type Intent =
    * action at all, so it is neither a selection nor a preview of anything. It changes nothing.
    */
   | { kind: 'inspect'; unitId: string }
-  | { kind: 'send'; action: ClientAction }
-  /**
-   * The first tap of a move: the destination the tap armed, the walk the engine found to it, and what
-   * the walk costs. It sends nothing; a second tap on the same cell confirms it (EA-7).
-   */
-  | { kind: 'move-preview'; to: Cell; path: Position[]; cost: number };
+  | { kind: 'send'; action: ClientAction };
 
 export interface ClickInput {
   state: PublicState;
@@ -70,10 +65,10 @@ export function resolveClick({ state, selectedId, cell, humanTeam }: ClickInput)
   }
 
   if (!occupant) {
-    // Any cell the unit reaches this turn is a destination; the walk to it is the engine's answer.
-    const walk = findPath(state, selected.id, { x: cell.x, y: cell.y });
-    if (walk !== null) {
-      return { kind: 'move-preview', to: { x: cell.x, y: cell.y }, path: walk.path, cost: walk.cost };
+    // Any cell the unit reaches this turn is a destination: the move is sent, and it stays pending
+    // until it is confirmed or an action closes it (EA-5). The walk is the engine's answer.
+    if (findPath(state, selected.id, { x: cell.x, y: cell.y }) !== null) {
+      return { kind: 'send', action: { type: 'move', to: { x: cell.x, y: cell.y } } };
     }
   }
 
@@ -93,27 +88,14 @@ export function resolveInspect(state: PublicState, cell: Cell): Intent {
 }
 
 /**
- * Whether the armed mode lets an intent through: a mode narrows what a click means, it never invents.
- * The action bar and the answer a click gets share this one rule, so the mode a button shows armed is
- * the mode a click obeys. Since EA-5 the highlight does not read it: the area on the board is the
- * state's own (the engine's `reachableCells` or `attackArea`), not a summary of this answer.
+ * Whether the armed mode lets an intent through. Nothing is sent until its button is armed: with the
+ * mode at `inspect` a click only selects or inspects, and a move or an attack needs `Mover` or
+ * `Atacar` pressed first. The action bar and the click share this one rule, so the mode a button
+ * shows armed is the mode a click obeys.
  */
 export function allowsIntent(mode: ActionMode, intent: Intent): boolean {
-  if (mode === 'inspect') return true;
-  // Selecting a unit is how the player moves the selection around, whatever the mode is.
-  if (intent.kind === 'select') return true;
+  // Selecting and inspecting are how the player looks at the board, whatever the mode is.
+  if (intent.kind === 'select' || intent.kind === 'inspect') return true;
   if (intent.kind === 'send') return intent.action.type === mode;
-  // A move takes two taps, so the first one arms a destination instead of sending the action.
-  return intent.kind === 'move-preview' && mode === 'move';
-}
-
-/**
- * The second tap of a move: a tap on the cell the first tap armed sends it, and any other intent is
- * handed back as it was, so the first tap only ever arms. One tap never moves a unit (EA-7).
- */
-export function confirmMove(armed: Cell | null, intent: Intent): Intent {
-  if (armed === null || intent.kind !== 'move-preview') return intent;
-  if (armed.x !== intent.to.x || armed.y !== intent.to.y) return intent;
-
-  return { kind: 'send', action: { type: 'move', to: { x: intent.to.x, y: intent.to.y } } };
+  return false;
 }

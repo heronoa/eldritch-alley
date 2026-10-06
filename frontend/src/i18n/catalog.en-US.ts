@@ -1,18 +1,17 @@
-// The English catalog. Partial on purpose: M3 wrote the title screen's copy — this feature's whole
-// translation — and the rest of the game keeps falling back to `pt-BR` until its own feature
-// translates it. That is why a player who picks EN and starts a match plays it in Portuguese.
+// The English catalog. It translates every key of the reference, so a player who picks EN reads EN on
+// every screen, the battle log included.
 //
-// The copy is a drafted translation, not a literal one (decision 10 of the plan): the title's tone
-// is noir and deliberate, so the sentences were written again in English rather than carried over
-// word by word. The setting keeps its own names in either language: Belém, Rua do Comércio, Praça
-// Municipal are where the story happens.
+// The title screen's copy is the one the owner reviewed (decision 10 of the plan): the title's tone is
+// noir and deliberate, so those sentences were written again in English rather than carried over word
+// by word. The rest is a faithful translation of the reference. The setting keeps its own names in
+// either language: Belém, Rua do Comércio and Praça Municipal are where the story happens.
 //
-// A key that is not here is not an error — `message()` answers with the reference text. Adding a
-// key that the reference does not define is one, and the type rejects it.
+// The type is the whole reference, so a key missing here is a compile error and never a Portuguese
+// line inside an English screen. A key that the reference does not define is an error too.
 
 import type { MessageKey } from './catalog.pt-BR';
 
-export const enUS: Partial<Record<MessageKey, string>> = {
+export const enUS: Record<MessageKey, string> = {
   // The title screen. `name`, `stampTag`, `footerVersion` and `document` are the same in both
   // locales: the game's name is not translated, and the version is a number.
   'title.document': 'Eldritch Alley: Tactics',
@@ -35,18 +34,65 @@ export const enUS: Partial<Record<MessageKey, string>> = {
   'title.footerPlace': 'Belém · the small hours',
   'title.language': 'Language',
 
-  // The battle log's refusals the game itself adds: a blocked shot, a destination no walk reaches,
-  // an order that arrived after the round it named had gone by, and a move control with no move
-  // waiting to be confirmed (EA-5).
-  'log.rejection.no-line-of-sight': 'No line of sight',
-  'log.rejection.no-path': 'No path',
-  'log.rejection.stale-turn': 'Order too late',
-  'log.rejection.no-pending-move': 'No move waiting to be confirmed',
+  // The battle log. One sentence per event, and the placeholders are filled by `interpolate`.
+  'log.event.moved': '{actor} moved from {from} to {to}',
+  'log.event.attacked': '{actor} hit {target} for {damage}',
+  'log.event.missed': '{actor} missed',
+  'log.event.reloaded': '{actor} reloaded',
+  'log.event.defeated': '{target} fell',
+  'log.event.corpseRemoved': 'Body of {target} removed',
+  'log.event.turnEnded': 'Turn of {next}',
+  'log.event.unknown': 'unknown event',
 
-  // The banner a turn change raises (EA-3). Short on purpose: it is read at a glance, over the board.
+  // One sentence per `RejectReason`, keyed by the code the server answers with. `unknown` is the
+  // fallback for a reason this build does not know.
+  'log.rejection.not-your-turn': 'Not your turn',
+  'log.rejection.out-of-bounds': 'Off the board',
+  'log.rejection.cell-occupied': 'Cell occupied',
+  'log.rejection.height-step-too-high': 'Step too high',
+  'log.rejection.no-path': 'No path',
+  'log.rejection.already-acted': 'Action already used',
+  'log.rejection.target-out-of-range': 'Target out of range',
+  'log.rejection.no-line-of-sight': 'No line of sight',
+  'log.rejection.target-invalid': 'Invalid target',
+  'log.rejection.no-magazine': 'No magazine',
+  'log.rejection.magazine-full': 'Magazine full',
+  'log.rejection.game-over': 'Match over',
+  // A command that names a round the match has left behind: the order arrived too late (EA-4).
+  'log.rejection.stale-turn': 'Order too late',
+  'log.rejection.malformed-action': 'Invalid action',
+  // A cancel or a confirmation of a move that is not waiting to be confirmed (EA-5).
+  'log.rejection.no-pending-move': 'No move waiting to be confirmed',
+  'log.rejection.unknown': 'Action refused',
+
+  // The unit panel, one label per `PanelKey`, and the two words a turn row can show.
+  'panel.label.hp': 'HP',
+  'panel.label.movement': 'Movement',
+  'panel.label.action': 'Action',
+  'panel.label.ammo': 'Ammo',
+  'panel.label.reaction': 'Reaction',
+  'panel.label.mana': 'Mana',
+  'panel.value.spent': 'Spent',
+  'panel.value.available': 'Available',
+
+  // The action bar, one label per button id in `actionButtons`, and the two controls a pending move
+  // floats above it (EA-5): they are not buttons of the bar, but they are read the same way.
+  'action.move': 'Move',
+  'action.attack': 'Attack',
+  'action.reload': 'Reload',
+  'action.endTurn': 'End turn',
+  'action.confirmMove': 'Confirm',
+  'action.cancelMove': 'Cancel',
+
+  // The rest of the HUD, and the lines the match shows over it.
+  'hud.legend':
+    'Ink blue: you · Red: bot · Paper: selected\nBlue highlight: movement · Red highlight: attack',
+  'hud.panel.unit': 'Unit',
+  'hud.panel.log': 'Log',
+  'hud.back': 'Back to start',
+  // The banner a turn change raises, one line per side.
   'hud.banner.yourTurn': 'Your turn',
   'hud.banner.enemyTurn': 'Enemy turn',
-
   // The automatic end of turn (EA-4): the countdown, the way out of it, the hint the button shows
   // when the feature is off, and the one option of the settings panel the gear opens.
   'hud.autoEndTurn.countdown': 'Turn ends in {seconds}s',
@@ -54,4 +100,31 @@ export const enUS: Partial<Record<MessageKey, string>> = {
   'hud.autoEndTurn.hint': 'Nothing left to do: end the turn',
   'hud.settings': 'Settings',
   'hud.settings.autoEndTurn': 'Pass the turn automatically',
+  'match.versionMismatch': 'Incompatible version',
+  'match.victory': 'Victory',
+  'match.defeat': 'Defeat',
+  'match.reconnecting': 'Reconnecting...',
+  'match.lost': 'Match lost',
+
+  // The map names, and the name of every tile the prototype draws.
+  'map.street.title': 'Commerce Street and alley',
+  'map.park.title': 'Municipal Square No. 3',
+  'map.roof.title': 'Central Building, rooftop',
+  'terrain.a': 'asphalt',
+  'terrain.s': 'sidewalk',
+  'terrain.x': 'alley',
+  'terrain.d': 'loading dock',
+  'terrain.g': 'grass',
+  'terrain.p': 'path',
+  'terrain.w': 'lake',
+  'terrain.q': 'square',
+  'terrain.r': 'slab',
+  'terrain.R': 'roof gravel',
+  'terrain.B': 'building (blocked)',
+  'terrain.z': 'crosswalk',
+  'terrain.f': 'fenced parking (blocked)',
+  'terrain.h': 'machine room (blocked)',
+  'terrain.b': 'plank over the gap',
+  'terrain.k': 'neighbouring roof',
+  'terrain.v': 'gap between buildings',
 };

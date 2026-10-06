@@ -67,9 +67,8 @@ function computeHighlightedCells({
   if (state.initiative[state.currentIndex] !== selected.id) return [];
 
   if (highlightTone({ mode }) === 'move') return reachableCells(state, selected.id);
-  if (mode === 'attack' || state.pendingMove !== null) {
-    return attackArea(state, selected.position, selected);
-  }
+  // The reach is shown only while Atacar is armed: a pending move does not open it on its own.
+  if (mode === 'attack') return attackArea(state, selected.position, selected);
   return [];
 }
 

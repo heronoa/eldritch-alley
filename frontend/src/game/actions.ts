@@ -6,10 +6,10 @@
 //
 // The labels come from the catalog, keyed by the button's own id, so a button cannot be added
 // without a word for it.
-import { canStillAct, reachableCells } from '@eldritch-alley/engine';
+import { attackArea, canStillAct, reachableCells } from '@eldritch-alley/engine';
 import { t } from '../i18n';
 import type { ClientAction, PublicState, Team, UnitState } from '../protocol';
-import { allowsIntent, resolveClick, type Intent } from './selection';
+import { allowsIntent, type Intent } from './selection';
 
 export type ActionMode = 'inspect' | 'move' | 'attack';
 
@@ -75,17 +75,6 @@ export function availableActions(state: PublicState, humanTeam: Team): Available
   return available;
 }
 
-/**
- * Whether a click would send a shot right now. The answer comes from the click itself, so the button
- * lights up exactly when a click on an enemy would act: an area with nobody in it is not a target.
- */
-function hasTarget(state: PublicState, actor: UnitState, humanTeam: Team): boolean {
-  return state.units.some((target) => {
-    const intent: Intent = resolveClick({ state, selectedId: actor.id, cell: target.position, humanTeam });
-    return intent.kind === 'send' && intent.action.type === 'attack';
-  });
-}
-
 function computeAvailableActions(state: PublicState, humanTeam: Team): AvailableActions {
   const actor = actorOf(state);
   if (!actor || actor.defeated || actor.team !== humanTeam) {
@@ -102,7 +91,13 @@ function computeAvailableActions(state: PublicState, humanTeam: Team): Available
   return {
     // Movement needs a cell to end on, not only a budget: a walled-in unit has nothing to move.
     canMove: canAct && reachableCells(state, actor.id).length > 0,
-    canAttack: canAct && hasTarget(state, actor, humanTeam),
+    // The button opens the reach, so it is there whenever a cell can be shot at from here and somebody
+    // is left to shoot at. Whether an enemy stands on one of those cells is what the click decides, and
+    // arming the attack spends nothing.
+    canAttack:
+      canAct &&
+      state.units.some((unit) => unit.team !== actor.team && !unit.defeated) &&
+      attackArea(state, actor.position, actor).length > 0,
     canReload: canAct && actor.magazine !== null && actor.ammo < actor.magazine,
     // Ending the turn is always legal; it is how a player with nothing left to do passes.
     canEndTurn: true,

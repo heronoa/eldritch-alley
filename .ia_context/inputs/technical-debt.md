@@ -92,6 +92,54 @@ Planned features are not debt: they live in [backlog.md](./backlog.md).
 - **Gatilho para tratar**: antes de fechar o EA-7 / antes do deploy do lote 1.
 - **Evidência**: frontend/src/scenes/MatchScene.ts:242-244; frontend/src/game/selection.ts:72
 
+### DT-79 · The inspection gesture has no scene-level test
+
+- **Category:** Testing
+- **Risk if untreated:** the long press (400 ms), the right button, the 6 px drift that turns a press into a pan, and the release that must not click again after a long press (`MatchScene.ts:259-308`) are untested. This is the most fragile input path, and a regression there would pass the suite.
+- **Effort:** M
+- **Trigger:** the first pointer or touch bug, or a Phaser pointer harness in the project.
+- **Evidence:** `frontend/src/scenes/MatchScene.ts:259-308`; `frontend/src/scenes/MatchScene.test.ts` has no gesture case. The pure part, `resolveInspect`, is covered in `frontend/src/game/selection.test.ts`.
+
+### DT-80 · Highlight and click disagree on reach with an empty magazine, until EA-14
+
+- **Category:** Aderência
+- **Risk if untreated:** with an empty magazine the area is painted at full range, but a click refuses any target beyond melee. The player sees cells that cannot be shot, with no explanation until EA-14 adds the refusal reason.
+- **Effort:** P (closes with EA-14)
+- **Trigger:** EA-14 (resource refusals).
+- **Evidence:** `backend/engine/src/attack.ts:16-34` uses `unit.range` whatever the ammunition; `frontend/src/game/selection.ts:46-48` uses melee reach (1) when `ammo === 0`.
+
+### DT-81 · BUG (serious): no Confirm/Cancel chips after spending the whole movement
+
+- **Category:** Aderência (bug, found in the smoke test)
+- **Severity:** serious. After a move that spends all the movement points, the two chips do not appear, so the move cannot be cancelled and looks committed. A partial move shows them.
+- **Verified so far:** the engine and the client's state are correct for a full spend. A temporary test (removed afterwards) moved a unit with 3 points over 3 cells: `movementLeft` 0, `pendingMove` `{from:(0,0), cost:3}`, `moveChips` returns 2 chips, `canStillAct` true, so the countdown does not start. The chips are dropped after that point, in the scene or the HUD.
+- **Not yet explained:** the code does not show the cause by reading. Two things differ on a full spend: the Move button turns off and `settleMode` moves the mode to `inspect` (`MatchScene.ts:492-493`), and the events arrive before the state that carries them (`MatchScene.ts:548-553`, `:744-746`).
+- **What settles it:** in the browser, after a full-budget move, log `state.pendingMove` and `chipModel.length` inside `pushHud` and `HudScene.render`, then compare with a partial move.
+- **Effort:** P to M
+- **Trigger:** now. It blocks EA-5 acceptance.
+- **Evidence:** `frontend/src/game/actions.ts:145-155` (`moveChips`); `frontend/src/scenes/HudScene.ts:323-326` (`drawMoveChips`); `frontend/src/scenes/MatchScene.ts:492-493`, `:744-746`.
+
+### DT-82 · BUG (serious): Attack stays disabled unless an enemy is already in reach
+
+- **Category:** Aderência (bug, found in the smoke test)
+- **Severity:** serious. The Atacar button is greyed out whenever no enemy is in reach from the current cell. The attack area of EA-5 cannot be opened, so the button looks inaccessible.
+- **Cause (verified):** `canAttack` is `canAct && hasTarget(...)` (`frontend/src/game/actions.ts:105`). Commit `5bb129b` (EA-5) changed it from `highlightedCells(...).length > 0`, which enabled the button whenever an attack area existed. The test `refuses an attack when no enemy is inside the reach` (`frontend/src/game/actions.test.ts:129-138`) locks in the new rule.
+- **Conflicts with the plan:** EA-5 section 1 has `Idle ──Attack──▶ (red only: attackArea from the current cell)`, with no condition on an enemy being in reach. The code comment calls the new rule deliberate, so the owner decides between the two.
+- **Recommended:** restore "enabled when the attack area is not empty", which matches the plan, and change the test to match.
+- **Effort:** P
+- **Trigger:** now. It blocks EA-5 acceptance.
+- **Evidence:** `frontend/src/game/actions.ts:105`; `frontend/src/game/actions.test.ts:129-138`; `git show 5bb129b -- frontend/src/game/actions.ts`; `.ia_context/plans/ea-5-range-display.plan.md` section 1.
+
+### DT-83 · Confirm and Cancel chips have no padding, so the labels spill out of the box
+
+- **Category:** Aderência (UI, minor)
+- **Risk if untreated:** the chips look broken on the board. The labels "Confirmar movimento" and "Cancelar movimento" are wider and taller than the box.
+- **Cause:** `MOVE_CHIP` is 184 × 24 (`frontend/src/view/layout.ts:157`). The caption uses the 18 px body font (`frontend/src/view/theme.ts:94`) centred on the box, with no inner padding.
+- **Proposed:** shorten the labels to "Confirmar" and "Cancelar", since the chips only appear after a move and the context gives the rest. Give the chips a height that fits the text, or a smaller font. The copy is the owner's call.
+- **Effort:** P
+- **Trigger:** together with DT-81 and DT-82, before the next smoke test.
+- **Evidence:** `frontend/src/view/layout.ts:157`; `frontend/src/view/theme.ts:94`; `frontend/src/i18n/catalog.pt-BR.ts` (`action.confirmMove`, `action.cancelMove`).
+
 ---
 
 ## Closed

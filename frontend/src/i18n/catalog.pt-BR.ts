@@ -86,8 +86,8 @@ export const ptBR = {
   'action.attack': 'Atacar',
   'action.reload': 'Recarregar',
   'action.endTurn': 'Terminar turno',
-  'action.confirmMove': 'Confirmar movimento',
-  'action.cancelMove': 'Cancelar movimento',
+  'action.confirmMove': 'Confirmar',
+  'action.cancelMove': 'Cancelar',
 
   // The rest of the HUD, and the lines the match shows over it: the two endings, the notice a
   // refused protocol version raises, and the two states of a dropped connection.

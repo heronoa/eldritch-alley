@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Board, PublicState, Team, UnitState } from '../protocol';
-import { confirmMove, resolveClick, resolveInspect, type Intent } from './selection';
+import { resolveClick, resolveInspect } from './selection';
 
 const BOARD: Board = { width: 8, height: 8, levels: new Array<number>(64).fill(0) };
 
@@ -146,30 +146,22 @@ describe('resolveClick', () => {
     });
   });
 
-  it('previews the path on the first tap, and moves nobody', () => {
+  it('sends the move to a reachable cell: the destination is the move, and it stays pending', () => {
     const sniper = makeUnit({ id: 'A-sniper', team: 'A', at: { x: 0, y: 0 } });
     const state = makeState([sniper]);
 
     const intent = resolveClick({ state, selectedId: 'A-sniper', cell: { x: 0, y: 2 }, humanTeam: 'A' });
 
-    expect(intent).toEqual({
-      kind: 'move-preview',
-      to: { x: 0, y: 2 },
-      path: [
-        { x: 0, y: 1 },
-        { x: 0, y: 2 },
-      ],
-      cost: 2,
-    });
+    expect(intent).toEqual({ kind: 'send', action: { type: 'move', to: { x: 0, y: 2 } } });
   });
 
-  it('previews the neighbour too, so a single tap never moves a unit', () => {
+  it('sends a move to the neighbour as well, one click for each destination', () => {
     const sniper = makeUnit({ id: 'A-sniper', team: 'A', at: { x: 0, y: 0 } });
     const state = makeState([sniper]);
 
     const intent = resolveClick({ state, selectedId: 'A-sniper', cell: { x: 1, y: 1 }, humanTeam: 'A' });
 
-    expect(intent).toEqual({ kind: 'move-preview', to: { x: 1, y: 1 }, path: [{ x: 1, y: 1 }], cost: 1 });
+    expect(intent).toEqual({ kind: 'send', action: { type: 'move', to: { x: 1, y: 1 } } });
   });
 
   it('returns none for a cell past the movement budget', () => {
@@ -220,10 +212,8 @@ describe('resolveClick', () => {
     const state = makeState([sniper, removed]);
 
     expect(resolveClick({ state, selectedId: 'A-sniper', cell: { x: 1, y: 0 }, humanTeam: 'A' })).toEqual({
-      kind: 'move-preview',
-      to: { x: 1, y: 0 },
-      path: [{ x: 1, y: 0 }],
-      cost: 1,
+      kind: 'send',
+      action: { type: 'move', to: { x: 1, y: 0 } },
     });
   });
 
@@ -235,47 +225,6 @@ describe('resolveClick', () => {
     expect(resolveClick({ state, selectedId: 'A-sniper', cell: { x: 1, y: 0 }, humanTeam: 'A' })).toEqual({
       kind: 'none',
     });
-  });
-});
-
-describe('confirmMove', () => {
-  const SNIPER = makeUnit({ id: 'A-sniper', team: 'A', at: { x: 0, y: 0 } });
-  const STATE = makeState([SNIPER]);
-
-  function tap(cell: { x: number; y: number }): Intent {
-    return resolveClick({ state: STATE, selectedId: 'A-sniper', cell, humanTeam: 'A' });
-  }
-
-  it('sends the move when the second tap lands on the armed cell', () => {
-    const intent = confirmMove({ x: 0, y: 2 }, tap({ x: 0, y: 2 }));
-
-    expect(intent).toEqual({ kind: 'send', action: { type: 'move', to: { x: 0, y: 2 } } });
-  });
-
-  it('arms the new cell when the second tap lands somewhere else', () => {
-    const intent = confirmMove({ x: 0, y: 1 }, tap({ x: 0, y: 2 }));
-
-    expect(intent).toMatchObject({ kind: 'move-preview', to: { x: 0, y: 2 } });
-  });
-
-  it('never sends a move that no first tap armed', () => {
-    const intent = confirmMove(null, tap({ x: 0, y: 2 }));
-
-    expect(intent).toMatchObject({ kind: 'move-preview', to: { x: 0, y: 2 } });
-  });
-
-  it('leaves every other intent as it was', () => {
-    const armed = { x: 0, y: 1 };
-    const attack: Intent = { kind: 'send', action: { type: 'attack', target: 'B-priest' } };
-    const select: Intent = { kind: 'select', unitId: 'A-sniper' };
-    // The inspection is not a move being confirmed, so a run waiting to be confirmed never turns it
-    // into an action either (EA-6, D4).
-    const inspect: Intent = { kind: 'inspect', unitId: 'B-priest' };
-
-    expect(confirmMove(armed, attack)).toEqual(attack);
-    expect(confirmMove(armed, select)).toEqual(select);
-    expect(confirmMove(armed, inspect)).toEqual(inspect);
-    expect(confirmMove(armed, { kind: 'none' })).toEqual({ kind: 'none' });
   });
 });
 

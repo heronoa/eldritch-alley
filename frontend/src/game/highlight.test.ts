@@ -236,9 +236,12 @@ describe('highlightedCells', () => {
     expect(cells.length).toBeGreaterThan(0);
 
     for (const cell of cells) {
-      // A move is armed by the first tap and sent by the second, so the first tap previews it.
+      // Every highlighted destination is a move the click sends: the destination is the move (EA-7).
       const intent = resolveClick({ state, selectedId: 'A-sniper', cell, humanTeam: 'A' });
-      expect(intent.kind, `move at ${cell.x},${cell.y}`).toBe('move-preview');
+      expect(intent, `move at ${cell.x},${cell.y}`).toEqual({
+        kind: 'send',
+        action: { type: 'move', to: cell },
+      });
     }
   });
 
@@ -251,7 +254,9 @@ describe('highlightedCells', () => {
       // not a target yet (EA-8 decides what a click on it means).
       const occupied = cell.x === NEAR.position.x && cell.y === NEAR.position.y;
       const intent = resolveClick({ state, selectedId: 'A-sniper', cell, humanTeam: 'A' });
-      expect(intent.kind === 'send', `attack at ${cell.x},${cell.y}`).toBe(occupied);
+      expect(intent.kind === 'send' && intent.action.type === 'attack', `attack at ${cell.x},${cell.y}`).toBe(
+        occupied,
+      );
     }
   });
 });
@@ -292,10 +297,16 @@ describe('the one area of the state', () => {
     expect(cells).toContain('3,6');
   });
 
-  it('paints the area the unit can hit from where it stands once a move is pending', () => {
+  it('paints nothing once a move is pending and Atacar is not armed: the reach waits for the button', () => {
     const state = pending();
 
-    const cells = painted(state, 'inspect');
+    expect(painted(state, 'inspect')).toEqual([]);
+  });
+
+  it('paints the area the unit can hit from where it stands once Atacar is armed with a move pending', () => {
+    const state = pending();
+
+    const cells = painted(state, 'attack');
 
     expect(cells).toEqual(keys(attackArea(state, MOVED.position, MOVED)));
     expect(cells).toHaveLength(8); // a reach of one, in the open
@@ -312,7 +323,6 @@ describe('the one area of the state', () => {
     const cases: { state: PublicState; unit: UnitState; mode: ActionMode }[] = [
       { state: choosing(), unit: SNIPER, mode: 'move' },
       { state: choosing(), unit: SNIPER, mode: 'attack' },
-      { state: pending(), unit: MOVED, mode: 'inspect' },
       { state: pending(), unit: MOVED, mode: 'attack' },
       { state: pending(), unit: MOVED, mode: 'move' },
     ];
