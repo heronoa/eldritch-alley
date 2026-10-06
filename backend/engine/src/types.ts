@@ -103,6 +103,16 @@ export interface UnitState extends Unit {
   corpseExpiresAtRound: number | null;
 }
 
+/**
+ * The run of moves the unit on turn has walked since the last action that was not another move
+ * (EA-5, D3). `from` is the cell the run started on, which is where a cancel returns the unit, and
+ * `cost` is what the run has spent so far, which is what a cancel gives back.
+ */
+export interface PendingMove {
+  from: Position;
+  cost: number;
+}
+
 /** The seed, the map and the two squads. Both positions and unit ids must be unique inside a match. */
 export interface MatchSetup {
   seed: number;
@@ -129,6 +139,12 @@ export interface MatchState {
   round: number;
   /** Whether the current unit has spent its action on this turn. */
   hasActed: boolean;
+  /**
+   * The move the unit on turn has not confirmed yet, or null when it has not moved and once its run
+   * has been committed (EA-5, D3). The actor is the unit on turn, so the field carries no unit id,
+   * the way `movementLeft` and `hasActed` already do not.
+   */
+  pendingMove: PendingMove | null;
   rng: Rng;
   eventCount: number;
 }
@@ -144,7 +160,17 @@ export type Action =
    * Passes the turn. It names the round it applies to, so a message that arrives late — the client
    * sends this one on its own (EA-4) — is refused instead of ending somebody else's turn (ADR 0010).
    */
-  | { type: 'endTurn'; actor: UnitId; round: number };
+  | { type: 'endTurn'; actor: UnitId; round: number }
+  /**
+   * Takes the pending move back: the unit returns to where its run started, with the movement the run
+   * spent given back. Refused with `no-pending-move` when no run is open (EA-5, D3 and D5).
+   */
+  | { type: 'cancelMove'; actor: UnitId }
+  /**
+   * Confirms the pending move. It executes no action and does not end the turn: it only closes the
+   * run, which is what makes the movement final (EA-5, D4).
+   */
+  | { type: 'commitMove'; actor: UnitId };
 
 export type Event =
   /**
@@ -167,6 +193,13 @@ export type Event =
       ammoSpent: boolean;
     }
   | { type: 'reloaded'; actor: UnitId }
+  /**
+   * The pending move was taken back. No payload: the run it undoes is in the state it was applied to,
+   * the way the walk of a `moved` event is not repeated here.
+   */
+  | { type: 'move-cancelled'; actor: UnitId }
+  /** The pending move was confirmed. The run it closes is in the state it was applied to. */
+  | { type: 'move-committed'; actor: UnitId }
   | { type: 'unit-defeated'; target: UnitId }
   | { type: 'corpse-removed'; target: UnitId }
   | { type: 'turn-ended'; actor: UnitId; next: UnitId; round: number };
@@ -185,7 +218,9 @@ export type RejectReason =
   | 'no-magazine'
   | 'magazine-full'
   | 'game-over'
-  | 'stale-turn';
+  | 'stale-turn'
+  /** A cancel or a confirmation of a move that is not waiting to be confirmed (EA-5). */
+  | 'no-pending-move';
 
 export type ActionResult =
   | { ok: true; state: MatchState; events: Event[] }

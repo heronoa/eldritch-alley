@@ -79,6 +79,27 @@ describe('applyEvent', () => {
     expect(next.initiative).toEqual(['a1']);
     expect(state.initiative).toEqual(['a1', 'b1']);
   });
+
+  /**
+   * A move opens a run on the cell it started from (EA-5), and the run closes on the first event that
+   * is not another move: the commit lives here, so a replay rebuilds the same state as live play.
+   */
+  it('opens a run on the cell a move started from, and closes it on any other event', () => {
+    const state = newMatch(makeSetup());
+    const walked = applyEvent(state, {
+      type: 'moved',
+      actor: 'a1',
+      from: { x: 0, y: 0 },
+      to: { x: 1, y: 0 },
+      path: [{ x: 1, y: 0 }],
+    });
+
+    expect(walked.pendingMove).toEqual({ from: { x: 0, y: 0 }, cost: 1 });
+    expect(state.pendingMove).toBeNull();
+
+    const ended = applyEvent(walked, { type: 'turn-ended', actor: 'a1', next: 'b1', round: 1 });
+    expect(ended.pendingMove).toBeNull();
+  });
 });
 
 describe('events and replay', () => {
@@ -132,6 +153,22 @@ describe('events and replay', () => {
     session.run({ type: 'move', actor: 'b1', to: { x: 1, y: 1 } });
 
     const live = session.state();
+    expect(hashState(applyEvents(setup, session.events))).toBe(hashState(live));
+  });
+
+  it('rebuilds a turn with a pending move, a cancel and a confirmation from the events alone', () => {
+    const setup = makeSetup();
+    const session = play(newMatch(setup));
+
+    session.run({ type: 'move', actor: 'a1', to: { x: 1, y: 0 } });
+    session.run({ type: 'cancelMove', actor: 'a1' });
+    session.run({ type: 'move', actor: 'a1', to: { x: 2, y: 0 } });
+    session.run({ type: 'commitMove', actor: 'a1' });
+
+    const live = session.state();
+    expect(live.pendingMove).toBeNull();
+    expect(live.movementLeft).toBe(0);
+    expect(applyEvents(setup, session.events)).toEqual(live);
     expect(hashState(applyEvents(setup, session.events))).toBe(hashState(live));
   });
 

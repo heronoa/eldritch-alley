@@ -65,6 +65,7 @@ function stateFor(options: { onTurn: Team; spent: boolean }): PublicState {
     round: 4,
     hasActed: options.spent,
     eventCount: 0,
+    pendingMove: null,
   };
 }
 

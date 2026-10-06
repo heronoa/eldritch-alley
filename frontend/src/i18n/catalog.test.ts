@@ -161,6 +161,7 @@ describe('the pt-BR the game shows', () => {
       'stale-turn',
       'malformed-action',
       'no-line-of-sight',
+      'no-pending-move',
     ];
 
     for (const reason of reasons) {

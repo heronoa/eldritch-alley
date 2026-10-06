@@ -36,10 +36,12 @@ export const enUS: Partial<Record<MessageKey, string>> = {
   'title.language': 'Language',
 
   // The battle log's refusals the game itself adds: a blocked shot, a destination no walk reaches,
-  // and an order that arrived after the round it named had gone by.
+  // an order that arrived after the round it named had gone by, and a move control with no move
+  // waiting to be confirmed (EA-5).
   'log.rejection.no-line-of-sight': 'No line of sight',
   'log.rejection.no-path': 'No path',
   'log.rejection.stale-turn': 'Order too late',
+  'log.rejection.no-pending-move': 'No move waiting to be confirmed',
 
   // The banner a turn change raises (EA-3). Short on purpose: it is read at a glance, over the board.
   'hud.banner.yourTurn': 'Your turn',

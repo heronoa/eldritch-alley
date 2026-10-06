@@ -1,4 +1,4 @@
-// Validation and event building for the three actions of M1. Nothing here changes the state: an
+// Validation and event building for the actions of a turn. Nothing here changes the state: an
 // accepted action is turned into events, and events.ts applies them.
 import { distance, inBounds } from './board';
 import { currentUnitId, isAlive, unitById } from './initiative';
@@ -60,7 +60,16 @@ export function validateAction(state: MatchState, action: Action): RejectReason 
   if (action.type === 'move') return validateMove(state, action);
   if (action.type === 'attack') return validateAttack(state, action);
   if (action.type === 'reload') return validateReload(state, action);
+  if (action.type === 'cancelMove' || action.type === 'commitMove') return validatePendingMove(state);
   return null;
+}
+
+/**
+ * The two controls of a pending move are accepted only while a run is open (EA-5, D3 and D4). The run
+ * is in the state, so neither action has a field of its own to check.
+ */
+function validatePendingMove(state: PublicState): RejectReason | null {
+  return state.pendingMove === null ? 'no-pending-move' : null;
 }
 
 /** A unit with a magazine that is empty attacks in melee: adjacent only. */
@@ -130,11 +139,15 @@ function validateAttack(state: PublicState, action: AttackAction): RejectReason 
  * server would apply, and the two sides cannot disagree (EA-1 D1).
  *
  * A turn is spent by walking somewhere, by shooting somebody the rules allow, or by reloading; a
- * unit with none of the three in front of it is done. Meditation joins this list later (EA-14): the
- * rule lives here, so that change is local.
+ * unit with none of the three in front of it is done. A move that has not been confirmed yet is
+ * something left to do on its own (EA-5): the unit may still confirm it, take it back or walk on.
+ * Meditation joins this list later (EA-14): the rule lives here, so that change is local.
  */
 export function canStillAct(state: PublicState): boolean {
   if (isGameOver(state)) return false;
+  // A move waiting to be confirmed is not an exhausted resource: the turn has not passed while the
+  // run is open, whatever else has been spent (EA-5). The pass is answered again after the commit.
+  if (state.pendingMove !== null) return true;
   if (state.hasActed) return false;
 
   const actor = state.units.find((unit) => unit.id === currentUnitId(state));
@@ -203,6 +216,14 @@ export function buildEvents(state: MatchState, action: Action, rng: Rng): Event[
 
   if (action.type === 'reload') {
     return [{ type: 'reloaded', actor: action.actor }];
+  }
+
+  if (action.type === 'cancelMove') {
+    return [{ type: 'move-cancelled', actor: action.actor }];
+  }
+
+  if (action.type === 'commitMove') {
+    return [{ type: 'move-committed', actor: action.actor }];
   }
 
   const attacker = unitById(state, action.actor);

@@ -8,9 +8,8 @@
 // without a word for it.
 import { canStillAct, reachableCells } from '@eldritch-alley/engine';
 import { t } from '../i18n';
-import type { PublicState, Team, UnitState } from '../protocol';
-import { highlightedCells } from './highlight';
-import { allowsIntent, type Intent } from './selection';
+import type { ClientAction, PublicState, Team, UnitState } from '../protocol';
+import { allowsIntent, resolveClick, type Intent } from './selection';
 
 export type ActionMode = 'inspect' | 'move' | 'attack';
 
@@ -76,6 +75,17 @@ export function availableActions(state: PublicState, humanTeam: Team): Available
   return available;
 }
 
+/**
+ * Whether a click would send a shot right now. The answer comes from the click itself, so the button
+ * lights up exactly when a click on an enemy would act: an area with nobody in it is not a target.
+ */
+function hasTarget(state: PublicState, actor: UnitState, humanTeam: Team): boolean {
+  return state.units.some((target) => {
+    const intent: Intent = resolveClick({ state, selectedId: actor.id, cell: target.position, humanTeam });
+    return intent.kind === 'send' && intent.action.type === 'attack';
+  });
+}
+
 function computeAvailableActions(state: PublicState, humanTeam: Team): AvailableActions {
   const actor = actorOf(state);
   if (!actor || actor.defeated || actor.team !== humanTeam) {
@@ -92,8 +102,7 @@ function computeAvailableActions(state: PublicState, humanTeam: Team): Available
   return {
     // Movement needs a cell to end on, not only a budget: a walled-in unit has nothing to move.
     canMove: canAct && reachableCells(state, actor.id).length > 0,
-    // The button lights up exactly when the board would highlight a target.
-    canAttack: canAct && highlightedCells({ state, selectedId: actor.id, mode: 'attack', humanTeam }).length > 0,
+    canAttack: canAct && hasTarget(state, actor, humanTeam),
     canReload: canAct && actor.magazine !== null && actor.ammo < actor.magazine,
     // Ending the turn is always legal; it is how a player with nothing left to do passes.
     canEndTurn: true,
@@ -117,5 +126,30 @@ export function actionButtons(state: PublicState, humanTeam: Team): ActionButton
     button('attack', available.canAttack, 'attack'),
     button('reload', available.canReload, null),
     button('endTurn', available.canEndTurn, null),
+  ];
+}
+
+/** One of the two controls of a pending move: what it says, and the action it sends at once. */
+export interface MoveChip {
+  id: 'confirmMove' | 'cancelMove';
+  label: string;
+  action: ClientAction;
+}
+
+/**
+ * The two controls of a pending move (EA-5, D4 and D6), offered only while a move waits to be
+ * confirmed and only to the human: the bot neither cancels nor confirms its own runs (D7). They are
+ * not buttons of the action bar — the bar is exactly full — so they float over the board above the
+ * Move button, and the scene reads their rectangles the way it reads the bar's.
+ */
+export function moveChips(state: PublicState, humanTeam: Team): MoveChip[] {
+  if (state.pendingMove === null) return [];
+
+  const actor = actorOf(state);
+  if (!actor || actor.team !== humanTeam) return [];
+
+  return [
+    { id: 'confirmMove', label: t('action.confirmMove'), action: { type: 'commitMove' } },
+    { id: 'cancelMove', label: t('action.cancelMove'), action: { type: 'cancelMove' } },
   ];
 }

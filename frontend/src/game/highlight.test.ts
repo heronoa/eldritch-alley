@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { reachableCells } from '@eldritch-alley/engine';
+import { attackArea, reachableCells } from '@eldritch-alley/engine';
 import { PROTOTYPE_MAPS, type PrototypeMap } from '../maps/prototype-maps';
 import type { Board, PublicState, Team, UnitId, UnitState } from '../protocol';
+import type { ActionMode } from './actions';
 import { highlightedCells } from './highlight';
 import { resolveClick } from './selection';
 
@@ -56,6 +57,7 @@ function makeState(
   currentIndex = 0,
   board: Board = BOARD,
   movementLeft = 3,
+  pendingMove: PublicState['pendingMove'] = null,
 ): PublicState {
   return {
     seed: 1,
@@ -67,6 +69,7 @@ function makeState(
     round: 1,
     hasActed: false,
     eventCount: 0,
+    pendingMove,
   };
 }
 
@@ -192,22 +195,28 @@ describe('highlightedCells', () => {
     ).toContainEqual({ x: 1, y: 0 });
   });
 
-  it('highlights only the enemies inside the reach', () => {
+  it('paints the whole area the shot covers from where the unit stands', () => {
     const state = makeState([CORNER, NEAR, FAR]);
 
     const cells = highlightedCells({ state, selectedId: 'A-sniper', mode: 'attack', humanTeam: 'A' });
 
-    expect(cells).toEqual([{ x: 3, y: 0 }]);
+    // The area of a reach of 3 from the corner: the cell it stands on left out, the enemy cell in.
+    expect(keys(cells)).toEqual(keys(attackArea(state, { x: 0, y: 0 }, CORNER)));
+    expect(cells).toContainEqual({ x: 3, y: 0 });
+    expect(cells).toContainEqual({ x: 2, y: 2 });
+    expect(cells).not.toContainEqual({ x: 0, y: 0 });
   });
 
-  it('does not paint an enemy behind a building', () => {
+  it('does not paint a cell a building takes out of the line', () => {
     const sniper = makeUnit({ id: 'A-sniper', team: 'A', at: { x: 0, y: 0 }, range: 3 });
     const enemy = makeUnit({ id: 'B-priest', team: 'B', at: { x: 2, y: 0 }, range: 1 });
     const state = makeState([sniper, enemy], 0, makeBoard({ '1,0': 5 }));
 
     const cells = highlightedCells({ state, selectedId: 'A-sniper', mode: 'attack', humanTeam: 'A' });
 
-    expect(cells).toEqual([]);
+    expect(cells).not.toContainEqual({ x: 2, y: 0 });
+    // The building itself is in the area: it is one cell, not a wall across the board.
+    expect(cells).toContainEqual({ x: 1, y: 0 });
   });
 
   it('paints the enemy across the rooftop gap', () => {
@@ -217,24 +226,113 @@ describe('highlightedCells', () => {
 
     const cells = highlightedCells({ state, selectedId: 'A-sniper', mode: 'attack', humanTeam: 'A' });
 
-    expect(cells).toEqual([{ x: 7, y: 2 }]);
+    expect(cells).toContainEqual({ x: 7, y: 2 });
   });
 
-  it('highlights exactly the cells a click would act on', () => {
+  it('highlights exactly the cells a click would act on while a destination is being chosen', () => {
     const state = makeState([CENTERED, NEAR, FAR]);
 
-    for (const mode of ['move', 'attack'] as const) {
-      const cells = highlightedCells({ state, selectedId: 'A-sniper', mode, humanTeam: 'A' });
-      expect(cells.length).toBeGreaterThan(0);
+    const cells = highlightedCells({ state, selectedId: 'A-sniper', mode: 'move', humanTeam: 'A' });
+    expect(cells.length).toBeGreaterThan(0);
 
-      for (const cell of cells) {
-        const intent = resolveClick({ state, selectedId: 'A-sniper', cell, humanTeam: 'A' });
-        expect(intent.kind, `${mode} at ${cell.x},${cell.y}`).not.toBe('none');
-        if (intent.kind === 'send') expect(intent.action.type).toBe(mode);
-        // A move is armed by the first tap and sent by the second, so the first tap previews it.
-        if (intent.kind === 'move-preview') expect(mode).toBe('move');
-      }
+    for (const cell of cells) {
+      // A move is armed by the first tap and sent by the second, so the first tap previews it.
+      const intent = resolveClick({ state, selectedId: 'A-sniper', cell, humanTeam: 'A' });
+      expect(intent.kind, `move at ${cell.x},${cell.y}`).toBe('move-preview');
     }
+  });
+
+  it('paints the area of the attack, where only an occupied cell is a target to click', () => {
+    const state = makeState([CENTERED, NEAR, FAR]);
+    const cells = highlightedCells({ state, selectedId: 'A-sniper', mode: 'attack', humanTeam: 'A' });
+
+    for (const cell of cells) {
+      // The enemy in reach is the cell a click sends from; an empty cell of the area is a position,
+      // not a target yet (EA-8 decides what a click on it means).
+      const occupied = cell.x === NEAR.position.x && cell.y === NEAR.position.y;
+      const intent = resolveClick({ state, selectedId: 'A-sniper', cell, humanTeam: 'A' });
+      expect(intent.kind === 'send', `attack at ${cell.x},${cell.y}`).toBe(occupied);
+    }
+  });
+});
+
+/**
+ * One area at a time: the board paints the area of the question the turn is asking, and never two
+ * (EA-5, D1). While a destination is being chosen that is where the unit can walk; while a move
+ * waits to be confirmed, and while the attack is armed, that is what it can hit from where it stands.
+ */
+describe('the one area of the state', () => {
+  /** In the open, with a reach of one and a budget of three: the two rules answer differently. */
+  const SNIPER = makeUnit({ id: 'A-sniper', team: 'A', at: { x: 3, y: 3 }, range: 1, movement: 3 });
+  /** The same unit after a step to the left: the run started on (3,3) and has cost one point. */
+  const MOVED = makeUnit({ id: 'A-sniper', team: 'A', at: { x: 2, y: 3 }, range: 1, movement: 3 });
+  const ENEMY = makeUnit({ id: 'B-priest', team: 'B', at: { x: 7, y: 7 }, range: 1 });
+  const RUN = { from: { x: 3, y: 3 }, cost: 1 };
+
+  function choosing(): PublicState {
+    return makeState([SNIPER, ENEMY], 0, BOARD, 3);
+  }
+
+  function pending(): PublicState {
+    return makeState([MOVED, ENEMY], 0, BOARD, 2, RUN);
+  }
+
+  function painted(state: PublicState, mode: ActionMode): string[] {
+    return keys(highlightedCells({ state, selectedId: 'A-sniper', mode, humanTeam: 'A' }));
+  }
+
+  it('paints the cells a destination may be chosen from, and not the area of the attack', () => {
+    const state = choosing();
+
+    const cells = painted(state, 'move');
+
+    expect(cells).toEqual(keys(reachableCells(state, 'A-sniper')));
+    expect(cells).not.toEqual(keys(attackArea(state, SNIPER.position, SNIPER)));
+    // Three steps away is reachable and out of a reach of one: the two rules are not the same set.
+    expect(cells).toContain('3,6');
+  });
+
+  it('paints the area the unit can hit from where it stands once a move is pending', () => {
+    const state = pending();
+
+    const cells = painted(state, 'inspect');
+
+    expect(cells).toEqual(keys(attackArea(state, MOVED.position, MOVED)));
+    expect(cells).toHaveLength(8); // a reach of one, in the open
+    expect(cells).not.toEqual(keys(reachableCells(state, 'A-sniper')));
+  });
+
+  it('keeps painting the destinations when the move is armed again, so a run may go on', () => {
+    const state = pending();
+
+    expect(painted(state, 'move')).toEqual(keys(reachableCells(state, 'A-sniper')));
+  });
+
+  it('never mixes the two rules in one answer', () => {
+    const cases: { state: PublicState; unit: UnitState; mode: ActionMode }[] = [
+      { state: choosing(), unit: SNIPER, mode: 'move' },
+      { state: choosing(), unit: SNIPER, mode: 'attack' },
+      { state: pending(), unit: MOVED, mode: 'inspect' },
+      { state: pending(), unit: MOVED, mode: 'attack' },
+      { state: pending(), unit: MOVED, mode: 'move' },
+    ];
+
+    for (const { state, unit, mode } of cases) {
+      const reach = keys(reachableCells(state, 'A-sniper'));
+      const area = keys(attackArea(state, unit.position, unit));
+
+      expect(reach, `${mode}: the two rules answer differently`).not.toEqual(area);
+      // The answer is one of the two, whole: never the two of them added up.
+      expect([reach, area], `${mode}`).toContainEqual(painted(state, mode));
+    }
+  });
+
+  it('paints nothing for a unit that does not have the turn, in the attack as in the move', () => {
+    // The bot is on turn and the human's sniper is selected: the board asks nothing of the player.
+    const state = makeState([SNIPER, ENEMY], 1);
+
+    expect(painted(state, 'move')).toEqual([]);
+    expect(painted(state, 'attack')).toEqual([]);
   });
 });
 

@@ -13,8 +13,11 @@ import type { MapId } from './map';
  * engine walked, which the client needs to animate the walk (ADR 0010). The same decision makes an
  * `endTurn` name its round, which the client sends on its own once the turn has nothing left (EA-4),
  * and adds `stale-turn` to the refusal codes: one version covers both payloads.
+ * Version 5: a move stays pending until an action that is not another move commits it, so the state
+ * carries `pendingMove`, the client may send `cancelMove` and `commitMove` (EA-5), the events
+ * `move-cancelled` and `move-committed` close the run, and `no-pending-move` joins the refusals.
  */
-export const PROTOCOL_VERSION = 4;
+export const PROTOCOL_VERSION = 5;
 
 /** The single room type of M2-a. One room is one match. */
 export const ROOM_NAME = 'battle';
@@ -41,7 +44,10 @@ export type ClientAction =
   | { type: 'attack'; target: UnitId }
   | { type: 'reload' }
   /** The round it was decided on, so one that arrives late ends nobody's turn (ADR 0010, EA-4). */
-  | { type: 'endTurn'; round: number };
+  | { type: 'endTurn'; round: number }
+  /** The two controls of a pending move, which carry no field: the run lives in the state (EA-5). */
+  | { type: 'cancelMove' }
+  | { type: 'commitMove' };
 
 export interface StateMessage {
   version: number;

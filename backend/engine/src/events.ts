@@ -11,6 +11,10 @@ function cloneState(state: MatchState): MatchState {
     ...state,
     units: state.units.map((unit) => ({ ...unit, position: { ...unit.position } })),
     initiative: [...state.initiative],
+    pendingMove:
+      state.pendingMove === null
+        ? null
+        : { from: { ...state.pendingMove.from }, cost: state.pendingMove.cost },
     rng: { ...state.rng },
   };
 }
@@ -54,6 +58,12 @@ function requireWalk(
 /** Applies one event and returns the next state. The state passed in is never changed. */
 export function applyEvent(state: MatchState, event: Event): MatchState {
   const next = cloneState(state);
+  // The run as it was before this event: a move extends it, a cancel gives it back.
+  const run = state.pendingMove;
+  // What commits a pending move is any event that is not another move (EA-5, D3): the attack, the
+  // reload, the end of the turn, and the confirmation itself all close the run. It lives here, so a
+  // replay rebuilds the same state from the events alone.
+  if (event.type !== 'moved') next.pendingMove = null;
 
   switch (event.type) {
     case 'moved': {
@@ -72,6 +82,26 @@ export function applyEvent(state: MatchState, event: Event): MatchState {
 
       next.movementLeft -= cost;
       actor.position = { x: previous.x, y: previous.y };
+      // The walk either opens a run on the cell it started from, or grows the one already open. The
+      // cost is what the run has spent, which is what a cancel gives back (D5).
+      next.pendingMove =
+        run === null
+          ? { from: { x: event.from.x, y: event.from.y }, cost }
+          : { from: { ...run.from }, cost: run.cost + cost };
+      break;
+    }
+
+    case 'move-cancelled': {
+      if (run === null) throw new Error('move-cancelled: there is no pending move to take back');
+      // Back to where the run started, with the movement the run spent given back (D5).
+      unitById(next, event.actor).position = { x: run.from.x, y: run.from.y };
+      next.movementLeft += run.cost;
+      break;
+    }
+
+    case 'move-committed': {
+      if (run === null) throw new Error('move-committed: there is no pending move to confirm');
+      // Nothing else: the movement stays spent and the unit stays where it stands (D4).
       break;
     }
 

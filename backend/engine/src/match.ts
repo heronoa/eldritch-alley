@@ -200,6 +200,7 @@ export function newMatch(setup: MatchSetup): MatchState {
     movementLeft: first ? first.movement : 0,
     round: 1,
     hasActed: false,
+    pendingMove: null,
     rng: createRng(setup.seed),
     eventCount: 0,
   };

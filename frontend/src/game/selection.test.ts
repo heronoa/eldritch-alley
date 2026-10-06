@@ -68,6 +68,7 @@ function makeState(
     round: 1,
     hasActed: false,
     eventCount: 0,
+    pendingMove: null,
   };
 }
 

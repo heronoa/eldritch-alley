@@ -2,11 +2,16 @@ import { describe, expect, it } from 'vitest';
 import { isClientAction } from './action-shape';
 
 describe('isClientAction', () => {
-  it('accepts each of the four actions the protocol defines', () => {
+  it('accepts each of the actions the protocol defines', () => {
     expect(isClientAction({ type: 'move', to: { x: 1, y: 2 } })).toBe(true);
     expect(isClientAction({ type: 'attack', target: 'B-sniper' })).toBe(true);
     expect(isClientAction({ type: 'reload' })).toBe(true);
     expect(isClientAction({ type: 'endTurn', round: 1 })).toBe(true);
+  });
+
+  it('accepts the two actions of a pending move, which carry no field at all', () => {
+    expect(isClientAction({ type: 'cancelMove' })).toBe(true);
+    expect(isClientAction({ type: 'commitMove' })).toBe(true);
   });
 
   it('refuses an endTurn that names no round, which the engine would read as a stale one', () => {

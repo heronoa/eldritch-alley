@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import type { Board, PublicState, Team, UnitId, UnitState } from '../protocol';
 import type { Intent } from './selection';
-import { actionButtons, applyMode, availableActions, settleMode, type AvailableActions } from './actions';
+import {
+  actionButtons,
+  applyMode,
+  availableActions,
+  moveChips,
+  settleMode,
+  type AvailableActions,
+} from './actions';
 
 const BOARD: Board = { width: 8, height: 8, levels: new Array<number>(64).fill(0) };
 
@@ -56,6 +63,7 @@ function makeState(
     round: 1,
     hasActed: false,
     eventCount: 0,
+    pendingMove: null,
     ...overrides,
   };
 }
@@ -179,6 +187,22 @@ describe('availableActions', () => {
       expect(state.initiative[state.currentIndex]).toBe(ENEMY.id);
       expect(availableActions(state, 'A').nothingLeft).toBe(false);
     });
+
+    it('is false while a move waits to be confirmed, so the turn never passes with it open', () => {
+      const far = makeUnit({ id: 'B-priest', team: 'B', at: { x: 7, y: 7 } });
+      // Everything else is spent: nowhere to walk, nobody in reach and a full magazine.
+      const state = makeState([SNIPER, far], 0, {
+        movementLeft: 0,
+        pendingMove: { from: { x: 0, y: 0 }, cost: 3 },
+      });
+
+      expect(availableActions(state, 'A')).toMatchObject({
+        canMove: false,
+        canAttack: false,
+        canReload: false,
+        nothingLeft: false,
+      });
+    });
   });
 });
 
@@ -290,5 +314,30 @@ describe('actionButtons', () => {
     const enabled = actionButtons(makeState([SNIPER, ENEMY], 1), 'A').map((button) => button.enabled);
 
     expect(enabled).toEqual([false, false, false, false]);
+  });
+});
+
+/**
+ * The two controls of a pending move (EA-5, D4 and D6). They exist only while a move waits to be
+ * confirmed, and they carry no field at all: the engine reads the run out of its own state.
+ */
+describe('moveChips', () => {
+  it('offers nothing while no move is waiting to be confirmed', () => {
+    expect(moveChips(makeState([SNIPER, ENEMY]), 'A')).toEqual([]);
+  });
+
+  it('offers the confirmation and the cancel, in the player language, while a move waits', () => {
+    const state = makeState([SNIPER, ENEMY], 0, { pendingMove: { from: { x: 0, y: 0 }, cost: 1 } });
+
+    expect(moveChips(state, 'A')).toEqual([
+      { id: 'confirmMove', label: 'Confirmar movimento', action: { type: 'commitMove' } },
+      { id: 'cancelMove', label: 'Cancelar movimento', action: { type: 'cancelMove' } },
+    ]);
+  });
+
+  it('offers nothing while the bot has the turn, which never cancels and never confirms', () => {
+    const state = makeState([SNIPER, ENEMY], 1, { pendingMove: { from: { x: 3, y: 0 }, cost: 1 } });
+
+    expect(moveChips(state, 'A')).toEqual([]);
   });
 });

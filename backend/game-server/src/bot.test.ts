@@ -130,4 +130,23 @@ describe('chooseBotAction', () => {
       target: 'A-sniper',
     });
   });
+
+  /**
+   * Confirming and taking a move back are the human's two chips, and the bot has neither (EA-5, D7).
+   * Its run is closed by the next thing it does instead, which is the implicit commit of `applyEvent`.
+   */
+  it('never sends cancelMove or commitMove, and closes its own run with the next action it plays', () => {
+    const states = collectBotTurnStates(100);
+    expect(states).toHaveLength(100);
+
+    for (const state of states) {
+      const action = chooseBotAction(state, 'B');
+      expect(['cancelMove', 'commitMove']).not.toContain(action.type);
+
+      const result = applyAction(state, action);
+      expect(result.ok, `refused ${action.type}`).toBe(true);
+      // A move leaves the run open; anything else is what closes it.
+      if (result.ok && action.type !== 'move') expect(result.state.pendingMove).toBeNull();
+    }
+  });
 });

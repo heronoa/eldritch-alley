@@ -77,8 +77,9 @@ export function resolveClick({ state, selectedId, cell, humanTeam }: ClickInput)
 
 /**
  * Whether the armed mode lets an intent through: a mode narrows what a click means, it never invents.
- * The action bar and the highlight share this one answer, so the cells that light up are exactly the
- * cells a click would act on.
+ * The action bar and the answer a click gets share this one rule, so the mode a button shows armed is
+ * the mode a click obeys. Since EA-5 the highlight does not read it: the area on the board is the
+ * state's own (the engine's `reachableCells` or `attackArea`), not a summary of this answer.
  */
 export function allowsIntent(mode: ActionMode, intent: Intent): boolean {
   if (mode === 'inspect') return true;

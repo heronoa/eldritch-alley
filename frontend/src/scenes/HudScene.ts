@@ -2,7 +2,7 @@
 // growing. It draws what the match scene hands it and nothing else: every label, order, enabled flag and
 // colour comes from the tested `game/` and `view/` modules, and it never reads the game's state itself.
 import Phaser from 'phaser';
-import type { ActionButton, ActionMode } from '../game/actions';
+import type { ActionButton, ActionMode, MoveChip } from '../game/actions';
 import type { AutoEndPhase } from '../game/autoEndTurn';
 import { bannerFor } from '../game/banner';
 import { unitPanel } from '../game/panel';
@@ -28,6 +28,7 @@ import {
   STATUS_RECT,
   buttonRect,
   carouselSlotRect,
+  moveChipRect,
   panelRowPoint,
   type Rect,
 } from '../view/layout';
@@ -80,6 +81,8 @@ export interface HudView {
   mode: ActionMode;
   finished: boolean;
   buttons: readonly ActionButton[];
+  /** The two controls of a pending move, drawn over the board above the Move button (EA-5, D6). */
+  moveChips: readonly MoveChip[];
   logLines: readonly string[];
   status: string;
   result: string;
@@ -96,6 +99,7 @@ const EMPTY_VIEW: HudView = {
   mode: 'inspect',
   finished: false,
   buttons: [],
+  moveChips: [],
   logLines: [],
   status: '',
   result: '',
@@ -118,6 +122,8 @@ export class HudScene extends Phaser.Scene {
    */
   private lastActive: TurnSlot | null = null;
   private buttons: Button[] = [];
+  /** The two controls of a pending move, rebuilt on every view because they come and go. */
+  private moveChipButtons: Button[] = [];
   private logText!: Phaser.GameObjects.Text;
   private status!: Phaser.GameObjects.Text;
   private result!: Phaser.GameObjects.Text;
@@ -212,6 +218,7 @@ export class HudScene extends Phaser.Scene {
   private teardown(): void {
     this.children.removeAll(true);
     this.buttons = [];
+    this.moveChipButtons = [];
     this.lastActive = null;
     this.built = false;
   }
@@ -220,6 +227,7 @@ export class HudScene extends Phaser.Scene {
     this.drawChips(view.state);
     this.drawPanel(view.state, view.selectedId);
     this.drawButtons(view);
+    this.drawMoveChips(view);
     this.drawSettings(view);
     this.drawAutoEndTurn(view);
     this.drawBanner(view);
@@ -304,6 +312,18 @@ export class HudScene extends Phaser.Scene {
       // button breathes instead of being pressed for the player (EA-4).
       shown.setHinting(button.id === 'endTurn' && view.autoEndTurn.phase === 'hinting');
     });
+  }
+
+  /**
+   * The two controls of a pending move (EA-5, D6), floating over the board above the Move button.
+   * They are rebuilt rather than reused, because which of them exists is the pending move itself,
+   * and they never need to survive a state: a run that closes takes both with it.
+   */
+  private drawMoveChips(view: HudView): void {
+    this.moveChipButtons.forEach((chip) => chip.destroy());
+    this.moveChipButtons = view.moveChips.map(
+      (chip, index) => new Button(this, moveChipRect(index), chip.label),
+    );
   }
 
   /**

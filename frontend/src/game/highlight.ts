@@ -1,17 +1,12 @@
-// The cells the armed mode would act on. Derived from `resolveClick` rather than from a second copy
-// of the engine's rules, so the highlight and the click can never disagree.
+// The cells the armed mode would act on: one area per state, and never two (EA-5, D1).
+//
+// Both areas are the engine's own answers — `reachableCells` for the cells a destination may be
+// chosen from, `attackArea` for the cells a shot covers from where the unit stands — so a highlight
+// can never disagree with what the server would accept (EA-1 D1, EA-2).
+import { attackArea, reachableCells } from '@eldritch-alley/engine';
 import type { PublicState, Team } from '../protocol';
 import type { Cell } from '../view/grid';
 import type { ActionMode } from './actions';
-import { allowsIntent, resolveClick, type Intent } from './selection';
-
-function boardCells(state: PublicState): Cell[] {
-  const cells: Cell[] = [];
-  for (let y = 0; y < state.board.height; y += 1) {
-    for (let x = 0; x < state.board.width; x += 1) cells.push({ x, y });
-  }
-  return cells;
-}
 
 export interface HighlightInput {
   state: PublicState;
@@ -20,21 +15,32 @@ export interface HighlightInput {
   humanTeam: Team;
 }
 
-/** Whether a click on the cell would act with the armed kind. Picking a unit is not acting on a cell. */
-function actsOn(intent: Intent, mode: ActionMode): boolean {
-  if (intent.kind === 'select' || intent.kind === 'none') return false;
-  return mode !== 'inspect' && allowsIntent(mode, intent);
+/**
+ * Whether the area this state paints is the movement one — the destinations the unit may choose from
+ * — or the attack one. The scene draws each in its own tone, so the tone comes from here too: one
+ * rule decides both which cells are painted and what colour they are, and the two cannot drift.
+ */
+export function highlightsMovement(mode: ActionMode): boolean {
+  return mode === 'move';
 }
 
+/**
+ * The area of the question this state is asking. While a destination is being chosen — the move mode
+ * armed, nothing pending — that is where the unit can walk. While a move waits to be confirmed, and
+ * while the attack is armed, that is what it can hit from the cell it stands on. The two are never
+ * added up: a highlight that merged them would answer a question the game has not asked yet.
+ */
 function computeHighlightedCells({ state, selectedId, mode, humanTeam }: HighlightInput): Cell[] {
-  if (mode === 'inspect' || selectedId === null) return [];
+  const selected = state.units.find((unit) => unit.id === selectedId);
+  // Only a unit of the player's own side, on its own turn, has an area to show.
+  if (!selected || selected.defeated || selected.team !== humanTeam) return [];
+  if (state.initiative[state.currentIndex] !== selected.id) return [];
 
-  const cells: Cell[] = [];
-  for (const cell of boardCells(state)) {
-    const intent = resolveClick({ state, selectedId, cell, humanTeam });
-    if (actsOn(intent, mode)) cells.push(cell);
+  if (highlightsMovement(mode)) return reachableCells(state, selected.id);
+  if (mode === 'attack' || state.pendingMove !== null) {
+    return attackArea(state, selected.position, selected);
   }
-  return cells;
+  return [];
 }
 
 /**
@@ -45,8 +51,8 @@ function computeHighlightedCells({ state, selectedId, mode, humanTeam }: Highlig
 const answered = new WeakMap<PublicState, Map<string, Cell[]>>();
 
 /**
- * Every cell a click would act on with the armed kind. Nothing is armed in `inspect`. The array that
- * comes back is shared by every caller asking the same question: it must not be changed.
+ * Every cell the state's area covers. The array that comes back is shared by every caller asking the
+ * same question: it must not be changed.
  */
 export function highlightedCells(input: HighlightInput): Cell[] {
   const key = `${input.selectedId}|${input.mode}|${input.humanTeam}`;

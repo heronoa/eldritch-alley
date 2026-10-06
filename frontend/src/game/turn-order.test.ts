@@ -48,6 +48,7 @@ function makeState(units: readonly UnitState[], currentIndex = 0): PublicState {
     round: 1,
     hasActed: false,
     eventCount: 0,
+    pendingMove: null,
   };
 }
 

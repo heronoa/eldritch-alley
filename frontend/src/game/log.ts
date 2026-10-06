@@ -64,6 +64,7 @@ export function describeRejection(reason: RejectReason): string {
     case 'game-over':
     case 'stale-turn':
     case 'malformed-action':
+    case 'no-pending-move':
       // The key is the code itself, so a new reason cannot arrive without its sentence.
       return t(`log.rejection.${reason}`);
     default:

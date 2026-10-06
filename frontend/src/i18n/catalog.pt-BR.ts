@@ -66,6 +66,8 @@ export const ptBR = {
   // A command that names a round the match has left behind: the order arrived too late (EA-4).
   'log.rejection.stale-turn': 'Ordem atrasada',
   'log.rejection.malformed-action': 'Ação inválida',
+  // A cancel or a confirmation of a move that is not waiting to be confirmed (EA-5).
+  'log.rejection.no-pending-move': 'Nenhum movimento pendente',
   'log.rejection.unknown': 'Ação recusada',
 
   // The unit panel, one label per `PanelKey`, and the two words a turn row can show.
@@ -78,11 +80,14 @@ export const ptBR = {
   'panel.value.spent': 'Gasta',
   'panel.value.available': 'Disponível',
 
-  // The action bar, one label per button id in `actionButtons`.
+  // The action bar, one label per button id in `actionButtons`, and the two controls a pending move
+  // floats above it (EA-5): they are not buttons of the bar, but they are read the same way.
   'action.move': 'Mover',
   'action.attack': 'Atacar',
   'action.reload': 'Recarregar',
   'action.endTurn': 'Terminar turno',
+  'action.confirmMove': 'Confirmar movimento',
+  'action.cancelMove': 'Cancelar movimento',
 
   // The rest of the HUD, and the lines the match shows over it: the two endings, the notice a
   // refused protocol version raises, and the two states of a dropped connection.

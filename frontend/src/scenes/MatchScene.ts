@@ -6,9 +6,11 @@ import {
   actionButtons,
   applyMode,
   availableActions,
+  moveChips,
   settleMode,
   type ActionButton,
   type ActionMode,
+  type MoveChip,
 } from '../game/actions';
 import {
   endTurnAction,
@@ -20,7 +22,7 @@ import {
   type AutoEndTurn,
   type AutoEndTurnEvent,
 } from '../game/autoEndTurn';
-import { highlightedCells } from '../game/highlight';
+import { highlightedCells, highlightsMovement } from '../game/highlight';
 import { describeEvent, describeRejection, type UnitNames } from '../game/log';
 import { presentationOf, type Cue, type Snapshot } from '../game/presentation';
 import { confirmMove, resolveClick } from '../game/selection';
@@ -53,6 +55,7 @@ import {
   SETTINGS_TOGGLE_RECT,
   containsPoint,
   hudRects,
+  moveChipIndexAt,
   CANVAS_HEIGHT,
   CANVAS_WIDTH,
   boardBounds,
@@ -145,6 +148,8 @@ export class MatchScene extends Phaser.Scene {
   private hud!: HudScene;
   /** The model the drawn buttons came from, so a click resolves to the action the player sees. */
   private buttonModel: ActionButton[] = [];
+  /** The two controls of a pending move, for the same reason as the buttons (EA-5, D6). */
+  private chipModel: MoveChip[] = [];
   private statusText = '';
   private resultText = '';
   /** Where the map camera is: its zoom, and the world point at the centre of the canvas. */
@@ -169,6 +174,7 @@ export class MatchScene extends Phaser.Scene {
     this.settingsOpen = false;
     this.lastFrameMs = 0;
     this.buttonModel = [];
+    this.chipModel = [];
     this.statusText = '';
     this.resultText = '';
     this.camera = { zoom: MIN_ZOOM, centre: { x: CANVAS_WIDTH / 2, y: CANVAS_HEIGHT / 2 } };
@@ -222,10 +228,10 @@ export class MatchScene extends Phaser.Scene {
 
   /**
    * The HUD is tested first and consumes the click: the action bar against the same rectangle that
-   * draws each button (DT-30), then any point inside any HUD rectangle, even where no control is, so
-   * a panel floating over a tile never lets a click through to the tile. Only what is left reaches
-   * the board, and what it means there is decided by `resolveClick`, narrowed by `applyMode`; the
-   * server decides the rest.
+   * draws each button (DT-30), the two chips of a pending move, then any point inside any HUD
+   * rectangle, even where no control is, so a panel floating over a tile never lets a click through to
+   * the tile. Only what is left reaches the board, and what it means there is decided by
+   * `resolveClick`, narrowed by `applyMode`; the server decides the rest.
    */
   private handleClick(pointer: Phaser.Input.Pointer): void {
     // The HUD is not zoomed, so its rectangles are tested in screen space; the board is zoomed, so it is
@@ -270,6 +276,15 @@ export class MatchScene extends Phaser.Scene {
     if (buttonIndex !== null) {
       const button = this.buttonModel[buttonIndex];
       if (button !== undefined && button.enabled) this.pressAction(button.id, button.mode);
+      return;
+    }
+
+    // The two controls of a pending move float over the board above the bar (EA-5, D6), so they are
+    // read before `hudRects` the way the countdown is: what they cover is the board, not the HUD.
+    const chipIndex = moveChipIndexAt(point);
+    if (chipIndex !== null) {
+      const chip = this.chipModel[chipIndex];
+      if (chip !== undefined) this.session.send(chip.action);
       return;
     }
 
@@ -602,6 +617,7 @@ export class MatchScene extends Phaser.Scene {
   /** Hands the HUD what it shows now, and keeps the model of its buttons for the clicks. */
   private pushHud(): void {
     this.buttonModel = this.state ? actionButtons(this.state, HUMAN_TEAM) : [];
+    this.chipModel = this.state ? moveChips(this.state, HUMAN_TEAM) : [];
     this.hud.render({
       state: this.state,
       humanTeam: HUMAN_TEAM,
@@ -609,6 +625,7 @@ export class MatchScene extends Phaser.Scene {
       mode: this.mode,
       finished: this.finished,
       buttons: this.buttonModel,
+      moveChips: this.chipModel,
       logLines: this.logLines,
       status: this.statusText,
       result: this.resultText,
@@ -639,13 +656,17 @@ export class MatchScene extends Phaser.Scene {
     cam.centerOn(this.camera.centre.x, this.camera.centre.y);
   }
 
-  /** The cells the armed mode would act on, drawn as the top face of each cell they cover. */
+  /**
+   * The cells the state offers, drawn as the top face of each cell they cover. There is one area at a
+   * time and which one it is comes from the state, not from the armed mode (EA-5): the destinations
+   * while choosing where to walk, and the area the unit covers from where it stands once a move is
+   * waiting to be confirmed. The tone follows the same answer, so the two never mix on the board.
+   */
   private drawHighlights(state: PublicState): void {
     for (const graphic of this.highlights) graphic.destroy();
     this.highlights = [];
-    if (this.mode === 'inspect') return;
 
-    const move = this.mode === 'move';
+    const move = highlightsMovement(this.mode);
     const color = move ? HIGHLIGHT_MOVE_COLOR : HIGHLIGHT_ATTACK_COLOR;
     const alpha = move ? HIGHLIGHT_MOVE_ALPHA : HIGHLIGHT_ATTACK_ALPHA;
     const cells = highlightedCells({

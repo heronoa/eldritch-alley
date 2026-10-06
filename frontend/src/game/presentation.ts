@@ -83,5 +83,11 @@ export function presentationOf(event: Event, units: ReadonlyMap<string, Snapshot
 
     case 'turn-ended':
       return [];
+
+    // A pending move taken back or confirmed (EA-5) has no animation of its own: the cancel is a
+    // correction, not a walk, and the state that follows puts the figure back where it started.
+    case 'move-cancelled':
+    case 'move-committed':
+      return [];
   }
 }

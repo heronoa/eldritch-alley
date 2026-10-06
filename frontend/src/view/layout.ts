@@ -149,12 +149,43 @@ export const COUNTDOWN_LINK_RECT: Rect = {
 };
 
 /**
+ * The two chips of a pending move (EA-5, D6): "Confirm move" and "Cancel move". The action bar is
+ * exactly full — four buttons and three gaps fill it — so they sit outside it, over the board, one
+ * row above the Move button and starting at its own left edge. They exist only while a move waits to
+ * be confirmed, and they take a click, so the scene reads them the way it reads the bar.
+ */
+export const MOVE_CHIP = { width: 184, height: 24, gap: 16 };
+
+/** The rectangle of the nth chip of a pending move, counting from the left. */
+export function moveChipRect(index: number): Rect {
+  return {
+    x: ACTION_BAR_RECT.x + index * (MOVE_CHIP.width + MOVE_CHIP.gap),
+    y: ACTION_BAR_RECT.y - 32,
+    width: MOVE_CHIP.width,
+    height: MOVE_CHIP.height,
+  };
+}
+
+/** How many chips a pending move floats: the confirmation and the cancel. */
+export const MOVE_CHIPS = 2;
+
+/** The chip under a point, or null when the point is on none of them. */
+export function moveChipIndexAt(point: Pixel): number | null {
+  for (let index = 0; index < MOVE_CHIPS; index += 1) {
+    if (containsPoint(moveChipRect(index), point)) return index;
+  }
+  return null;
+}
+
+/**
  * The hint the "End turn" button gives when the automatic end of turn is off (EA-4): one line over
- * the action bar, which is where the button it is about is. It takes no click of its own.
+ * the action bar, which is where the button it is about is. It takes no click of its own, and the
+ * band above the bar belongs to the chips of a pending move (EA-5, D6), so the hint sits one row
+ * higher, keeping its own line and its width.
  */
 export const ACTION_HINT_RECT: Rect = {
   x: CENTRED_X,
-  y: ACTION_BAR_RECT.y - 32,
+  y: ACTION_BAR_RECT.y - 64,
   width: CENTRED_WIDTH,
   height: 24,
 };

@@ -106,6 +106,7 @@ describe('describeRejection', () => {
     'game-over': 'Partida encerrada',
     'stale-turn': 'Ordem atrasada',
     'malformed-action': 'Ação inválida',
+    'no-pending-move': 'Nenhum movimento pendente',
   };
 
   it('answers a sentence in the player language for every reason', () => {
