@@ -129,8 +129,13 @@ export class MatchScene extends Phaser.Scene {
   private armedMove: Cell | null = null;
   /** The unit the secondary gesture is inspecting, or null when no inspection is open (EA-6). */
   private inspectedId: string | null = null;
-  /** The finger that is down and may still become a long press: where it started, and what it became. */
-  private press: { from: Pixel; inspected: boolean } | null = null;
+  /**
+   * Where the finger that is down went down, or null when no tap is waiting. A press that is still
+   * standing when the finger lifts is a tap shorter than the long press, and so an ordinary click; a
+   * press that the long press already answered, or that travelled far enough to be a pan, is taken
+   * down and the release does nothing (EA-6, D4).
+   */
+  private press: Pixel | null = null;
   private pressTimer: Phaser.Time.TimerEvent | null = null;
   private logLines: string[] = [];
   /** Set when the match is over or lost, after which clicks are ignored. */
@@ -268,10 +273,12 @@ export class MatchScene extends Phaser.Scene {
   /** A finger that has rested long enough on a unit is inspecting it, not tapping the board (D4). */
   private armPress(pointer: Phaser.Input.Pointer): void {
     this.cancelPress();
-    this.press = { from: { x: pointer.x, y: pointer.y }, inspected: false };
+    this.press = { x: pointer.x, y: pointer.y };
     this.pressTimer = this.time.delayedCall(LONG_PRESS_MS, () => {
-      if (this.press === null) return;
-      this.press.inspected = true;
+      // The timer is spent, and taking the press down here is what keeps the release that follows from
+      // clicking as well: one gesture, one meaning (D4).
+      this.pressTimer = null;
+      this.press = null;
       this.handlePress(pointer, true);
     });
   }
@@ -281,17 +288,17 @@ export class MatchScene extends Phaser.Scene {
     if (this.press === null) return;
 
     const drift = Math.max(
-      Math.abs(pointer.x - this.press.from.x),
-      Math.abs(pointer.y - this.press.from.y),
+      Math.abs(pointer.x - this.press.x),
+      Math.abs(pointer.y - this.press.y),
     );
     if (drift > PRESS_SLOP_PX) this.cancelPress();
   }
 
   private handlePointerUp(pointer: Phaser.Input.Pointer): void {
-    const press = this.press;
+    const tap = this.press !== null;
     this.cancelPress();
     // A tap shorter than the long press is an ordinary click, and it acts (D4).
-    if (press !== null && !press.inspected) this.handlePress(pointer, false);
+    if (tap) this.handlePress(pointer, false);
   }
 
   private cancelPress(): void {
@@ -301,36 +308,25 @@ export class MatchScene extends Phaser.Scene {
   }
 
   /**
-   * The HUD is tested first and consumes the click: the action bar against the same rectangle that
-   * draws each button (DT-30), the two chips of a pending move, then any point inside any HUD
-   * rectangle, even where no control is, so a panel floating over a tile never lets a click through to
-   * the tile. Only what is left reaches the board. There the gesture decides: an inspection reads the
-   * unit under the pointer and sends nothing (EA-6), and a primary click is an action, whose meaning
-   * `resolveClick` answers and `applyMode` narrows. The server decides the rest.
+   * Whether the HUD owns this point, and what it does with it. The HUD is not zoomed, so its rectangles
+   * are read in screen space. Its pieces are read in the order they cover each other: the countdown of
+   * the automatic end of turn and the link under it, the gear and the panel it opens, the action bar
+   * against the same rectangle that draws each button (DT-30), the two chips of a pending move, and any
+   * point inside any HUD rectangle, even where no control is, so a panel floating over a tile never
+   * lets a click through to the tile. Only a point none of them takes reaches the board.
    */
-  private handlePress(pointer: Phaser.Input.Pointer, secondary: boolean): void {
-    // The HUD is not zoomed, so its rectangles are tested in screen space; the board is zoomed, so it is
-    // tested in the world space the pointer reports for the map camera.
-    const point = { x: pointer.x, y: pointer.y };
-    const world = { x: pointer.worldX, y: pointer.worldY };
-
-    if (this.finished && containsPoint(RESULT_BUTTON_RECT, point)) {
-      this.leave();
-      return;
-    }
-    if (this.finished || this.state === null) return;
-
+  private hudTakesPress(point: Pixel): boolean {
     // The countdown of the automatic end of turn floats over the board (EA-4), so it is read before
     // anything it covers: the line keeps the turn, and the link under it turns the feature off.
     if (this.autoEndTurn.phase === 'counting') {
       if (containsPoint(COUNTDOWN_LINK_RECT, point)) {
         this.disableAutoEndTurn();
-        return;
+        return true;
       }
       if (containsPoint(COUNTDOWN_RECT, point)) {
         this.applyAutoEndTurn({ type: 'cancel' });
         this.pushHud();
-        return;
+        return true;
       }
     }
 
@@ -340,18 +336,18 @@ export class MatchScene extends Phaser.Scene {
     if (containsPoint(SETTINGS_BUTTON_RECT, point)) {
       this.settingsOpen = !this.settingsOpen;
       this.pushHud();
-      return;
+      return true;
     }
     if (this.settingsOpen && containsPoint(SETTINGS_PANEL_RECT, point)) {
       if (containsPoint(SETTINGS_TOGGLE_RECT, point)) this.setAutoEndTurn(!this.autoEndTurn.enabled);
-      return;
+      return true;
     }
 
     const buttonIndex = buttonIndexAt(point);
     if (buttonIndex !== null) {
       const button = this.buttonModel[buttonIndex];
       if (button !== undefined && button.enabled) this.pressAction(button.id, button.mode);
-      return;
+      return true;
     }
 
     // The two controls of a pending move float over the board above the bar (EA-5, D6), so they are
@@ -360,10 +356,29 @@ export class MatchScene extends Phaser.Scene {
     if (chipIndex !== null) {
       const chip = this.chipModel[chipIndex];
       if (chip !== undefined) this.session.send(chip.action);
-      return;
+      return true;
     }
 
-    if (hudRects().some((rect) => containsPoint(rect, point))) return;
+    return hudRects().some((rect) => containsPoint(rect, point));
+  }
+
+  /**
+   * A press on the board, once the HUD has had its say. The board is zoomed, so the point is read in
+   * the world space the pointer reports for the map camera. The gesture decides what it means: the
+   * secondary one is an inspection, which reads the unit under the pointer and sends nothing (EA-6),
+   * and the primary one is an action, whose meaning `resolveClick` answers and `applyMode` narrows. The
+   * server decides the rest.
+   */
+  private handlePress(pointer: Phaser.Input.Pointer, secondary: boolean): void {
+    const point = { x: pointer.x, y: pointer.y };
+    const world = { x: pointer.worldX, y: pointer.worldY };
+
+    if (this.finished && containsPoint(RESULT_BUTTON_RECT, point)) {
+      this.leave();
+      return;
+    }
+    if (this.finished || this.state === null) return;
+    if (this.hudTakesPress(point)) return;
 
     // The board the state carries says how big it is; what each cell is drawn at comes from the map,
     // lift included, so a click lands on the cell the player aimed at.
@@ -418,16 +433,20 @@ export class MatchScene extends Phaser.Scene {
    */
   private inspect(state: PublicState, cell: Cell): void {
     const intent = resolveInspect(state, cell);
-    this.inspectedId = intent.kind === 'inspect' ? intent.unitId : null;
-    this.redraw(state);
+    this.setInspection(intent.kind === 'inspect' ? intent.unitId : null, state);
   }
 
   /** The state answers its own question again, which is what the board goes back to (EA-6, D2). */
   private closeInspection(): void {
-    if (this.inspectedId === null) return;
+    // Every click on the board closes the inspection first, so a match with none open must not pay for
+    // a redraw that would draw what is already on the screen.
+    if (this.inspectedId !== null) this.setInspection(null, this.state);
+  }
 
-    this.inspectedId = null;
-    if (this.state !== null) this.redraw(this.state);
+  /** Opens the inspection on `unitId`, or closes it when that is null, and draws the board again. */
+  private setInspection(unitId: string | null, state: PublicState | null): void {
+    this.inspectedId = unitId;
+    if (state !== null) this.redraw(state);
   }
 
   /** Arms the button's mode, or cancels it when it is already armed, so the bar is its own undo. */

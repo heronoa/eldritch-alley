@@ -32,9 +32,12 @@ export type HighlightTone = 'move' | 'attack';
  * whoever that unit is and whatever the turn is doing (EA-6, D1). The scene takes the tone from here,
  * so one rule decides both which cells are painted and what colour they are, and the two cannot drift.
  */
-export function highlightTone(input: Pick<HighlightInput, 'inspectedId' | 'mode'>): HighlightTone {
-  if (input.inspectedId !== null && input.inspectedId !== undefined) return 'attack';
-  return input.mode === 'move' ? 'move' : 'attack';
+export function highlightTone({
+  inspectedId = null,
+  mode,
+}: Pick<HighlightInput, 'inspectedId' | 'mode'>): HighlightTone {
+  if (inspectedId !== null) return 'attack';
+  return mode === 'move' ? 'move' : 'attack';
 }
 
 /**
