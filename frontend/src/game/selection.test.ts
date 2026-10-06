@@ -1,8 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import type { Board, PublicState, Team, UnitState } from '../protocol';
-import { resolveClick } from './selection';
+import { resolveClick, resolveInspect } from './selection';
 
 const BOARD: Board = { width: 8, height: 8, levels: new Array<number>(64).fill(0) };
+
+/** A flat board with the given cells raised, keyed by `x,y`. */
+function makeBoard(heights: Record<string, number>): Board {
+  const levels = new Array<number>(64).fill(0);
+  for (const [key, level] of Object.entries(heights)) {
+    const [x, y] = key.split(',').map(Number);
+    levels[y * 8 + x] = level;
+  }
+  return { width: 8, height: 8, levels };
+}
 
 interface UnitSpec {
   id: string;
@@ -34,6 +44,7 @@ function makeUnit(spec: UnitSpec): UnitState {
     primaryClass: 'sniper',
     equipment: { armor: null, helmet: null, mainHand: null, offHand: null, accessory1: null, accessory2: null },
     abilities: { activeSets: [null, null], reaction: null, movement: null, support: null },
+    movementProfile: { maxStepUp: 1, maxStepDown: 1, climbCost: 1 },
     defeated: spec.defeated ?? false,
     ammo: spec.ammo ?? (magazine === null ? 0 : magazine),
     permanentlyDead: spec.permanentlyDead ?? false,
@@ -41,17 +52,23 @@ function makeUnit(spec: UnitSpec): UnitState {
   };
 }
 
-function makeState(units: readonly UnitState[], currentIndex = 0): PublicState {
+function makeState(
+  units: readonly UnitState[],
+  currentIndex = 0,
+  board: Board = BOARD,
+  movementLeft = 3,
+): PublicState {
   return {
     seed: 1,
-    board: BOARD,
+    board,
     units: [...units],
     initiative: units.map((unit) => unit.id),
     currentIndex,
-    movementLeft: 3,
+    movementLeft,
     round: 1,
     hasActed: false,
     eventCount: 0,
+    pendingMove: null,
   };
 }
 
@@ -84,6 +101,26 @@ describe('resolveClick', () => {
     expect(intent).toEqual({ kind: 'send', action: { type: 'attack', target: 'B-priest' } });
   });
 
+  it('returns none for an enemy behind a building, inside the range', () => {
+    const sniper = makeUnit({ id: 'A-sniper', team: 'A', at: { x: 0, y: 0 }, range: 3 });
+    const enemy = makeUnit({ id: 'B-priest', team: 'B', at: { x: 2, y: 0 }, range: 1 });
+    const state = makeState([sniper, enemy], 0, makeBoard({ '1,0': 5 }));
+
+    const intent = resolveClick({ state, selectedId: 'A-sniper', cell: { x: 2, y: 0 }, humanTeam: 'A' });
+
+    expect(intent).toEqual({ kind: 'none' });
+  });
+
+  it('sends an attack across the rooftop gap', () => {
+    const sniper = makeUnit({ id: 'A-sniper', team: 'A', at: { x: 5, y: 2 }, range: 3, magazine: 3 });
+    const enemy = makeUnit({ id: 'B-priest', team: 'B', at: { x: 7, y: 2 }, range: 1 });
+    const state = makeState([sniper, enemy], 0, makeBoard({ '5,2': 6, '6,2': 0, '7,2': 6 }));
+
+    const intent = resolveClick({ state, selectedId: 'A-sniper', cell: { x: 7, y: 2 }, humanTeam: 'A' });
+
+    expect(intent).toEqual({ kind: 'send', action: { type: 'attack', target: 'B-priest' } });
+  });
+
   it('returns none for an enemy outside the selected range', () => {
     const sniper = makeUnit({ id: 'A-sniper', team: 'A', at: { x: 0, y: 0 }, range: 3 });
     const enemy = makeUnit({ id: 'B-priest', team: 'B', at: { x: 4, y: 0 }, range: 1 });
@@ -109,7 +146,16 @@ describe('resolveClick', () => {
     });
   });
 
-  it('sends a move to an adjacent empty cell', () => {
+  it('sends the move to a reachable cell: the destination is the move, and it stays pending', () => {
+    const sniper = makeUnit({ id: 'A-sniper', team: 'A', at: { x: 0, y: 0 } });
+    const state = makeState([sniper]);
+
+    const intent = resolveClick({ state, selectedId: 'A-sniper', cell: { x: 0, y: 2 }, humanTeam: 'A' });
+
+    expect(intent).toEqual({ kind: 'send', action: { type: 'move', to: { x: 0, y: 2 } } });
+  });
+
+  it('sends a move to the neighbour as well, one click for each destination', () => {
     const sniper = makeUnit({ id: 'A-sniper', team: 'A', at: { x: 0, y: 0 } });
     const state = makeState([sniper]);
 
@@ -118,11 +164,29 @@ describe('resolveClick', () => {
     expect(intent).toEqual({ kind: 'send', action: { type: 'move', to: { x: 1, y: 1 } } });
   });
 
-  it('returns none for an empty cell that is not adjacent', () => {
+  it('returns none for a cell past the movement budget', () => {
     const sniper = makeUnit({ id: 'A-sniper', team: 'A', at: { x: 0, y: 0 } });
     const state = makeState([sniper]);
 
-    const intent = resolveClick({ state, selectedId: 'A-sniper', cell: { x: 2, y: 2 }, humanTeam: 'A' });
+    const intent = resolveClick({ state, selectedId: 'A-sniper', cell: { x: 0, y: 4 }, humanTeam: 'A' });
+
+    expect(intent).toEqual({ kind: 'none' });
+  });
+
+  it('returns none for a destination with no way out of the corner', () => {
+    const sniper = makeUnit({ id: 'A-sniper', team: 'A', at: { x: 0, y: 0 } });
+    const state = makeState([sniper], 0, makeBoard({ '1,0': 5, '0,1': 5, '1,1': 5 }));
+
+    const intent = resolveClick({ state, selectedId: 'A-sniper', cell: { x: 2, y: 0 }, humanTeam: 'A' });
+
+    expect(intent).toEqual({ kind: 'none' });
+  });
+
+  it('returns none for a move once the movement budget is spent', () => {
+    const sniper = makeUnit({ id: 'A-sniper', team: 'A', at: { x: 0, y: 0 } });
+    const state = makeState([sniper], 0, BOARD, 0);
+
+    const intent = resolveClick({ state, selectedId: 'A-sniper', cell: { x: 1, y: 0 }, humanTeam: 'A' });
 
     expect(intent).toEqual({ kind: 'none' });
   });
@@ -142,7 +206,7 @@ describe('resolveClick', () => {
     });
   });
 
-  it('lets a unit move onto the tile of a body that was removed for good', () => {
+  it('previews the move onto the tile of a body that was removed for good', () => {
     const sniper = makeUnit({ id: 'A-sniper', team: 'A', at: { x: 0, y: 0 } });
     const removed = makeUnit({ id: 'B-priest', team: 'B', at: { x: 1, y: 0 }, defeated: true, permanentlyDead: true });
     const state = makeState([sniper, removed]);
@@ -161,5 +225,57 @@ describe('resolveClick', () => {
     expect(resolveClick({ state, selectedId: 'A-sniper', cell: { x: 1, y: 0 }, humanTeam: 'A' })).toEqual({
       kind: 'none',
     });
+  });
+});
+
+/**
+ * The secondary gesture: the right button on desktop, a long press on a finger (EA-6, D4). It names
+ * the unit it asks about and carries no action at all, so nothing it produces can be sent.
+ */
+describe('resolveInspect', () => {
+  /** The human's sniper on its own turn, and the enemy the gesture asks about. */
+  const SNIPER = makeUnit({ id: 'A-sniper', team: 'A', at: { x: 0, y: 0 }, range: 3 });
+  const ENEMY = makeUnit({ id: 'B-priest', team: 'B', at: { x: 3, y: 0 }, range: 2 });
+  const ENEMY_CELL = { x: 3, y: 0 };
+
+  /** The states of the turn the gesture has to answer the same in, a move pending and the bot included. */
+  const states: { what: string; state: PublicState }[] = [
+    { what: 'idle', state: makeState([SNIPER, ENEMY]) },
+    {
+      what: 'a move pending',
+      state: { ...makeState([SNIPER, ENEMY]), pendingMove: { from: { x: 0, y: 0 }, cost: 1 } },
+    },
+    { what: 'the bot on turn', state: makeState([SNIPER, ENEMY], 1) },
+  ];
+
+  it('names the unit on the cell and never an action, so the gesture sends nothing', () => {
+    for (const { what, state } of states) {
+      const intent = resolveInspect(state, ENEMY_CELL);
+
+      expect(intent, what).toEqual({ kind: 'inspect', unitId: 'B-priest' });
+      // The whole difference from `resolveClick`: there is no action here to send (D2, D4).
+      expect(intent, what).not.toHaveProperty('action');
+    }
+  });
+
+  it('answers nothing on a cell nobody stands on, so the gesture closes the inspection', () => {
+    expect(resolveInspect(makeState([SNIPER, ENEMY]), { x: 1, y: 1 })).toEqual({ kind: 'none' });
+  });
+
+  it('answers nothing for a unit out of the fight, which covers no cells', () => {
+    const body = makeUnit({ id: 'B-priest', team: 'B', at: { x: 3, y: 0 }, defeated: true });
+    const state = makeState([SNIPER, body]);
+
+    expect(resolveInspect(state, ENEMY_CELL)).toEqual({ kind: 'none' });
+  });
+
+  it('leaves the state it read untouched, so the acting unit and the turn stay where they are', () => {
+    for (const { what, state } of states) {
+      const before = structuredClone(state);
+
+      resolveInspect(state, ENEMY_CELL);
+
+      expect(state, what).toEqual(before);
+    }
   });
 });

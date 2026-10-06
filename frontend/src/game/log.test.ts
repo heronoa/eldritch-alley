@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { getLocale, setLocale } from '../i18n/translate';
 import type { Event, RejectReason } from '../protocol';
 import { describeEvent, describeRejection } from './log';
 
@@ -9,8 +10,22 @@ const NAMES: Record<string, string> = {
 };
 
 describe('describeEvent', () => {
+  // The sentences are the pt-BR ones, so the locale is pinned, as it is for the refusals below.
+  let previous = getLocale();
+  beforeEach(() => {
+    previous = getLocale();
+    setLocale('pt-BR');
+  });
+  afterEach(() => setLocale(previous));
+
   it('describes a move with both cells', () => {
-    const event: Event = { type: 'moved', actor: 'A-sniper', from: { x: 0, y: 0 }, to: { x: 1, y: 0 } };
+    const event: Event = {
+      type: 'moved',
+      actor: 'A-sniper',
+      from: { x: 0, y: 0 },
+      to: { x: 1, y: 0 },
+      path: [{ x: 1, y: 0 }],
+    };
 
     expect(describeEvent(event, NAMES)).toBe('Sniper moveu de (0,0) para (1,0)');
   });
@@ -75,21 +90,31 @@ describe('describeEvent', () => {
 });
 
 describe('describeRejection', () => {
+  // The sentences are the pt-BR ones, so the locale is pinned: the test must not depend on the runtime.
+  let previous = getLocale();
+  beforeEach(() => {
+    previous = getLocale();
+    setLocale('pt-BR');
+  });
+  afterEach(() => setLocale(previous));
+
   // Every reason the engine can answer with, so a new one is a compile error here.
   const SENTENCES: Record<RejectReason, string> = {
     'not-your-turn': 'Não é a sua vez',
     'out-of-bounds': 'Fora do tabuleiro',
     'cell-occupied': 'Casa ocupada',
     'height-step-too-high': 'Desnível alto demais',
-    'not-enough-movement': 'Movimento insuficiente',
+    'no-path': 'Sem caminho',
     'already-acted': 'Ação já usada',
     'target-out-of-range': 'Alvo fora de alcance',
+    'no-line-of-sight': 'Sem linha de visão',
     'target-invalid': 'Alvo inválido',
     'no-magazine': 'Sem carregador',
     'magazine-full': 'Carregador cheio',
-    'not-adjacent': 'Casa não adjacente',
     'game-over': 'Partida encerrada',
+    'stale-turn': 'Ordem atrasada',
     'malformed-action': 'Ação inválida',
+    'no-pending-move': 'Nenhum movimento pendente',
   };
 
   it('answers a sentence in the player language for every reason', () => {

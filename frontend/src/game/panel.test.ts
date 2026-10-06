@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { Board, PublicState, Team, UnitId, UnitState } from '../protocol';
 import { unitPanel, type PanelRow } from './panel';
+import { setLocale } from '../i18n/translate';
+
+// The cases below assert the Portuguese copy the game shipped with, so they read it on purpose.
+setLocale('pt-BR');
 
 const BOARD: Board = { width: 8, height: 8, levels: new Array<number>(64).fill(0) };
 
@@ -33,6 +37,7 @@ function makeUnit(spec: UnitSpec): UnitState {
     primaryClass: 'sniper',
     equipment: { armor: null, helmet: null, mainHand: null, offHand: null, accessory1: null, accessory2: null },
     abilities: { activeSets: [null, null], reaction: null, movement: null, support: null },
+    movementProfile: { maxStepUp: 1, maxStepDown: 1, climbCost: 1 },
     defeated: false,
     ammo: spec.ammo ?? (magazine === null ? 0 : magazine),
     permanentlyDead: false,
@@ -55,6 +60,7 @@ function makeState(
     round: 1,
     hasActed: false,
     eventCount: 0,
+    pendingMove: null,
     ...overrides,
   };
 }

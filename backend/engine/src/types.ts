@@ -39,6 +39,20 @@ export interface Abilities {
 }
 
 /**
+ * What a unit may climb in one step, and what a climb costs. The rule the game had before the profile
+ * existed — one level up or down, the climb paid with one extra point — is `{ maxStepUp: 1,
+ * maxStepDown: 1, climbCost: 1 }`.
+ */
+export interface MovementProfile {
+  /** Levels a single step may rise. */
+  maxStepUp: number;
+  /** Levels a single step may drop. */
+  maxStepDown: number;
+  /** Points a step pays on top of its own, for each level it climbs. A descent pays nothing extra. */
+  climbCost: number;
+}
+
+/**
  * A unit as the setup describes it. The progression fields (nerve, attunement, class, equipment,
  * abilities) are carried from M1 on so the type does not have to be redesigned later, but no M1 rule
  * reads them.
@@ -59,6 +73,11 @@ export interface Unit {
   magazine: number | null;
   /** Movement budget for one turn. */
   movement: number;
+  /**
+   * What the unit may climb. A setup that leaves it out walks by the default profile; `newMatch`
+   * writes the profile the match plays with onto every unit state.
+   */
+  movementProfile?: MovementProfile;
   nerve: number;
   attunement: number;
   primaryClass: string;
@@ -72,6 +91,8 @@ export interface Unit {
  * (`permanentlyDead` false) it occupies its tile and cannot be targeted.
  */
 export interface UnitState extends Unit {
+  /** What the unit may climb, filled by `newMatch`, so a unit in a match always carries one. */
+  movementProfile: MovementProfile;
   /** HP the unit entered the match with. The ceiling for `health`; no M2-a rule raises it. */
   maxHealth: number;
   defeated: boolean;
@@ -80,6 +101,16 @@ export interface UnitState extends Unit {
   permanentlyDead: boolean;
   /** The round in which the body is removed and the death becomes permanent. Null while alive. */
   corpseExpiresAtRound: number | null;
+}
+
+/**
+ * The run of moves the unit on turn has walked since the last action that was not another move
+ * (EA-5, D3). `from` is the cell the run started on, which is where a cancel returns the unit, and
+ * `cost` is what the run has spent so far, which is what a cancel gives back.
+ */
+export interface PendingMove {
+  from: Position;
+  cost: number;
 }
 
 /** The seed, the map and the two squads. Both positions and unit ids must be unique inside a match. */
@@ -108,6 +139,12 @@ export interface MatchState {
   round: number;
   /** Whether the current unit has spent its action on this turn. */
   hasActed: boolean;
+  /**
+   * The move the unit on turn has not confirmed yet, or null when it has not moved and once its run
+   * has been committed (EA-5, D3). The actor is the unit on turn, so the field carries no unit id,
+   * the way `movementLeft` and `hasActed` already do not.
+   */
+  pendingMove: PendingMove | null;
   rng: Rng;
   eventCount: number;
 }
@@ -119,10 +156,28 @@ export type Action =
   | { type: 'move'; actor: UnitId; to: Position }
   | { type: 'attack'; actor: UnitId; target: UnitId }
   | { type: 'reload'; actor: UnitId }
-  | { type: 'endTurn'; actor: UnitId };
+  /**
+   * Passes the turn. It names the round it applies to, so a message that arrives late — the client
+   * sends this one on its own (EA-4) — is refused instead of ending somebody else's turn (ADR 0010).
+   */
+  | { type: 'endTurn'; actor: UnitId; round: number }
+  /**
+   * Takes the pending move back: the unit returns to where its run started, with the movement the run
+   * spent given back. Refused with `no-pending-move` when no run is open (EA-5, D3 and D5).
+   */
+  | { type: 'cancelMove'; actor: UnitId }
+  /**
+   * Confirms the pending move. It executes no action and does not end the turn: it only closes the
+   * run, which is what makes the movement final (EA-5, D4).
+   */
+  | { type: 'commitMove'; actor: UnitId };
 
 export type Event =
-  | { type: 'moved'; actor: UnitId; from: Position; to: Position }
+  /**
+   * The walk the engine found, from the first step to `to`, `to` included. An action names only its
+   * destination; the path is the engine's answer, and replaying it must pay what the move paid.
+   */
+  | { type: 'moved'; actor: UnitId; from: Position; to: Position; path: Position[] }
   /**
    * `rngState` is the random source after the hit roll. Replay applies it instead of rolling again, so
    * a rebuilt match draws the same numbers as the live one, even when a roll takes several draws.
@@ -138,6 +193,13 @@ export type Event =
       ammoSpent: boolean;
     }
   | { type: 'reloaded'; actor: UnitId }
+  /**
+   * The pending move was taken back. No payload: the run it undoes is in the state it was applied to,
+   * the way the walk of a `moved` event is not repeated here.
+   */
+  | { type: 'move-cancelled'; actor: UnitId }
+  /** The pending move was confirmed. The run it closes is in the state it was applied to. */
+  | { type: 'move-committed'; actor: UnitId }
   | { type: 'unit-defeated'; target: UnitId }
   | { type: 'corpse-removed'; target: UnitId }
   | { type: 'turn-ended'; actor: UnitId; next: UnitId; round: number };
@@ -148,14 +210,17 @@ export type RejectReason =
   | 'out-of-bounds'
   | 'cell-occupied'
   | 'height-step-too-high'
-  | 'not-enough-movement'
+  | 'no-path'
   | 'already-acted'
   | 'target-out-of-range'
+  | 'no-line-of-sight'
   | 'target-invalid'
   | 'no-magazine'
   | 'magazine-full'
-  | 'not-adjacent'
-  | 'game-over';
+  | 'game-over'
+  | 'stale-turn'
+  /** A cancel or a confirmation of a move that is not waiting to be confirmed (EA-5). */
+  | 'no-pending-move';
 
 export type ActionResult =
   | { ok: true; state: MatchState; events: Event[] }

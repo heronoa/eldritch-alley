@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { moveCost, resolveHit } from './actions';
+import { canStillAct, resolveHit } from './actions';
 import { currentUnitId } from './initiative';
 import { applyAction, hashState, newMatch } from './match';
+import { moveCost } from './movement';
 import { createRng } from './rng';
 import type {
   ActionResult,
@@ -100,6 +101,17 @@ function unitAt(state: MatchState, id: string) {
   return unit;
 }
 
+/**
+ * A two-unit match played up to the second turn of `a1`: the queue has wrapped, the round is 2, and
+ * the unit with the turn is the one that already played. It is the state a late message arrives at.
+ */
+function backToA(state: MatchState): MatchState {
+  const first = accepted(applyAction(state, { type: 'endTurn', actor: 'a1', round: state.round }));
+  return accepted(
+    applyAction(first.state, { type: 'endTurn', actor: 'b1', round: first.state.round }),
+  ).state;
+}
+
 describe('move cost', () => {
   it('charges 1 per cell on flat ground', () => {
     const board = makeBoard();
@@ -123,7 +135,13 @@ describe('actions: move', () => {
 
     const first = accepted(applyAction(state, { type: 'move', actor: 'a1', to: { x: 1, y: 0 } }));
     expect(first.events).toEqual([
-      { type: 'moved', actor: 'a1', from: { x: 0, y: 0 }, to: { x: 1, y: 0 } },
+      {
+        type: 'moved',
+        actor: 'a1',
+        from: { x: 0, y: 0 },
+        to: { x: 1, y: 0 },
+        path: [{ x: 1, y: 0 }],
+      },
     ]);
     expect(unitAt(first.state, 'a1').position).toEqual({ x: 1, y: 0 });
     expect(first.state.movementLeft).toBe(3);
@@ -145,6 +163,53 @@ describe('actions: move', () => {
     const state = newMatch(twoUnitSetup({ position: { x: 0, y: 0 } }, {}, { '0,0': 1 }));
     const result = accepted(applyAction(state, { type: 'move', actor: 'a1', to: { x: 0, y: 1 } }));
     expect(result.state.movementLeft).toBe(3);
+  });
+
+  it('walks the cheapest path to a destination more than one step away', () => {
+    const state = newMatch(twoUnitSetup({ movement: 4 }));
+    const result = accepted(applyAction(state, { type: 'move', actor: 'a1', to: { x: 2, y: 0 } }));
+
+    expect(result.events).toEqual([
+      {
+        type: 'moved',
+        actor: 'a1',
+        from: { x: 0, y: 0 },
+        to: { x: 2, y: 0 },
+        path: [
+          { x: 1, y: 0 },
+          { x: 2, y: 0 },
+        ],
+      },
+    ]);
+    expect(unitAt(result.state, 'a1').position).toEqual({ x: 2, y: 0 });
+    expect(result.state.movementLeft).toBe(2);
+  });
+
+  it('refuses a step of two levels with the height rule, which is what the step itself is', () => {
+    const state = newMatch(twoUnitSetup({}, {}, { '0,1': 2 }));
+
+    expect(rejected(applyAction(state, { type: 'move', actor: 'a1', to: { x: 0, y: 1 } })).reason).toBe(
+      'height-step-too-high',
+    );
+  });
+
+  it('refuses a destination whose only route needs a forbidden step with no-path', () => {
+    // Buildings at (1,0) and (0,1) leave (1,1) as the only way out, and that step is two levels up:
+    // the level is the obstacle, but the cell being stepped on is not the destination.
+    const state = newMatch(twoUnitSetup({}, {}, { '1,0': 5, '0,1': 5, '1,1': 2 }));
+
+    expect(rejected(applyAction(state, { type: 'move', actor: 'a1', to: { x: 2, y: 0 } })).reason).toBe(
+      'no-path',
+    );
+  });
+
+  it('refuses a climb with one point left, which is the case measured in the playtest', () => {
+    // One step onto a cell one level up costs 2, so a unit with a single point left cannot take it.
+    const state = newMatch(twoUnitSetup({ movement: 1 }, {}, { '0,1': 1 }));
+
+    expect(rejected(applyAction(state, { type: 'move', actor: 'a1', to: { x: 0, y: 1 } })).reason).toBe(
+      'no-path',
+    );
   });
 
   it('rejects movement after the action is spent, because the turn is move first, then act', () => {
@@ -242,7 +307,9 @@ describe('actions: attack', () => {
     ]);
 
     const killed = accepted(applyAction(newMatch(setup), { type: 'attack', actor: 'a1', target: 'b1' }));
-    const passed = accepted(applyAction(killed.state, { type: 'endTurn', actor: 'a1' }));
+    const passed = accepted(
+      applyAction(killed.state, { type: 'endTurn', actor: 'a1', round: killed.state.round }),
+    );
     expect(currentUnitId(passed.state)).toBe('a2');
 
     const result = rejected(applyAction(passed.state, { type: 'attack', actor: 'a2', target: 'b1' }));
@@ -271,6 +338,62 @@ describe('actions: attack', () => {
     const second = rejected(applyAction(first.state, { type: 'attack', actor: 'a1', target: 'b1' }));
     expect(second.reason).toBe('already-acted');
   });
+});
+
+describe('actions: attack and line of sight', () => {
+  /** A sniper on the ground, and a target two cells away with a building on the cell between them. */
+  const throughABuilding = (sniper: Partial<Unit> = {}) =>
+    twoUnitSetup({ range: 3, magazine: 3, ...sniper }, { position: { x: 2, y: 0 } }, { '1,0': 5 });
+
+  it('rejects a shot through a building', () => {
+    const result = rejected(
+      applyAction(newMatch(throughABuilding()), { type: 'attack', actor: 'a1', target: 'b1' }),
+    );
+
+    expect(result.reason).toBe('no-line-of-sight');
+  });
+
+  it('accepts the shot when the same buildings are out of the line', () => {
+    // The control for the case above: the same distance, the same reach, no building in between.
+    const state = newMatch(
+      twoUnitSetup({ range: 3, magazine: 3 }, { position: { x: 2, y: 0 } }, { '1,0': 0 }),
+    );
+    const result = accepted(applyAction(state, { type: 'attack', actor: 'a1', target: 'b1' }));
+
+    expect(result.events).toEqual([
+      expect.objectContaining({ type: 'attacked', actor: 'a1', target: 'b1', ammoSpent: true }),
+    ]);
+  });
+
+  it('accepts the sniper shot across the rooftop gap: the playtest case', () => {
+    // The playtest cells (5,2) to (7,2) of the roof map, levelled: the two roofs at 6, the gap between
+    // them at 0. The gap is below the sight line, so it does not block.
+    const state = newMatch(
+      twoUnitSetup({ range: 3, magazine: 3 }, { position: { x: 2, y: 0 } }, { '0,0': 6, '2,0': 6 }),
+    );
+    const result = accepted(applyAction(state, { type: 'attack', actor: 'a1', target: 'b1' }));
+
+    expect(result.events).toEqual([
+      expect.objectContaining({ type: 'attacked', actor: 'a1', target: 'b1', ammoSpent: true }),
+    ]);
+  });
+
+  it('refuses the same shot from an empty magazine, as melee reach 1', () => {
+    // The reach check comes before sight, and a spent magazine turns the sniper into melee. EA-14
+    // replaces this answer with `no-ammunition`; this test changes with it.
+    const state = newMatch(throughABuilding());
+    const empty = {
+      ...state,
+      units: state.units.map((unit) => (unit.id === 'a1' ? { ...unit, ammo: 0 } : unit)),
+    };
+
+    expect(rejected(applyAction(empty, { type: 'attack', actor: 'a1', target: 'b1' })).reason).toBe(
+      'target-out-of-range',
+    );
+  });
+
+  it.todo('a wizard at range 2 shoots across the rooftop gap (EA-14)');
+  it.todo('a priest at range 2 shoots across the rooftop gap (EA-14)');
 });
 
 describe('resolveHit', () => {
@@ -318,7 +441,9 @@ describe('actions: endTurn', () => {
     const moved = accepted(applyAction(state, { type: 'move', actor: 'a1', to: { x: 1, y: 0 } }));
     expect(moved.state.movementLeft).toBe(3);
 
-    const ended = accepted(applyAction(moved.state, { type: 'endTurn', actor: 'a1' }));
+    const ended = accepted(
+      applyAction(moved.state, { type: 'endTurn', actor: 'a1', round: moved.state.round }),
+    );
     expect(ended.events).toEqual([{ type: 'turn-ended', actor: 'a1', next: 'b1', round: 1 }]);
     expect(currentUnitId(ended.state)).toBe('b1');
     expect(ended.state.hasActed).toBe(false);
@@ -327,8 +452,12 @@ describe('actions: endTurn', () => {
 
   it('starts a new round when the last unit in the queue ends its turn', () => {
     const state = newMatch(twoUnitSetup({ movement: 4 }, { movement: 3 }));
-    const first = accepted(applyAction(state, { type: 'endTurn', actor: 'a1' }));
-    const second = accepted(applyAction(first.state, { type: 'endTurn', actor: 'b1' }));
+    const first = accepted(
+      applyAction(state, { type: 'endTurn', actor: 'a1', round: state.round }),
+    );
+    const second = accepted(
+      applyAction(first.state, { type: 'endTurn', actor: 'b1', round: first.state.round }),
+    );
 
     expect(currentUnitId(second.state)).toBe('a1');
     expect(second.state.movementLeft).toBe(4);
@@ -339,8 +468,274 @@ describe('actions: endTurn', () => {
     const attacked = accepted(applyAction(state, { type: 'attack', actor: 'a1', target: 'b1' }));
     expect(attacked.state.hasActed).toBe(true);
 
-    const ended = accepted(applyAction(attacked.state, { type: 'endTurn', actor: 'a1' }));
+    const ended = accepted(
+      applyAction(attacked.state, { type: 'endTurn', actor: 'a1', round: attacked.state.round }),
+    );
     expect(currentUnitId(ended.state)).toBe('b1');
+  });
+
+  /**
+   * The round is what protects the next turn from a message that arrives late (ADR 0010, D5): the
+   * countdown of EA-4 sends `endTurn` from the client, and the answer has to be about this turn.
+   */
+  it('names the round it applies to, and takes the current one', () => {
+    const state = newMatch(twoUnitSetup());
+    const ended = accepted(applyAction(state, { type: 'endTurn', actor: 'a1', round: 1 }));
+
+    expect(currentUnitId(ended.state)).toBe('b1');
+  });
+
+  it('refuses an endTurn that names a round the match has left behind', () => {
+    const state = backToA(newMatch(twoUnitSetup()));
+
+    expect(state.round).toBe(2);
+    expect(rejected(applyAction(state, { type: 'endTurn', actor: 'a1', round: 1 })).reason).toBe(
+      'stale-turn',
+    );
+    expect(currentUnitId(state)).toBe('a1');
+  });
+
+  it('takes the endTurn of the new round, so the check is the round and not the unit', () => {
+    const state = backToA(newMatch(twoUnitSetup()));
+
+    const ended = accepted(applyAction(state, { type: 'endTurn', actor: 'a1', round: state.round }));
+    expect(currentUnitId(ended.state)).toBe('b1');
+  });
+
+  it('answers not-your-turn before stale-turn, so a misdirected command is never blamed on the round', () => {
+    const state = newMatch(twoUnitSetup());
+
+    expect(rejected(applyAction(state, { type: 'endTurn', actor: 'b1', round: 99 })).reason).toBe(
+      'not-your-turn',
+    );
+  });
+});
+
+/**
+ * A move stays on the board, and can be taken back, until it is committed (EA-5, D3). The commit is
+ * the first action that is not another move, and it is what makes the movement final.
+ */
+describe('actions: pending move', () => {
+  /**
+   * A turn of `a1` with a run already open: it walked two of its four points, and `b1` waits next to
+   * the cell it ended on, so the unit has somebody to shoot from there.
+   */
+  function openRun(): MatchState {
+    const state = newMatch(twoUnitSetup({ movement: 4 }, { position: { x: 2, y: 1 }, health: 50 }));
+    return accepted(applyAction(state, { type: 'move', actor: 'a1', to: { x: 2, y: 0 } })).state;
+  }
+
+  /** The same run, on a unit with a round to spare, so reloading is one of the ways to close it. */
+  function openRunWithARoundToSpare(): MatchState {
+    const state = openRun();
+    return {
+      ...state,
+      units: state.units.map((unit) =>
+        unit.id === 'a1' ? { ...unit, magazine: 3, ammo: 2 } : unit,
+      ),
+    };
+  }
+
+  it('opens a run on the cell the movement started on, and grows it with every move', () => {
+    const state = newMatch(twoUnitSetup({ movement: 4 }));
+    expect(state.pendingMove).toBeNull();
+
+    const first = accepted(applyAction(state, { type: 'move', actor: 'a1', to: { x: 2, y: 0 } }));
+    expect(first.state.pendingMove).toEqual({ from: { x: 0, y: 0 }, cost: 2 });
+
+    const second = accepted(applyAction(first.state, { type: 'move', actor: 'a1', to: { x: 3, y: 0 } }));
+    expect(second.state.pendingMove).toEqual({ from: { x: 0, y: 0 }, cost: 3 });
+
+    // The state the second move was played on keeps its own run: a state is never changed in place.
+    expect(first.state.pendingMove).toEqual({ from: { x: 0, y: 0 }, cost: 2 });
+    expect(unitAt(first.state, 'a1').position).toEqual({ x: 2, y: 0 });
+    expect(first.state.movementLeft).toBe(2);
+  });
+
+  it('takes the unit back to the origin and gives back the movement the run spent', () => {
+    const moved = accepted(
+      applyAction(newMatch(twoUnitSetup({ movement: 4 })), {
+        type: 'move',
+        actor: 'a1',
+        to: { x: 2, y: 0 },
+      }),
+    );
+
+    const cancelled = accepted(applyAction(moved.state, { type: 'cancelMove', actor: 'a1' }));
+
+    expect(cancelled.events).toEqual([{ type: 'move-cancelled', actor: 'a1' }]);
+    expect(unitAt(cancelled.state, 'a1').position).toEqual({ x: 0, y: 0 });
+    expect(cancelled.state.movementLeft).toBe(4);
+    expect(cancelled.state.pendingMove).toBeNull();
+  });
+
+  it('gives back what was spent: a run of two returns two of four, a run of four returns all four', () => {
+    const setup = twoUnitSetup({ movement: 4 });
+
+    const half = accepted(applyAction(newMatch(setup), { type: 'move', actor: 'a1', to: { x: 2, y: 0 } }));
+    expect(half.state.movementLeft).toBe(2);
+    const halfBack = accepted(applyAction(half.state, { type: 'cancelMove', actor: 'a1' }));
+    expect(halfBack.state.movementLeft).toBe(4);
+
+    const all = accepted(applyAction(newMatch(setup), { type: 'move', actor: 'a1', to: { x: 4, y: 0 } }));
+    expect(all.state.movementLeft).toBe(0);
+    const allBack = accepted(applyAction(all.state, { type: 'cancelMove', actor: 'a1' }));
+    expect(allBack.state.movementLeft).toBe(4);
+  });
+
+  it('takes two moves back to the origin of the first one, with the cost of both given back', () => {
+    const state = newMatch(twoUnitSetup({ movement: 4 }));
+    const first = accepted(applyAction(state, { type: 'move', actor: 'a1', to: { x: 2, y: 0 } }));
+    const second = accepted(applyAction(first.state, { type: 'move', actor: 'a1', to: { x: 3, y: 0 } }));
+    expect(second.state.movementLeft).toBe(1);
+
+    const cancelled = accepted(applyAction(second.state, { type: 'cancelMove', actor: 'a1' }));
+
+    expect(unitAt(cancelled.state, 'a1').position).toEqual({ x: 0, y: 0 });
+    expect(cancelled.state.movementLeft).toBe(4);
+  });
+
+  /** The actions that close a run from a state that has one open, with how that state is reached. */
+  const commits: { action: Action; open: () => MatchState }[] = [
+    { action: { type: 'attack', actor: 'a1', target: 'b1' }, open: openRun },
+    { action: { type: 'reload', actor: 'a1' }, open: openRunWithARoundToSpare },
+    { action: { type: 'commitMove', actor: 'a1' }, open: openRun },
+  ];
+
+  for (const { action, open } of commits) {
+    it(`commits the run on ${action.type}, and refuses a cancel after it`, () => {
+      const committed = accepted(applyAction(open(), action));
+
+      expect(committed.state.pendingMove).toBeNull();
+      expect(rejected(applyAction(committed.state, { type: 'cancelMove', actor: 'a1' })).reason).toBe(
+        'no-pending-move',
+      );
+    });
+  }
+
+  it('closes the run when the turn ends, so the next turn starts with none of its own', () => {
+    const ended = accepted(applyAction(openRun(), { type: 'endTurn', actor: 'a1', round: 1 }));
+
+    expect(ended.state.pendingMove).toBeNull();
+    expect(currentUnitId(ended.state)).toBe('b1');
+    expect(rejected(applyAction(ended.state, { type: 'cancelMove', actor: 'b1' })).reason).toBe(
+      'no-pending-move',
+    );
+  });
+
+  it('confirms the movement without acting and without ending the turn', () => {
+    const committed = accepted(applyAction(openRun(), { type: 'commitMove', actor: 'a1' }));
+
+    expect(committed.events).toEqual([{ type: 'move-committed', actor: 'a1' }]);
+    expect(unitAt(committed.state, 'a1').position).toEqual({ x: 2, y: 0 });
+    expect(committed.state.movementLeft).toBe(2);
+    expect(committed.state.hasActed).toBe(false);
+    expect(committed.state.round).toBe(1);
+    expect(currentUnitId(committed.state)).toBe('a1');
+  });
+});
+
+/**
+ * Whether the unit with the turn has anything left to do (EA-4). The client asks this question to
+ * know when to pass the turn on its own, so it is the engine that answers it and the two sides agree
+ * by construction. The engine never ends a turn by itself.
+ */
+describe('canStillAct', () => {
+  /** A turn of `a1` with an empty chamber and nobody to shoot: only a reload is left. */
+  function spentOneRound(): MatchState {
+    const start = newMatch(
+      twoUnitSetup(
+        { magazine: 2, range: 1, movement: 0 },
+        { position: { x: 0, y: 1 }, health: 50, movement: 4 },
+      ),
+    );
+
+    const fired = accepted(applyAction(start, { type: 'attack', actor: 'a1', target: 'b1' }));
+    const awayTurn = accepted(
+      applyAction(fired.state, { type: 'endTurn', actor: 'a1', round: fired.state.round }),
+    );
+    // The enemy walks out of a reach of one, so nothing on the board is worth doing any more.
+    const away = accepted(applyAction(awayTurn.state, { type: 'move', actor: 'b1', to: { x: 3, y: 3 } }));
+
+    return accepted(
+      applyAction(away.state, { type: 'endTurn', actor: 'b1', round: away.state.round }),
+    ).state;
+  }
+
+  it('answers yes while a cell can still be walked to', () => {
+    expect(canStillAct(newMatch(twoUnitSetup({ movement: 4 })))).toBe(true);
+  });
+
+  it('answers no when there is no cell, no target and nothing to reload', () => {
+    const state = newMatch(twoUnitSetup({ movement: 0, magazine: 6 }));
+
+    expect(unitAt(state, 'a1').ammo).toBe(6);
+    expect(canStillAct(state)).toBe(false);
+  });
+
+  it('answers yes on a target in reach and in sight, even with nowhere to walk', () => {
+    const state = newMatch(twoUnitSetup({ movement: 0 }, { position: { x: 0, y: 1 } }));
+
+    expect(state.movementLeft).toBe(0);
+    expect(canStillAct(state)).toBe(true);
+  });
+
+  it('answers no on a target that is in reach but out of sight', () => {
+    // A wall two levels over the neighbouring cell: the shot is refused by the line of sight (EA-1).
+    const state = newMatch(
+      twoUnitSetup({ movement: 0, range: 2 }, { position: { x: 2, y: 0 } }, { '1,0': 5 }),
+    );
+
+    expect(canStillAct(state)).toBe(false);
+  });
+
+  it('answers no once the unit has acted, however much movement is left', () => {
+    const state = newMatch(twoUnitSetup({ movement: 4 }, { position: { x: 0, y: 1 } }));
+    const attacked = accepted(applyAction(state, { type: 'attack', actor: 'a1', target: 'b1' }));
+
+    expect(attacked.state.hasActed).toBe(true);
+    expect(attacked.state.movementLeft).toBe(4);
+    expect(canStillAct(attacked.state)).toBe(false);
+  });
+
+  it('answers yes on an empty magazine with nobody in reach: reloading is a way to spend the turn', () => {
+    const state = spentOneRound();
+
+    expect(unitAt(state, 'a1').ammo).toBe(1);
+    expect(unitAt(state, 'a1').magazine).toBe(2);
+    expect(currentUnitId(state)).toBe('a1');
+    expect(state.hasActed).toBe(false);
+    expect(canStillAct(state)).toBe(true);
+  });
+
+  /**
+   * A move that has not been committed is not a spent resource: the player still has to confirm it,
+   * and until then the turn is not over (EA-5). The countdown of EA-4 waits with it.
+   */
+  it('answers yes while a move is waiting to be confirmed, however spent everything else is', () => {
+    // One point of movement, no magazine and nobody in reach: the walk is all this turn has.
+    const state = newMatch(twoUnitSetup({ movement: 1 }));
+    const moved = accepted(applyAction(state, { type: 'move', actor: 'a1', to: { x: 1, y: 0 } }));
+
+    expect(moved.state.movementLeft).toBe(0);
+    expect(moved.state.pendingMove).toEqual({ from: { x: 0, y: 0 }, cost: 1 });
+    expect(canStillAct(moved.state)).toBe(true);
+  });
+
+  it('answers no after the move is committed, when the turn really has nothing left', () => {
+    const state = newMatch(twoUnitSetup({ movement: 1 }));
+    const moved = accepted(applyAction(state, { type: 'move', actor: 'a1', to: { x: 1, y: 0 } }));
+    const committed = accepted(applyAction(moved.state, { type: 'commitMove', actor: 'a1' }));
+
+    expect(committed.state.pendingMove).toBeNull();
+    expect(canStillAct(committed.state)).toBe(false);
+  });
+
+  it('answers no once the match is over', () => {
+    const state = newMatch(twoUnitSetup({ attack: 5 }, { position: { x: 0, y: 1 }, health: 1 }));
+    const killing = accepted(applyAction(state, { type: 'attack', actor: 'a1', target: 'b1' }));
+
+    expect(canStillAct(killing.state)).toBe(false);
   });
 });
 
@@ -352,7 +747,7 @@ describe('game over', () => {
     for (const action of [
       { type: 'move', actor: 'a1', to: { x: 0, y: 1 } },
       { type: 'attack', actor: 'a1', target: 'b1' },
-      { type: 'endTurn', actor: 'a1' },
+      { type: 'endTurn', actor: 'a1', round: 1 },
     ] as Action[]) {
       expect(rejected(applyAction(killing.state, action)).reason).toBe('game-over');
     }
@@ -370,6 +765,15 @@ describe('rejections', () => {
   const attackOnce = (state: MatchState): MatchState =>
     accepted(applyAction(state, { type: 'attack', actor: 'a1', target: 'b1' })).state;
 
+  /** A move played and then confirmed, so the turn has no run left to take back or to close. */
+  const moveThenCommit = (state: MatchState): MatchState =>
+    accepted(
+      applyAction(
+        accepted(applyAction(state, { type: 'move', actor: 'a1', to: { x: 1, y: 0 } })).state,
+        { type: 'commitMove', actor: 'a1' },
+      ),
+    ).state;
+
   const cases: RejectionCase[] = [
     {
       reason: 'not-your-turn',
@@ -382,8 +786,8 @@ describe('rejections', () => {
       action: { type: 'move', actor: 'a1', to: { x: -1, y: 0 } },
     },
     {
-      reason: 'not-adjacent',
-      setup: twoUnitSetup(),
+      reason: 'no-path',
+      setup: twoUnitSetup({ movement: 1 }),
       action: { type: 'move', actor: 'a1', to: { x: 2, y: 0 } },
     },
     {
@@ -394,11 +798,6 @@ describe('rejections', () => {
     {
       reason: 'height-step-too-high',
       setup: twoUnitSetup({}, {}, { '0,1': 2 }),
-      action: { type: 'move', actor: 'a1', to: { x: 0, y: 1 } },
-    },
-    {
-      reason: 'not-enough-movement',
-      setup: twoUnitSetup({ movement: 1 }, {}, { '0,1': 1 }),
       action: { type: 'move', actor: 'a1', to: { x: 0, y: 1 } },
     },
     {
@@ -418,10 +817,47 @@ describe('rejections', () => {
       action: { type: 'attack', actor: 'a1', target: 'ghost' },
     },
     {
+      reason: 'no-line-of-sight',
+      setup: twoUnitSetup({ range: 2 }, { position: { x: 2, y: 0 } }, { '1,0': 5 }),
+      action: { type: 'attack', actor: 'a1', target: 'b1' },
+    },
+    {
       reason: 'game-over',
       setup: twoUnitSetup({ attack: 5 }, { position: { x: 0, y: 1 }, health: 1 }),
-      action: { type: 'endTurn', actor: 'a1' },
+      action: { type: 'endTurn', actor: 'a1', round: 1 },
       prepare: attackOnce,
+    },
+    {
+      reason: 'stale-turn',
+      setup: twoUnitSetup(),
+      // Round 1 of a match that has already wrapped into round 2: the late message of EA-4.
+      action: { type: 'endTurn', actor: 'a1', round: 1 },
+      prepare: backToA,
+    },
+    {
+      reason: 'no-pending-move',
+      setup: twoUnitSetup(),
+      // A move nobody played: there is no run to take back.
+      action: { type: 'cancelMove', actor: 'a1' },
+    },
+    {
+      reason: 'no-pending-move',
+      setup: twoUnitSetup(),
+      // Idle: a run can only be confirmed once one has been opened.
+      action: { type: 'commitMove', actor: 'a1' },
+    },
+    {
+      reason: 'no-pending-move',
+      setup: twoUnitSetup(),
+      // Committed: the run was closed by the confirmation, so there is nothing left to confirm.
+      action: { type: 'commitMove', actor: 'a1' },
+      prepare: moveThenCommit,
+    },
+    {
+      reason: 'not-your-turn',
+      setup: twoUnitSetup(),
+      // The round is nonsense as well, and the turn is answered first: the order of the checks.
+      action: { type: 'endTurn', actor: 'b1', round: 99 },
     },
   ];
 

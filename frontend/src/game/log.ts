@@ -54,15 +54,17 @@ export function describeRejection(reason: RejectReason): string {
     case 'out-of-bounds':
     case 'cell-occupied':
     case 'height-step-too-high':
-    case 'not-enough-movement':
+    case 'no-path':
     case 'already-acted':
     case 'target-out-of-range':
+    case 'no-line-of-sight':
     case 'target-invalid':
     case 'no-magazine':
     case 'magazine-full':
-    case 'not-adjacent':
     case 'game-over':
+    case 'stale-turn':
     case 'malformed-action':
+    case 'no-pending-move':
       // The key is the code itself, so a new reason cannot arrive without its sentence.
       return t(`log.rejection.${reason}`);
     default:

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Board, PublicState, Team, UnitId, UnitState } from '../protocol';
-import { turnOrder } from './turn-order';
+import { activeSlot, isHumanTurn, turnOrder } from './turn-order';
 
 const BOARD: Board = { width: 8, height: 8, levels: new Array<number>(64).fill(0) };
 
@@ -28,6 +28,7 @@ function makeUnit(spec: UnitSpec): UnitState {
     primaryClass: 'sniper',
     equipment: { armor: null, helmet: null, mainHand: null, offHand: null, accessory1: null, accessory2: null },
     abilities: { activeSets: [null, null], reaction: null, movement: null, support: null },
+    movementProfile: { maxStepUp: 1, maxStepDown: 1, climbCost: 1 },
     defeated: spec.defeated ?? false,
     ammo: 3,
     permanentlyDead: false,
@@ -47,6 +48,7 @@ function makeState(units: readonly UnitState[], currentIndex = 0): PublicState {
     round: 1,
     hasActed: false,
     eventCount: 0,
+    pendingMove: null,
   };
 }
 
@@ -90,5 +92,49 @@ describe('turnOrder', () => {
 
   it('returns nothing when the queue is empty', () => {
     expect(turnOrder(makeState([]))).toEqual([]);
+  });
+});
+
+describe('activeSlot', () => {
+  it('answers with the unit the initiative has at the current index', () => {
+    const slot = activeSlot(makeState(SQUAD, 1));
+
+    expect(slot?.unit).toBe(BOT_SNIPER);
+  });
+
+  it('marks the slot it answers with as the current one, like the head of the queue', () => {
+    expect(activeSlot(makeState(SQUAD, 2))).toEqual(turnOrder(makeState(SQUAD, 2))[0]);
+  });
+
+  it('returns null when the match is over and no unit is left on turn', () => {
+    expect(activeSlot(makeState([]))).toBeNull();
+  });
+
+  it('returns null when the index points past the queue', () => {
+    expect(activeSlot(makeState(SQUAD, SQUAD.length))).toBeNull();
+  });
+
+  it('returns null when the queue names a unit the state does not carry', () => {
+    const state = { ...makeState(SQUAD, 0), initiative: ['A-nobody'] };
+
+    expect(activeSlot(state)).toBeNull();
+  });
+});
+
+describe('isHumanTurn', () => {
+  it('is true when the unit on turn belongs to the human team', () => {
+    expect(isHumanTurn(makeState(SQUAD, 0), 'A')).toBe(true);
+  });
+
+  it('is false when the unit on turn belongs to the other team', () => {
+    expect(isHumanTurn(makeState(SQUAD, 1), 'A')).toBe(false);
+  });
+
+  it('follows the side it is asked about, not the side that plays the client', () => {
+    expect(isHumanTurn(makeState(SQUAD, 1), 'B')).toBe(true);
+  });
+
+  it('is false when nobody is on turn', () => {
+    expect(isHumanTurn(makeState([]), 'A')).toBe(false);
   });
 });

@@ -6,14 +6,27 @@ import {
   actionButtons,
   applyMode,
   availableActions,
+  moveChips,
   settleMode,
   type ActionButton,
   type ActionMode,
+  type MoveChip,
 } from '../game/actions';
-import { highlightedCells } from '../game/highlight';
+import {
+  endTurnAction,
+  initialAutoEndTurn,
+  readAutoEndTurn,
+  saveAutoEndTurn,
+  stepAutoEndTurn,
+  type AutoEndStep,
+  type AutoEndTurn,
+  type AutoEndTurnEvent,
+} from '../game/autoEndTurn';
+import { highlightedCells, highlightTone } from '../game/highlight';
 import { describeEvent, describeRejection, type UnitNames } from '../game/log';
 import { presentationOf, type Cue, type Snapshot } from '../game/presentation';
-import { resolveClick } from '../game/selection';
+import { resolveClick, resolveInspect } from '../game/selection';
+import { activeSlot, isHumanTurn } from '../game/turn-order';
 import { t } from '../i18n';
 import { terrainOf, type Terrain } from '../maps/terrain';
 import { Session } from '../net/session';
@@ -23,9 +36,9 @@ import {
   type EndedMessage,
   type Event,
   type PublicState,
+  type RejectReason,
   type StateMessage,
   type Team,
-  type UnitState,
 } from '../protocol';
 import { NO_FLOOR, type Cell, type Pixel } from '../view/grid';
 import { MIN_ZOOM, zoomAbout, type CameraView } from '../view/camera';
@@ -34,9 +47,15 @@ import { cellAt, cellToScreen, topFace } from '../view/iso';
 import {
   LOG_LINES,
   buttonIndexAt,
+  COUNTDOWN_LINK_RECT,
+  COUNTDOWN_RECT,
   RESULT_BUTTON_RECT,
+  SETTINGS_BUTTON_RECT,
+  SETTINGS_PANEL_RECT,
+  SETTINGS_TOGGLE_RECT,
   containsPoint,
   hudRects,
+  moveChipIndexAt,
   CANVAS_HEIGHT,
   CANVAS_WIDTH,
   boardBounds,
@@ -60,6 +79,14 @@ const HUMAN_TEAM: Team = 'A';
 const WHEEL_ZOOM_STEP = 1.15;
 const KEY_ZOOM_STEP = 1.25;
 
+/**
+ * The secondary gesture of the inspection (EA-6, D4): how long a finger rests on a unit before the
+ * gesture is an inspection instead of a tap, and how far it may drift while it rests. A finger that
+ * travels further is panning the map, and a tap shorter than the press is an ordinary click.
+ */
+const LONG_PRESS_MS = 400;
+const PRESS_SLOP_PX = 6;
+
 /** The state carries no display name for a unit, so the log falls back to the id. */
 const UNIT_NAMES: UnitNames = {};
 
@@ -74,15 +101,22 @@ function snapshotOf(state: PublicState): Map<string, Snapshot> {
 }
 
 /** The two buttons that act at once, without a board target. The other two arm a mode instead. */
-function immediateAction(id: ActionButton['id']): ClientAction | null {
+function immediateAction(id: ActionButton['id'], round: number): ClientAction | null {
   switch (id) {
     case 'reload':
       return { type: 'reload' };
     case 'endTurn':
-      return { type: 'endTurn' };
+      // The round goes with it, so a press that reaches the server after the match has moved on is
+      // refused instead of ending the turn of whoever is up by then (ADR 0010).
+      return { type: 'endTurn', round };
     default:
       return null;
   }
+}
+
+/** Whole seconds left of the countdown, rounded up: what the player is told, and all they are told. */
+function secondsLeft(machine: AutoEndTurn): number {
+  return Math.ceil(machine.remainingMs / 1000);
 }
 
 export class MatchScene extends Phaser.Scene {
@@ -91,11 +125,30 @@ export class MatchScene extends Phaser.Scene {
   private selectedId: string | null = null;
   /** The armed mode. `move` and `attack` narrow the next board click; `inspect` leaves it alone. */
   private mode: ActionMode = 'inspect';
+  /** The unit the secondary gesture is inspecting, or null when no inspection is open (EA-6). */
+  private inspectedId: string | null = null;
+  /**
+   * Where the finger that is down went down, or null when no tap is waiting. A press that is still
+   * standing when the finger lifts is a tap shorter than the long press, and so an ordinary click; a
+   * press that the long press already answered, or that travelled far enough to be a pan, is taken
+   * down and the release does nothing (EA-6, D4).
+   */
+  private press: Pixel | null = null;
+  private pressTimer: Phaser.Time.TimerEvent | null = null;
   private logLines: string[] = [];
   /** Set when the match is over or lost, after which clicks are ignored. */
   private finished = false;
   /** True while waiting for a reconnection, so the first state that arrives can clear the notice. */
   private reconnecting = false;
+
+  /** The automatic end of turn (EA-4): the countdown nobody has to press, and the setting behind it. */
+  private autoEndTurn: AutoEndTurn = initialAutoEndTurn();
+  /** The unit the machine was last told about, so a hand-over starts the countdown from nothing. */
+  private autoEndTurnUnit: string | null = null;
+  /** Whether the settings panel the gear opens is on the screen. */
+  private settingsOpen = false;
+  /** The clock of the last frame, so the machine is handed elapsed time and never reads the clock. */
+  private lastFrameMs = 0;
 
   /** One sprite per unit, kept for the whole match so an animation is never cut by a redraw. */
   private sprites = new Map<string, UnitSprite>();
@@ -111,6 +164,8 @@ export class MatchScene extends Phaser.Scene {
   private hud!: HudScene;
   /** The model the drawn buttons came from, so a click resolves to the action the player sees. */
   private buttonModel: ActionButton[] = [];
+  /** The two controls of a pending move, for the same reason as the buttons (EA-5, D6). */
+  private chipModel: MoveChip[] = [];
   private statusText = '';
   private resultText = '';
   /** Where the map camera is: its zoom, and the world point at the centre of the canvas. */
@@ -125,10 +180,18 @@ export class MatchScene extends Phaser.Scene {
     this.state = null;
     this.selectedId = null;
     this.mode = 'inspect';
+    this.inspectedId = null;
+    this.cancelPress();
     this.logLines = [];
     this.finished = false;
     this.reconnecting = false;
+    // The setting is read again on every match: another tab may have changed it since the last one.
+    this.autoEndTurn = initialAutoEndTurn(readAutoEndTurn());
+    this.autoEndTurnUnit = null;
+    this.settingsOpen = false;
+    this.lastFrameMs = 0;
     this.buttonModel = [];
+    this.chipModel = [];
     this.statusText = '';
     this.resultText = '';
     this.camera = { zoom: MIN_ZOOM, centre: { x: CANVAS_WIDTH / 2, y: CANVAS_HEIGHT / 2 } };
@@ -151,7 +214,11 @@ export class MatchScene extends Phaser.Scene {
     this.hud = this.scene.get('hud') as HudScene;
     this.applyCamera();
 
-    this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => this.handleClick(pointer));
+    this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => this.handlePointerDown(pointer));
+    this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => this.trackPress(pointer));
+    this.input.on('pointerup', (pointer: Phaser.Input.Pointer) => this.handlePointerUp(pointer));
+    // The right button is the inspection on a desktop, so the menu of the browser must not eat it.
+    this.input.mouse?.disableContextMenu();
     this.input.on('wheel', (pointer: Phaser.Input.Pointer, _objects: unknown, _dx: number, dy: number) => {
       this.zoomBy(dy < 0 ? WHEEL_ZOOM_STEP : 1 / WHEEL_ZOOM_STEP, { x: pointer.x, y: pointer.y });
     });
@@ -164,6 +231,7 @@ export class MatchScene extends Phaser.Scene {
     // The map's canvases are textures of the game, not objects of this scene: leaving without taking
     // them out would pile a hundred of them up on the next match.
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.cancelPress();
       this.mapView?.destroy();
       this.mapView = null;
       this.map = null;
@@ -172,7 +240,7 @@ export class MatchScene extends Phaser.Scene {
 
     this.session.onState((message) => this.handleState(message));
     this.session.onEvents((events) => this.handleEvents(events));
-    this.session.onRejected((message) => this.appendLog(describeRejection(message.reason)));
+    this.session.onRejected((message) => this.handleRejected(message.reason));
     this.session.onEnded((message) => this.handleEnded(message));
     this.session.onDrop(() => {
       void this.handleDrop();
@@ -181,15 +249,124 @@ export class MatchScene extends Phaser.Scene {
   }
 
   /**
-   * The HUD is tested first and consumes the click: the action bar against the same rectangle that
-   * draws each button (DT-30), then any point inside any HUD rectangle, even where no control is, so
-   * a panel floating over a tile never lets a click through to the tile. Only what is left reaches
-   * the board, and what it means there is decided by `resolveClick`, narrowed by `applyMode`; the
+   * A press begins. The right button is the inspection and is read as one at once; a finger may still
+   * become a long press, so a tap waits for its release to act; anything else clicks here and now
+   * (EA-6, D4). The primary click is never the inspection: on an enemy it is the action itself.
+   */
+  private handlePointerDown(pointer: Phaser.Input.Pointer): void {
+    if (pointer.rightButtonDown()) {
+      this.handlePress(pointer, true);
+      return;
+    }
+
+    if (pointer.wasTouch) {
+      this.armPress(pointer);
+      return;
+    }
+
+    this.handlePress(pointer, false);
+  }
+
+  /** A finger that has rested long enough on a unit is inspecting it, not tapping the board (D4). */
+  private armPress(pointer: Phaser.Input.Pointer): void {
+    this.cancelPress();
+    this.press = { x: pointer.x, y: pointer.y };
+    this.pressTimer = this.time.delayedCall(LONG_PRESS_MS, () => {
+      // The timer is spent, and taking the press down here is what keeps the release that follows from
+      // clicking as well: one gesture, one meaning (D4).
+      this.pressTimer = null;
+      this.press = null;
+      this.handlePress(pointer, true);
+    });
+  }
+
+  /** A finger that travels is panning the map, so the press is neither an inspection nor a tap. */
+  private trackPress(pointer: Phaser.Input.Pointer): void {
+    if (this.press === null) return;
+
+    const drift = Math.max(
+      Math.abs(pointer.x - this.press.x),
+      Math.abs(pointer.y - this.press.y),
+    );
+    if (drift > PRESS_SLOP_PX) this.cancelPress();
+  }
+
+  private handlePointerUp(pointer: Phaser.Input.Pointer): void {
+    const tap = this.press !== null;
+    this.cancelPress();
+    // A tap shorter than the long press is an ordinary click, and it acts (D4).
+    if (tap) this.handlePress(pointer, false);
+  }
+
+  private cancelPress(): void {
+    this.pressTimer?.remove(false);
+    this.pressTimer = null;
+    this.press = null;
+  }
+
+  /**
+   * Whether the HUD owns this point, and what it does with it. The HUD is not zoomed, so its rectangles
+   * are read in screen space. Its pieces are read in the order they cover each other: the countdown of
+   * the automatic end of turn and the link under it, the gear and the panel it opens, the action bar
+   * against the same rectangle that draws each button (DT-30), the two chips of a pending move, and any
+   * point inside any HUD rectangle, even where no control is, so a panel floating over a tile never
+   * lets a click through to the tile. Only a point none of them takes reaches the board.
+   */
+  private hudTakesPress(point: Pixel): boolean {
+    // The countdown of the automatic end of turn floats over the board (EA-4), so it is read before
+    // anything it covers: the line keeps the turn, and the link under it turns the feature off.
+    if (this.autoEndTurn.phase === 'counting') {
+      if (containsPoint(COUNTDOWN_LINK_RECT, point)) {
+        this.disableAutoEndTurn();
+        return true;
+      }
+      if (containsPoint(COUNTDOWN_RECT, point)) {
+        this.applyAutoEndTurn({ type: 'cancel' });
+        this.pushHud();
+        return true;
+      }
+    }
+
+    // The gear and the panel it opens are read the way the way out of a finished match is: they are
+    // not in `hudRects`, which lists the pieces always on the screen. The panel swallows every click
+    // inside it, so nothing under it is pressed while it is open; the gear is what closes it.
+    if (containsPoint(SETTINGS_BUTTON_RECT, point)) {
+      this.settingsOpen = !this.settingsOpen;
+      this.pushHud();
+      return true;
+    }
+    if (this.settingsOpen && containsPoint(SETTINGS_PANEL_RECT, point)) {
+      if (containsPoint(SETTINGS_TOGGLE_RECT, point)) this.setAutoEndTurn(!this.autoEndTurn.enabled);
+      return true;
+    }
+
+    const buttonIndex = buttonIndexAt(point);
+    if (buttonIndex !== null) {
+      const button = this.buttonModel[buttonIndex];
+      if (button !== undefined && button.enabled) this.pressAction(button.id, button.mode);
+      return true;
+    }
+
+    // The two controls of a pending move float over the board above the bar (EA-5, D6), so they are
+    // read before `hudRects` the way the countdown is: what they cover is the board, not the HUD.
+    const chipIndex = moveChipIndexAt(point);
+    if (chipIndex !== null) {
+      const chip = this.chipModel[chipIndex];
+      if (chip !== undefined) this.session.send(chip.action);
+      return true;
+    }
+
+    return hudRects().some((rect) => containsPoint(rect, point));
+  }
+
+  /**
+   * A press on the board, once the HUD has had its say. The board is zoomed, so the point is read in
+   * the world space the pointer reports for the map camera. The gesture decides what it means: the
+   * secondary one is an inspection, which reads the unit under the pointer and sends nothing (EA-6),
+   * and the primary one is an action, whose meaning `resolveClick` answers and `applyMode` narrows. The
    * server decides the rest.
    */
-  private handleClick(pointer: Phaser.Input.Pointer): void {
-    // The HUD is not zoomed, so its rectangles are tested in screen space; the board is zoomed, so it is
-    // tested in the world space the pointer reports for the map camera.
+  private handlePress(pointer: Phaser.Input.Pointer, secondary: boolean): void {
     const point = { x: pointer.x, y: pointer.y };
     const world = { x: pointer.worldX, y: pointer.worldY };
 
@@ -198,15 +375,7 @@ export class MatchScene extends Phaser.Scene {
       return;
     }
     if (this.finished || this.state === null) return;
-
-    const buttonIndex = buttonIndexAt(point);
-    if (buttonIndex !== null) {
-      const button = this.buttonModel[buttonIndex];
-      if (button !== undefined && button.enabled) this.pressAction(button.id, button.mode);
-      return;
-    }
-
-    if (hudRects().some((rect) => containsPoint(rect, point))) return;
+    if (this.hudTakesPress(point)) return;
 
     // The board the state carries says how big it is; what each cell is drawn at comes from the map,
     // lift included, so a click lands on the cell the player aimed at.
@@ -218,6 +387,19 @@ export class MatchScene extends Phaser.Scene {
     );
     if (cell === null) return;
 
+    // The secondary gesture asks about the unit on the cell and stops there: it is not a selection and
+    // not an action, so it never reaches `resolveClick` and never sends anything (EA-6, D2/D4).
+    if (secondary) {
+      this.inspect(this.state, cell);
+      return;
+    }
+
+    // A primary click on the board is an action, so whatever the secondary gesture left on the screen
+    // goes away first: the inspection is a question being held, not something the turn carries on with.
+    this.closeInspection();
+
+    // The armed mode decides what the click may send: a move only with `Mover` armed, an attack only
+    // with `Atacar` armed (EA-7 as amended: the destination is the move, Confirmar commits it).
     const intent = applyMode(
       this.mode,
       resolveClick({ state: this.state, selectedId: this.selectedId, cell, humanTeam: HUMAN_TEAM }),
@@ -231,24 +413,56 @@ export class MatchScene extends Phaser.Scene {
       case 'send':
         this.session.send(intent.action);
         break;
-      case 'move-preview':
+      case 'inspect':
       case 'none':
         break;
     }
   }
 
+  /**
+   * The question the secondary gesture asks: which cells the unit on `cell` covers from where it
+   * stands. The answer is the engine's own `attackArea`, drawn alone and in the attack tone; nothing
+   * about the match changes, and the acting unit keeps the turn (EA-6, D1/D2). A cell nobody holds, and
+   * a unit out of the fight, close the inspection instead — there is nothing to ask about.
+   */
+  private inspect(state: PublicState, cell: Cell): void {
+    const intent = resolveInspect(state, cell);
+    this.setInspection(intent.kind === 'inspect' ? intent.unitId : null, state);
+  }
+
+  /** The state answers its own question again, which is what the board goes back to (EA-6, D2). */
+  private closeInspection(): void {
+    // Every click on the board closes the inspection first, so a match with none open must not pay for
+    // a redraw that would draw what is already on the screen.
+    if (this.inspectedId !== null) this.setInspection(null, this.state);
+  }
+
+  /** Opens the inspection on `unitId`, or closes it when that is null, and draws the board again. */
+  private setInspection(unitId: string | null, state: PublicState | null): void {
+    this.inspectedId = unitId;
+    if (state !== null) this.redraw(state);
+  }
+
   /** Arms the button's mode, or cancels it when it is already armed, so the bar is its own undo. */
   private pressAction(id: ActionButton['id'], mode: ActionMode | null): void {
-    if (this.finished) return;
+    if (this.finished || this.state === null) return;
 
     if (mode !== null) {
       this.mode = this.mode === mode ? 'inspect' : mode;
-      if (this.state) this.redraw(this.state);
+      this.redraw(this.state);
       return;
     }
 
-    const action = immediateAction(id);
-    if (action) this.session.send(action);
+    const action = immediateAction(id, this.state.round);
+    if (action === null) return;
+
+    // The turn is being handed over by hand: the countdown must not hand it over again behind the
+    // click, which would put a refused order in the log for the player to wonder about.
+    if (action.type === 'endTurn') {
+      this.applyAutoEndTurn({ type: 'cancel' });
+      this.pushHud();
+    }
+    this.session.send(action);
   }
 
   private handleState(message: StateMessage): void {
@@ -266,9 +480,10 @@ export class MatchScene extends Phaser.Scene {
 
     // The acting unit is selected for the player, so the board and the panel are about the unit that
     // can actually act; the mode then falls back if the new turn has nothing left to do.
-    const actor = this.actor();
-    if (actor && actor.team === HUMAN_TEAM) this.selectedId = actor.id;
+    const actor = activeSlot(message.state);
+    if (actor !== null && isHumanTurn(message.state, HUMAN_TEAM)) this.selectedId = actor.unit.id;
     this.mode = settleMode(this.mode, availableActions(message.state, HUMAN_TEAM));
+    this.syncAutoEndTurn();
 
     this.redraw(message.state);
 
@@ -289,12 +504,6 @@ export class MatchScene extends Phaser.Scene {
     this.mapView?.destroy();
     this.map = terrainOf(mapId);
     this.mapView = new MapView(this, this.map);
-  }
-
-  private actor(): UnitState | undefined {
-    if (!this.state) return undefined;
-    const currentId = this.state.initiative[this.state.currentIndex];
-    return this.state.units.find((unit) => unit.id === currentId);
   }
 
   /**
@@ -339,7 +548,7 @@ export class MatchScene extends Phaser.Scene {
   private play(cue: Cue): void {
     switch (cue.kind) {
       case 'move':
-        this.sprites.get(cue.unitId)?.slideTo(this.placementOf(cue.from), this.placementOf(cue.to));
+        this.sprites.get(cue.unitId)?.walkTo(cue.steps.map((step) => this.placementOf(step)));
         break;
 
       case 'attack': {
@@ -384,6 +593,16 @@ export class MatchScene extends Phaser.Scene {
     if (event.type === 'corpse-removed') this.snapshot.delete(event.target);
   }
 
+  /**
+   * A refused action changes nothing on the board, and the log says why. A refused `endTurn` also
+   * hands the turn back to the player (DT-75): the countdown is over, so the hint takes its place.
+   */
+  private handleRejected(reason: RejectReason): void {
+    this.appendLog(describeRejection(reason));
+    this.applyAutoEndTurn({ type: 'rejected' });
+    this.pushHud();
+  }
+
   /** A rejected action changes nothing: the state, the selection and the armed mode stay as they were. */
   private appendLog(line: string): void {
     this.logLines.push(line);
@@ -409,9 +628,78 @@ export class MatchScene extends Phaser.Scene {
     this.pushHud();
   }
 
-  /** The match is over: clicks stop, and the way out appears. */
+  /** The match is over: clicks stop, the countdown stops with them, and the way out appears. */
   private finish(): void {
     this.finished = true;
+    this.syncAutoEndTurn();
+    this.pushHud();
+  }
+
+  /**
+   * Tells the machine what the turn has left (EA-4). `availableActions` answers with the engine's own
+   * `canStillAct`, so the countdown starts exactly when the server would have nothing left to accept,
+   * and the bot's turn is never counted: what the bot has left is the bot's business.
+   *
+   * The unit on turn is remembered, because a hand-over starts from nothing: a countdown that ran out
+   * on the last unit must not leave the next one already sent, and a cancel belongs to the turn it was
+   * made on.
+   */
+  private syncAutoEndTurn(): void {
+    const state = this.finished ? null : this.state;
+    const actor = state === null ? null : (activeSlot(state)?.unit.id ?? null);
+
+    if (actor !== this.autoEndTurnUnit) {
+      this.autoEndTurnUnit = actor;
+      this.applyAutoEndTurn({ type: 'nothingLeftOff' });
+    }
+
+    const nothingLeft = state !== null && availableActions(state, HUMAN_TEAM).nothingLeft;
+    if (nothingLeft !== this.autoEndTurn.nothingLeft) {
+      this.applyAutoEndTurn({ type: nothingLeft ? 'nothingLeftOn' : 'nothingLeftOff' });
+    }
+  }
+
+  /**
+   * One frame of the countdown. The machine is handed the milliseconds since the last frame, so it
+   * never reads the clock itself, and the turn goes out with the round the state is on: a command that
+   * reaches the server after the match has moved on is refused instead of ending somebody's turn.
+   */
+  private advanceAutoEndTurn(time: number): void {
+    const elapsedMs = this.lastFrameMs === 0 ? 0 : time - this.lastFrameMs;
+    this.lastFrameMs = time;
+
+    const state = this.state;
+    if (state === null || elapsedMs <= 0) return;
+
+    const before = this.autoEndTurn;
+    const step = this.applyAutoEndTurn({ type: 'tick', ms: elapsedMs });
+    if (step.send) this.session.send(endTurnAction(state));
+
+    // The countdown is read a whole second at a time, so a frame that leaves the second where it was
+    // redraws nothing; the phase has to change with it, which is also what takes the line off the
+    // screen once the turn has gone out — reaching zero is a change of phase like any other.
+    const changed = step.machine.phase !== before.phase || secondsLeft(before) !== secondsLeft(step.machine);
+    if (changed) this.pushHud();
+  }
+
+  /** Feeds the machine one event and keeps its answer. Only the countdown acts on `send`. */
+  private applyAutoEndTurn(event: AutoEndTurnEvent): AutoEndStep {
+    const step = stepAutoEndTurn(this.autoEndTurn, event);
+    this.autoEndTurn = step.machine;
+    return step;
+  }
+
+  /** Turns the automatic end of turn off for good, from the link under the countdown (EA-4). */
+  private disableAutoEndTurn(): void {
+    saveAutoEndTurn(false);
+    this.applyAutoEndTurn({ type: 'disable' });
+    this.pushHud();
+  }
+
+  /** The one option of the settings panel, which turns the feature both on and off. */
+  private setAutoEndTurn(enabled: boolean): void {
+    saveAutoEndTurn(enabled);
+    this.applyAutoEndTurn({ type: 'settingChanged', enabled });
     this.pushHud();
   }
 
@@ -446,16 +734,25 @@ export class MatchScene extends Phaser.Scene {
   /** Hands the HUD what it shows now, and keeps the model of its buttons for the clicks. */
   private pushHud(): void {
     this.buttonModel = this.state ? actionButtons(this.state, HUMAN_TEAM) : [];
+    this.chipModel = this.state ? moveChips(this.state, HUMAN_TEAM) : [];
     this.hud.render({
       state: this.state,
+      humanTeam: HUMAN_TEAM,
       selectedId: this.selectedId,
       mode: this.mode,
       finished: this.finished,
       buttons: this.buttonModel,
+      moveChips: this.chipModel,
       logLines: this.logLines,
       status: this.statusText,
       result: this.resultText,
       wayOutVisible: this.finished,
+      settingsOpen: this.settingsOpen,
+      autoEndTurn: {
+        phase: this.autoEndTurn.phase,
+        seconds: secondsLeft(this.autoEndTurn),
+        enabled: this.autoEndTurn.enabled,
+      },
     });
   }
 
@@ -476,18 +773,24 @@ export class MatchScene extends Phaser.Scene {
     cam.centerOn(this.camera.centre.x, this.camera.centre.y);
   }
 
-  /** The cells the armed mode would act on, drawn as the top face of each cell they cover. */
+  /**
+   * The cells the state offers, drawn as the top face of each cell they cover. There is one area at a
+   * time and which one it is comes from the state, not from the armed mode (EA-5): the destinations
+   * while choosing where to walk, and the area the unit covers from where it stands once a move is
+   * waiting to be confirmed. An inspection (EA-6) replaces that question with the reach of the unit the
+   * player is asking about, drawn alone. The tone follows the same answer, so the two never mix.
+   */
   private drawHighlights(state: PublicState): void {
     for (const graphic of this.highlights) graphic.destroy();
     this.highlights = [];
-    if (this.mode === 'inspect') return;
 
-    const move = this.mode === 'move';
+    const move = highlightTone({ mode: this.mode, inspectedId: this.inspectedId }) === 'move';
     const color = move ? HIGHLIGHT_MOVE_COLOR : HIGHLIGHT_ATTACK_COLOR;
     const alpha = move ? HIGHLIGHT_MOVE_ALPHA : HIGHLIGHT_ATTACK_ALPHA;
     const cells = highlightedCells({
       state,
       selectedId: this.selectedId,
+      inspectedId: this.inspectedId,
       mode: this.mode,
       humanTeam: HUMAN_TEAM,
     });
@@ -514,17 +817,19 @@ export class MatchScene extends Phaser.Scene {
    */
   private redrawUnits(state: PublicState): void {
     const inPlay = new Set<string>();
+    const activeId = activeSlot(state)?.unit.id ?? null;
 
     for (const unit of state.units) {
       if (unit.permanentlyDead) continue;
       inPlay.add(unit.id);
 
+      const marks = { selected: unit.id === this.selectedId, active: unit.id === activeId };
       let sprite = this.sprites.get(unit.id);
       if (sprite === undefined) {
-        sprite = new UnitSprite(this, unit, unit.id === this.selectedId, this.placementOf(unit.position));
+        sprite = new UnitSprite(this, unit, marks, this.placementOf(unit.position));
         this.sprites.set(unit.id, sprite);
       } else {
-        sprite.sync(unit, unit.id === this.selectedId, this.placementOf(unit.position));
+        sprite.sync(unit, marks, this.placementOf(unit.position));
       }
     }
 
@@ -535,10 +840,11 @@ export class MatchScene extends Phaser.Scene {
     }
   }
 
-  /** One frame of every animation on the board. The scene decides nothing; the sprites advance. */
+  /** One frame of every animation on the board, and one of the countdown. The sprites advance. */
   update(time: number): void {
     this.mapView?.update(time);
     for (const sprite of this.sprites.values()) sprite.tick(time);
+    this.advanceAutoEndTurn(time);
   }
 
 }

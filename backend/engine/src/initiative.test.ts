@@ -79,7 +79,11 @@ describe('initiative', () => {
     expect(attack.state.initiative).toEqual(['a1', 'c1']);
     expect(currentUnitId(attack.state)).toBe('a1');
 
-    const endTurn = applyAction(attack.state, { type: 'endTurn', actor: 'a1' });
+    const endTurn = applyAction(attack.state, {
+      type: 'endTurn',
+      actor: 'a1',
+      round: attack.state.round,
+    });
     if (!endTurn.ok) throw new Error(`expected endTurn to be accepted: ${endTurn.reason}`);
     expect(currentUnitId(endTurn.state)).toBe('c1');
   });

@@ -1,28 +1,107 @@
 // The single place where match state changes. Live play and replay both go through applyEvent, so a
 // sequence of events always rebuilds the same state (ADR 0005).
-import { moveCost } from './actions';
 import { corpseRounds } from './corpse';
+import { distance, inBounds } from './board';
 import { advanceIndex, removeFromInitiative, unitById } from './initiative';
-import type { Event, MatchState } from './types';
+import { movementProfile, stepAllowed, stepCost } from './movement';
+import type { Board, Event, MatchState, MovementProfile, Position } from './types';
 
 function cloneState(state: MatchState): MatchState {
   return {
     ...state,
     units: state.units.map((unit) => ({ ...unit, position: { ...unit.position } })),
     initiative: [...state.initiative],
+    pendingMove:
+      state.pendingMove === null
+        ? null
+        : { from: { ...state.pendingMove.from }, cost: state.pendingMove.cost },
     rng: { ...state.rng },
   };
+}
+
+/**
+ * Refuses a `moved` path that is not a walk the unit can make: each step next to the one before it,
+ * on the board, allowed by the profile, and paid for with the movement left. A replay reads stored
+ * events, so a malformed path must fail here rather than move the unit to the wrong cell (DT-73).
+ */
+function requireWalk(
+  board: Board,
+  profile: MovementProfile,
+  movementLeft: number,
+  from: Position,
+  to: Position,
+  path: readonly Position[],
+): void {
+  if (path.length === 0) throw new Error('moved: the path is empty');
+  const last = path[path.length - 1];
+  if (last.x !== to.x || last.y !== to.y) {
+    throw new Error('moved: the path does not end on the destination');
+  }
+
+  let previous = from;
+  let cost = 0;
+  path.forEach((step, index) => {
+    const n = index + 1;
+    if (!inBounds(board, step)) throw new Error(`moved: step ${n} is outside the board`);
+    if (distance(previous, step) !== 1) {
+      throw new Error(`moved: step ${n} is not next to the cell before it`);
+    }
+    if (!stepAllowed(profile, board, previous, step)) {
+      throw new Error(`moved: step ${n} is not allowed by the movement profile`);
+    }
+    cost += stepCost(profile, board, previous, step);
+    previous = step;
+  });
+  if (cost > movementLeft) throw new Error('moved: the path costs more than the movement left');
 }
 
 /** Applies one event and returns the next state. The state passed in is never changed. */
 export function applyEvent(state: MatchState, event: Event): MatchState {
   const next = cloneState(state);
+  // The run as it was before this event: a move extends it, a cancel gives it back.
+  const run = state.pendingMove;
+  // What commits a pending move is any event that is not another move (EA-5, D3): the attack, the
+  // reload, the end of the turn, and the confirmation itself all close the run. It lives here, so a
+  // replay rebuilds the same state from the events alone.
+  if (event.type !== 'moved') next.pendingMove = null;
 
   switch (event.type) {
     case 'moved': {
       const actor = unitById(next, event.actor);
-      next.movementLeft -= moveCost(next.board, event.from, event.to);
-      actor.position = { x: event.to.x, y: event.to.y };
+      const profile = movementProfile(actor);
+      requireWalk(next.board, profile, next.movementLeft, event.from, event.to, event.path);
+      // The walk pays for every step it takes, and the unit ends on the last cell of it. The
+      // destination alone is the degenerate walk, for an event that carries no path.
+      const steps: readonly Position[] = event.path.length > 0 ? event.path : [event.to];
+      let previous = event.from;
+      let cost = 0;
+      for (const step of steps) {
+        cost += stepCost(profile, next.board, previous, step);
+        previous = step;
+      }
+
+      next.movementLeft -= cost;
+      actor.position = { x: previous.x, y: previous.y };
+      // The walk either opens a run on the cell it started from, or grows the one already open. The
+      // cost is what the run has spent, which is what a cancel gives back (D5).
+      next.pendingMove =
+        run === null
+          ? { from: { x: event.from.x, y: event.from.y }, cost }
+          : { from: { ...run.from }, cost: run.cost + cost };
+      break;
+    }
+
+    case 'move-cancelled': {
+      if (run === null) throw new Error('move-cancelled: there is no pending move to take back');
+      // Back to where the run started, with the movement the run spent given back (D5).
+      unitById(next, event.actor).position = { x: run.from.x, y: run.from.y };
+      next.movementLeft += run.cost;
+      break;
+    }
+
+    case 'move-committed': {
+      if (run === null) throw new Error('move-committed: there is no pending move to confirm');
+      // Nothing else: the movement stays spent and the unit stays where it stands (D4).
       break;
     }
 

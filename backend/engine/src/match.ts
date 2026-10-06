@@ -4,6 +4,7 @@ import { buildEvents, validateAction } from './actions';
 import { applyEvent } from './events';
 import { canonicalize, fnv1a } from './hash';
 import { buildInitiativeQueue } from './initiative';
+import { DEFAULT_MOVEMENT_PROFILE } from './movement';
 import { createRng } from './rng';
 import type {
   Abilities,
@@ -14,6 +15,7 @@ import type {
   Event,
   MatchSetup,
   MatchState,
+  MovementProfile,
   PublicState,
   Rng,
   Unit,
@@ -83,6 +85,16 @@ function validateAbilities(abilities: Abilities, unitId: string): void {
   }
 }
 
+/** A profile is authored data, so a malformed one is a programming error like the rest of the setup. */
+function validateMovementProfile(profile: MovementProfile, unitId: string): void {
+  if (!profile || typeof profile !== 'object') {
+    throw new RangeError(`${unitId}.movementProfile must be an object`);
+  }
+  requireNonNegativeInteger(profile.maxStepUp, `${unitId}.movementProfile.maxStepUp`);
+  requireNonNegativeInteger(profile.maxStepDown, `${unitId}.movementProfile.maxStepDown`);
+  requireNonNegativeInteger(profile.climbCost, `${unitId}.movementProfile.climbCost`);
+}
+
 function validateUnit(unit: Unit, board: Board): void {
   if (typeof unit.id !== 'string' || unit.id.length === 0) {
     throw new RangeError('every unit needs a non-empty string id');
@@ -110,6 +122,7 @@ function validateUnit(unit: Unit, board: Board): void {
     throw new RangeError(`${unit.id}.primaryClass must be a non-empty string`);
   }
 
+  if (unit.movementProfile !== undefined) validateMovementProfile(unit.movementProfile, unit.id);
   validateEquipment(unit.equipment, unit.id);
   validateAbilities(unit.abilities, unit.id);
 }
@@ -152,6 +165,9 @@ function toUnitState(unit: Unit): UnitState {
   return {
     ...unit,
     position: { x: unit.position.x, y: unit.position.y },
+    // The setup may author the profile; a unit that carries none plays by the default rule, which is
+    // the rule the game had before the profile existed.
+    movementProfile: { ...(unit.movementProfile ?? DEFAULT_MOVEMENT_PROFILE) },
     equipment: { ...unit.equipment },
     abilities: { ...unit.abilities, activeSets },
     // The setup authors the starting health, and nothing starts a unit wounded, so it is the ceiling.
@@ -184,6 +200,7 @@ export function newMatch(setup: MatchSetup): MatchState {
     movementLeft: first ? first.movement : 0,
     round: 1,
     hasActed: false,
+    pendingMove: null,
     rng: createRng(setup.seed),
     eventCount: 0,
   };

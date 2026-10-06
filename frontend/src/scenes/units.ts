@@ -17,6 +17,7 @@ import {
 } from '../view/animation';
 import type { Cell, Pixel } from '../view/grid';
 import { TILE_H, TILE_W, depthOfUnit } from '../view/iso';
+import { TURN_ARROW, TURN_ARROW_POINT } from '../view/layout';
 import {
   CORPSE_COLOR,
   CORPSE_OUTLINE_COLOR,
@@ -33,6 +34,7 @@ import {
   markerStyle,
   pipsFor,
   spriteSheetOf,
+  turnLook,
   type Pips,
 } from '../view/unit-look';
 
@@ -86,6 +88,15 @@ type Action =
   | { kind: 'attack'; style: 'melee' | 'ranged'; hit: boolean; start: number; impactAt: number; impactUntil: number }
   | { kind: 'reload'; from: number; to: number; start: number };
 
+/**
+ * The two marks the scene puts on a unit: the one the player picked, and the one the turn is on.
+ * They are not the same thing — the player may have picked anybody while somebody else acts.
+ */
+export interface UnitMarks {
+  selected: boolean;
+  active: boolean;
+}
+
 /** What the scene tells the sprite about an attack it has to play. */
 export interface AttackPlan {
   style: 'melee' | 'ranged';
@@ -114,6 +125,7 @@ export class UnitSprite extends Phaser.GameObjects.Container {
   private readonly figure: Phaser.GameObjects.Sprite;
   private readonly bars: Phaser.GameObjects.Graphics;
   private readonly ring: Phaser.GameObjects.Graphics;
+  private readonly arrow: Phaser.GameObjects.Graphics;
 
   private team: Team = 'A';
   /** The row of the sheet this unit is drawn from. A class without one falls back to Combatant. */
@@ -122,33 +134,41 @@ export class UnitSprite extends Phaser.GameObjects.Container {
   private readonly bornAt: number;
   private defeated = false;
   private selected = false;
+  /** True only while this unit is the one the turn is on, which is what raises its arrow. */
+  private onTurn = false;
   private health = { health: 0, maxHealth: 0 };
   private pips: Pips | null = null;
   private action: Action | null = null;
   private moving: { start: number } | null = null;
 
-  constructor(scene: Phaser.Scene, unit: UnitState, selected: boolean, placement: Placement) {
+  constructor(scene: Phaser.Scene, unit: UnitState, marks: UnitMarks, placement: Placement) {
     super(scene, 0, 0);
     this.bornAt = scene.time.now;
 
-    // Drawing order inside the container: the ground, the body on it, the bars, then the ring.
+    // Drawing order inside the container: the ground, the body on it, the bars, the arrow, the ring.
     this.marker = scene.add.graphics();
     this.corpse = scene.add.graphics();
     this.figure = scene.add.sprite(0, 0, 'unit-ally', 0).setOrigin(0.5, 1).setScale(BODY_SCALE);
     this.bars = scene.add.graphics();
+    this.arrow = scene.add.graphics();
     this.ring = scene.add.graphics();
-    this.add([this.marker, this.corpse, this.figure, this.bars, this.ring]);
+    this.add([this.marker, this.corpse, this.figure, this.bars, this.arrow, this.ring]);
 
     scene.add.existing(this);
-    this.sync(unit, selected, placement);
+    this.sync(unit, marks, placement);
   }
 
   /** Redraws what the state says about the unit. A unit mid-move is left where its tween has it. */
-  sync(unit: UnitState, selected: boolean, placement: Placement): void {
+  sync(unit: UnitState, marks: UnitMarks, placement: Placement): void {
+    const look = turnLook(marks.active);
+
     this.team = unit.team;
     this.row = classRow(unit.primaryClass) ?? 0;
     this.defeated = unit.defeated;
-    this.selected = selected;
+    this.selected = marks.selected;
+    this.onTurn = look.arrow;
+    // The units that are not acting step back, so the one that is reads at a glance (EA-3).
+    this.setAlpha(look.alpha);
     this.health = { health: unit.health, maxHealth: unit.maxHealth };
     this.pips = pipsFor(unit);
 
@@ -160,6 +180,7 @@ export class UnitSprite extends Phaser.GameObjects.Container {
 
     this.drawMarker();
     this.drawCorpse();
+    this.drawArrow();
     this.drawRing();
     this.drawBars(this.scene.time.now);
   }
@@ -169,34 +190,51 @@ export class UnitSprite extends Phaser.GameObjects.Container {
     this.defeated = true;
     this.drawMarker();
     this.drawCorpse();
+    this.drawArrow();
     this.drawBars(this.scene.time.now);
   }
 
   /**
-   * Slides the unit across the cells it was moved, one step of the walk per 150 ms. The length is the
-   * cell distance, so a step is the same length wherever on the board it happens; the depth follows
-   * the slide so a unit moving towards the viewer comes out over the tiles it passes.
+   * Walks the unit through the cells the server sent, one step of the walk per 150 ms. The steps are
+   * the engine's own path, so the figure follows the route it was moved along instead of a straight
+   * line; the depth follows each step, so a unit moving towards the viewer comes out over the tiles
+   * it passes.
    */
-  slideTo(from: Placement, to: Placement): void {
-    const cells = Math.max(Math.abs(to.cell.x - from.cell.x), Math.abs(to.cell.y - from.cell.y));
-    const fromDepth = depthOfUnit(from.cell);
-    const toDepth = depthOfUnit(to.cell);
+  walkTo(steps: readonly Placement[]): void {
+    const first = steps[0];
+    if (first === undefined) return;
+
+    // A walk with nothing to walk leaves the figure where it is, and stops the walk frame.
+    this.snapTo(first);
+    if (steps.length === 1) {
+      this.moving = null;
+      return;
+    }
 
     this.moving = { start: this.scene.time.now };
-    this.snapTo(from);
-    this.scene.tweens.add({
-      targets: this,
-      x: to.anchor.x,
-      y: to.anchor.y,
-      duration: movementDuration(cells),
-      onUpdate: (tween: Phaser.Tweens.Tween) => {
-        this.setDepth(fromDepth + (toDepth - fromDepth) * tween.progress);
-      },
-      onComplete: () => {
-        this.moving = null;
-        this.setDepth(toDepth);
-      },
-    });
+    const stepMs = movementDuration(1);
+    for (let index = 1; index < steps.length; index += 1) {
+      const from = steps[index - 1];
+      const to = steps[index];
+      const fromDepth = depthOfUnit(from.cell);
+      const toDepth = depthOfUnit(to.cell);
+
+      this.scene.tweens.add({
+        targets: this,
+        x: to.anchor.x,
+        y: to.anchor.y,
+        duration: stepMs,
+        // The steps run one after the other, so the walk covers the whole path in order.
+        delay: (index - 1) * stepMs,
+        onUpdate: (tween: Phaser.Tweens.Tween) => {
+          this.setDepth(fromDepth + (toDepth - fromDepth) * tween.progress);
+        },
+        onComplete: () => {
+          this.setDepth(toDepth);
+          if (index === steps.length - 1) this.moving = null;
+        },
+      });
+    }
   }
 
   /**
@@ -322,6 +360,22 @@ export class UnitSprite extends Phaser.GameObjects.Container {
 
     this.corpse.lineStyle(2, CORPSE_OUTLINE_COLOR, 1);
     this.corpse.strokePoints(this.diamond(MARKER_HALF_WIDTH, MARKER_HALF_HEIGHT), true, true);
+  }
+
+  /** The arrow over the head of the unit on turn, in the colour of its team. A fallen unit has none. */
+  private drawArrow(): void {
+    this.arrow.clear();
+    if (!this.onTurn || this.defeated) return;
+
+    const tip = TURN_ARROW_POINT;
+    const base = tip.y - TURN_ARROW.height;
+    const half = TURN_ARROW.halfWidth;
+
+    this.arrow.fillStyle(TEAM_COLOR[this.team], 1);
+    this.arrow.fillTriangle(tip.x - half, base, tip.x + half, base, tip.x, tip.y);
+    // The paper outline is what makes the arrow read over a light tile as well as a dark one.
+    this.arrow.lineStyle(1, PAPER_COLOR, 1);
+    this.arrow.strokeTriangle(tip.x - half, base, tip.x + half, base, tip.x, tip.y);
   }
 
   private drawRing(): void {

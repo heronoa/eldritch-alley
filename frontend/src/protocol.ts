@@ -1,8 +1,9 @@
 // Keep in sync with backend/game-server/src/protocol.ts.
 //
 // The engine's data types are copied here as plain types instead of imported, so the browser bundle
-// carries no dependency on the engine package. Only the shapes a client has to read are copied: the
-// engine's rng and its rules stay on the server.
+// carries none of the engine package. Only the shapes a client has to read are copied: the engine's
+// rng and its rules stay on the server. The one exception is the line of sight, a pure rule the
+// preview has to answer exactly as the server does (`game/selection.ts`, EA-1 D1).
 
 /** Identifies a unit inside one match. */
 export type UnitId = string;
@@ -41,6 +42,16 @@ export interface Abilities {
   support: string | null;
 }
 
+/** What a unit may climb in one step, and what a climb costs. Mirrors the engine's profile. */
+export interface MovementProfile {
+  /** Levels a single step may rise. */
+  maxStepUp: number;
+  /** Levels a single step may drop. */
+  maxStepDown: number;
+  /** Points a step pays on top of its own, for each level it climbs. A descent pays nothing extra. */
+  climbCost: number;
+}
+
 /** A unit as the setup describes it. */
 export interface Unit {
   id: UnitId;
@@ -58,6 +69,8 @@ export interface Unit {
   magazine: number | null;
   /** Movement budget for one turn. */
   movement: number;
+  /** What the unit may climb, or absent in a setup that leaves the default rule in place. */
+  movementProfile?: MovementProfile;
   nerve: number;
   attunement: number;
   primaryClass: string;
@@ -70,6 +83,8 @@ export interface Unit {
  * revival; while the body lasts (`permanentlyDead` false) it occupies its tile.
  */
 export interface UnitState extends Unit {
+  /** What the unit may climb: every unit of a match carries one, so the preview can walk it. */
+  movementProfile: MovementProfile;
   /** HP the unit entered the match with. The ceiling for `health`. */
   maxHealth: number;
   defeated: boolean;
@@ -78,6 +93,16 @@ export interface UnitState extends Unit {
   permanentlyDead: boolean;
   /** The round in which the body is removed and the death becomes permanent. Null while alive. */
   corpseExpiresAtRound: number | null;
+}
+
+/**
+ * The run of moves the unit on turn has walked since the last action that was not another move
+ * (EA-5, D3). `from` is the cell a cancel returns the unit to, and `cost` is what the run spent,
+ * which is what a cancel gives back.
+ */
+export interface PendingMove {
+  from: Position;
+  cost: number;
 }
 
 /** The state a client may see: the whole match except the random source. */
@@ -94,6 +119,12 @@ export interface PublicState {
   round: number;
   /** Whether the current unit has spent its action on this turn. */
   hasActed: boolean;
+  /**
+   * The move the unit on turn has not confirmed yet, or null when it has not moved and once its run
+   * has been committed (EA-5, D3). The board shows one area per state: while this is open, the area
+   * of the attack from where the unit stands; while it is null, the cells it can walk to.
+   */
+  pendingMove: PendingMove | null;
   eventCount: number;
 }
 
@@ -101,10 +132,14 @@ export type Action =
   | { type: 'move'; actor: UnitId; to: Position }
   | { type: 'attack'; actor: UnitId; target: UnitId }
   | { type: 'reload'; actor: UnitId }
-  | { type: 'endTurn'; actor: UnitId };
+  /** The round it was decided on, so one that arrives late ends nobody's turn (ADR 0010, EA-4). */
+  | { type: 'endTurn'; actor: UnitId; round: number }
+  | { type: 'cancelMove'; actor: UnitId }
+  | { type: 'commitMove'; actor: UnitId };
 
 export type Event =
-  | { type: 'moved'; actor: UnitId; from: Position; to: Position }
+  /** The walk the engine found, from the first step to `to`, `to` included. */
+  | { type: 'moved'; actor: UnitId; from: Position; to: Position; path: Position[] }
   | {
       type: 'attacked';
       actor: UnitId;
@@ -116,6 +151,10 @@ export type Event =
       ammoSpent: boolean;
     }
   | { type: 'reloaded'; actor: UnitId }
+  /** The pending move was taken back: the unit is where the run started again. */
+  | { type: 'move-cancelled'; actor: UnitId }
+  /** The pending move was confirmed: the movement is final and the run is closed. */
+  | { type: 'move-committed'; actor: UnitId }
   | { type: 'unit-defeated'; target: UnitId }
   | { type: 'corpse-removed'; target: UnitId }
   | { type: 'turn-ended'; actor: UnitId; next: UnitId; round: number };
@@ -126,15 +165,18 @@ export type RejectReason =
   | 'out-of-bounds'
   | 'cell-occupied'
   | 'height-step-too-high'
-  | 'not-enough-movement'
+  | 'no-path'
   | 'already-acted'
   | 'target-out-of-range'
+  | 'no-line-of-sight'
   | 'target-invalid'
   | 'no-magazine'
   | 'magazine-full'
-  | 'not-adjacent'
   | 'game-over'
-  | 'malformed-action';
+  | 'stale-turn'
+  | 'malformed-action'
+  /** A cancel or a confirmation of a move that is not waiting to be confirmed (EA-5). */
+  | 'no-pending-move';
 
 /**
  * Bumped whenever a payload changes shape. The client compares it with its own and refuses to play
@@ -142,8 +184,15 @@ export type RejectReason =
  *
  * Version 3: the state message carries `mapId`, because the client draws the terrain of the map it is
  * told the match is on rather than a board it is sent cell by cell.
+ * Version 4: a move action names only its destination and the `moved` event carries the `path` the
+ * engine walked, which the client needs to animate the walk (ADR 0010). The same decision makes an
+ * `endTurn` name its round, which the client sends on its own once the turn has nothing left (EA-4),
+ * and adds `stale-turn` to the refusal codes: one version covers both payloads.
+ * Version 5: a move stays pending until an action that is not another move commits it, so the state
+ * carries `pendingMove`, the client may send `cancelMove` and `commitMove` (EA-5), the events
+ * `move-cancelled` and `move-committed` close the run, and `no-pending-move` joins the refusals.
  */
-export const PROTOCOL_VERSION = 3;
+export const PROTOCOL_VERSION = 5;
 
 /** The single room type of M2-a. One room is one match. */
 export const ROOM_NAME = 'battle';
@@ -169,7 +218,11 @@ export type ClientAction =
   | { type: 'move'; to: Position }
   | { type: 'attack'; target: UnitId }
   | { type: 'reload' }
-  | { type: 'endTurn' };
+  /** The round it was decided on, so one that arrives late ends nobody's turn (ADR 0010, EA-4). */
+  | { type: 'endTurn'; round: number }
+  /** The two controls of a pending move, which carry no field: the run lives in the state (EA-5). */
+  | { type: 'cancelMove' }
+  | { type: 'commitMove' };
 
 export interface StateMessage {
   version: number;

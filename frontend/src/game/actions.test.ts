@@ -1,7 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import type { Board, PublicState, Team, UnitId, UnitState } from '../protocol';
 import type { Intent } from './selection';
-import { actionButtons, applyMode, availableActions, settleMode, type AvailableActions } from './actions';
+import {
+  actionButtons,
+  applyMode,
+  availableActions,
+  moveChips,
+  settleMode,
+  type AvailableActions,
+} from './actions';
+import { setLocale } from '../i18n/translate';
+
+// The cases below assert the Portuguese copy the game shipped with, so they read it on purpose.
+setLocale('pt-BR');
 
 const BOARD: Board = { width: 8, height: 8, levels: new Array<number>(64).fill(0) };
 
@@ -33,6 +44,7 @@ function makeUnit(spec: UnitSpec): UnitState {
     primaryClass: 'sniper',
     equipment: { armor: null, helmet: null, mainHand: null, offHand: null, accessory1: null, accessory2: null },
     abilities: { activeSets: [null, null], reaction: null, movement: null, support: null },
+    movementProfile: { maxStepUp: 1, maxStepDown: 1, climbCost: 1 },
     defeated: false,
     ammo: spec.ammo ?? (magazine === null ? 0 : magazine),
     permanentlyDead: false,
@@ -55,6 +67,7 @@ function makeState(
     round: 1,
     hasActed: false,
     eventCount: 0,
+    pendingMove: null,
     ...overrides,
   };
 }
@@ -70,6 +83,7 @@ describe('availableActions', () => {
       canAttack: true,
       canReload: false,
       canEndTurn: true,
+      nothingLeft: false,
     });
   });
 
@@ -94,6 +108,7 @@ describe('availableActions', () => {
       canAttack: false,
       canReload: false,
       canEndTurn: true,
+      nothingLeft: true,
     });
   });
 
@@ -103,11 +118,29 @@ describe('availableActions', () => {
     expect(availableActions(state, 'A').canMove).toBe(false);
   });
 
-  it('refuses an attack when no enemy is inside the reach', () => {
-    const far = makeUnit({ id: 'B-priest', team: 'B', at: { x: 4, y: 0 } });
+  it('refuses movement when no cell is reachable, however much budget is left', () => {
+    // Buildings on the three neighbours of a unit in the corner: there is nowhere to step.
+    const levels = new Array<number>(64).fill(0);
+    levels[1] = 5; // (1,0)
+    levels[8] = 5; // (0,1)
+    levels[9] = 5; // (1,1)
+    const state = makeState([SNIPER, ENEMY], 0, { board: { width: 8, height: 8, levels } });
+
+    expect(state.movementLeft).toBe(3);
+    expect(availableActions(state, 'A').canMove).toBe(false);
+  });
+
+  it('offers the attack when cells are in reach, even with no enemy on them: the reach is shown first', () => {
+    const far = makeUnit({ id: 'B-priest', team: 'B', at: { x: 7, y: 7 } });
     const state = makeState([SNIPER, far]);
 
     expect(SNIPER.range).toBe(3);
+    expect(availableActions(state, 'A').canAttack).toBe(true);
+  });
+
+  it('refuses an attack when the sniper has no cell in reach to show', () => {
+    const state = makeState([{ ...SNIPER, range: 0 }, ENEMY]);
+
     expect(availableActions(state, 'A').canAttack).toBe(false);
   });
 
@@ -123,13 +156,82 @@ describe('availableActions', () => {
       canAttack: false,
       canReload: false,
       canEndTurn: false,
+      nothingLeft: false,
+    });
+  });
+
+  /**
+   * `nothingLeft` is the question the automatic end of turn asks (EA-4). It is answered by the
+   * engine, so the countdown fires exactly when the server would have nothing to accept.
+   */
+  describe('nothingLeft', () => {
+    it('is true when no cell is reachable, no target is in reach and the magazine is full', () => {
+      const far = makeUnit({ id: 'B-priest', team: 'B', at: { x: 7, y: 7 } });
+      const state = makeState([SNIPER, far], 0, { movementLeft: 0 });
+
+      // The attack is offered to show its reach, but the turn has nothing left: nobody can be hit.
+      expect(availableActions(state, 'A')).toMatchObject({
+        canMove: false,
+        canAttack: true,
+        canReload: false,
+        nothingLeft: true,
+      });
+    });
+
+    it('is false while a reload is left, even with nowhere to walk and no target in reach', () => {
+      const far = makeUnit({ id: 'B-priest', team: 'B', at: { x: 7, y: 7 } });
+      const state = makeState([{ ...SNIPER, ammo: 0 }, far], 0, { movementLeft: 0 });
+
+      expect(availableActions(state, 'A')).toMatchObject({ canReload: true, nothingLeft: false });
+    });
+
+    it('is false while a target is in reach', () => {
+      const state = makeState([SNIPER, ENEMY], 0, { movementLeft: 0 });
+
+      expect(availableActions(state, 'A')).toMatchObject({ canAttack: true, nothingLeft: false });
+    });
+
+    it('is false on the bot turn, which must never start the countdown for the player', () => {
+      // The bot itself has nothing left, and that is the bot's business, not the player's.
+      const state = makeState([SNIPER, ENEMY], 1, { movementLeft: 0 });
+
+      expect(state.initiative[state.currentIndex]).toBe(ENEMY.id);
+      expect(availableActions(state, 'A').nothingLeft).toBe(false);
+    });
+
+    it('is false while a move waits to be confirmed, so the turn never passes with it open', () => {
+      const far = makeUnit({ id: 'B-priest', team: 'B', at: { x: 7, y: 7 } });
+      // Everything else is spent: nowhere to walk, nobody in reach and a full magazine.
+      const state = makeState([SNIPER, far], 0, {
+        movementLeft: 0,
+        pendingMove: { from: { x: 0, y: 0 }, cost: 3 },
+      });
+
+      expect(availableActions(state, 'A')).toMatchObject({
+        canMove: false,
+        canAttack: true,
+        canReload: false,
+        nothingLeft: false,
+      });
     });
   });
 });
 
 describe('settleMode', () => {
-  const ALL: AvailableActions = { canMove: true, canAttack: true, canReload: true, canEndTurn: true };
-  const SPENT: AvailableActions = { canMove: false, canAttack: false, canReload: false, canEndTurn: true };
+  const ALL: AvailableActions = {
+    canMove: true,
+    canAttack: true,
+    canReload: true,
+    canEndTurn: true,
+    nothingLeft: false,
+  };
+  const SPENT: AvailableActions = {
+    canMove: false,
+    canAttack: false,
+    canReload: false,
+    canEndTurn: true,
+    nothingLeft: true,
+  };
 
   it('leaves the inspection mode alone', () => {
     expect(settleMode('inspect', ALL)).toBe('inspect');
@@ -156,10 +258,10 @@ describe('applyMode', () => {
   const ATTACK: Intent = { kind: 'send', action: { type: 'attack', target: 'B-priest' } };
   const NOTHING: Intent = { kind: 'none' };
 
-  it('hands every intent back untouched while nothing is armed', () => {
-    for (const intent of [SELECT, MOVE, ATTACK, NOTHING]) {
-      expect(applyMode('inspect', intent)).toEqual(intent);
-    }
+  it('sends nothing while nothing is armed: a click only selects or inspects', () => {
+    expect(applyMode('inspect', SELECT)).toEqual(SELECT);
+    expect(applyMode('inspect', MOVE)).toEqual({ kind: 'none' });
+    expect(applyMode('inspect', ATTACK)).toEqual({ kind: 'none' });
   });
 
   it('keeps a selection in every mode', () => {
@@ -206,5 +308,30 @@ describe('actionButtons', () => {
     const enabled = actionButtons(makeState([SNIPER, ENEMY], 1), 'A').map((button) => button.enabled);
 
     expect(enabled).toEqual([false, false, false, false]);
+  });
+});
+
+/**
+ * The two controls of a pending move (EA-5, D4 and D6). They exist only while a move waits to be
+ * confirmed, and they carry no field at all: the engine reads the run out of its own state.
+ */
+describe('moveChips', () => {
+  it('offers nothing while no move is waiting to be confirmed', () => {
+    expect(moveChips(makeState([SNIPER, ENEMY]), 'A')).toEqual([]);
+  });
+
+  it('offers the confirmation and the cancel, in the player language, while a move waits', () => {
+    const state = makeState([SNIPER, ENEMY], 0, { pendingMove: { from: { x: 0, y: 0 }, cost: 1 } });
+
+    expect(moveChips(state, 'A')).toEqual([
+      { id: 'confirmMove', label: 'Confirmar', action: { type: 'commitMove' } },
+      { id: 'cancelMove', label: 'Cancelar', action: { type: 'cancelMove' } },
+    ]);
+  });
+
+  it('offers nothing while the bot has the turn, which never cancels and never confirms', () => {
+    const state = makeState([SNIPER, ENEMY], 1, { pendingMove: { from: { x: 3, y: 0 }, cost: 1 } });
+
+    expect(moveChips(state, 'A')).toEqual([]);
   });
 });

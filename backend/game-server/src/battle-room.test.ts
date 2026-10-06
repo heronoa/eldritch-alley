@@ -52,7 +52,7 @@ describe('resolveHumanAction', () => {
   it('accepts an action while a human unit is on turn', () => {
     const state = newMatch(createMatchSetup(MATCH_SEED));
 
-    const outcome = resolveHumanAction(state, 'A', { type: 'endTurn' });
+    const outcome = resolveHumanAction(state, 'A', { type: 'endTurn', round: state.round });
 
     expect(outcome.ok).toBe(true);
   });
@@ -65,7 +65,10 @@ describe('resolveHumanAction', () => {
       currentIndex: 0,
     };
 
-    const outcome = resolveHumanAction(botOnTurn, 'A', { type: 'endTurn' });
+    const outcome = resolveHumanAction(botOnTurn, 'A', {
+      type: 'endTurn',
+      round: botOnTurn.round,
+    });
 
     expect(outcome).toEqual({ ok: false, reason: 'not-your-turn' });
   });
@@ -82,7 +85,16 @@ describe('BattleRoom', () => {
     const first = await server.connectTo(room);
     first.reconnection.enabled = false;
 
-    await expect(server.sdk.joinById(room.roomId)).rejects.toThrow(/room full/);
+    // Colyseus prints the refused join's stack. The refusal is expected, so the output is held here
+    // and the test checks that the server did log the reason.
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      await expect(server.sdk.joinById(room.roomId)).rejects.toThrow(/room full/);
+      // The server logs the refusal after the client has already been told, so wait for the line.
+      await vi.waitFor(() => expect(logged.mock.calls.flat().map(String).join('\n')).toContain('room full'));
+    } finally {
+      logged.mockRestore();
+    }
     expect(room.clients).toHaveLength(1);
 
     await first.leave(true);
@@ -111,7 +123,7 @@ describe('BattleRoom', () => {
     /** Hands the turn over and waits for the room to answer with the next state. */
     const endHumanTurn = async (): Promise<void> => {
       const before = states.length;
-      human.send(MESSAGE.action, { type: 'endTurn' });
+      human.send(MESSAGE.action, { type: 'endTurn', round: lastState().state.round });
       await vi.waitFor(() => expect(states.length).toBeGreaterThan(before), { timeout: 10_000 });
     };
 
@@ -170,8 +182,8 @@ describe('BattleRoom', () => {
 
     // The board itself is no longer enough to draw a map: the client reads the terrain of the id it
     // is sent, so the id has to travel with the state that carries the seed it was drawn from.
-    expect(PROTOCOL_VERSION).toBe(3);
-    expect(message.version).toBe(3);
+    expect(PROTOCOL_VERSION).toBe(5);
+    expect(message.version).toBe(5);
     expect(message.mapId).toBe(MAPS[mapIndex(message.state.seed)].id);
 
     await human.leave(true);

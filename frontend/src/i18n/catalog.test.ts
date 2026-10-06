@@ -4,13 +4,14 @@
 //
 // M2 moved the strings of the game out of the code and in here. The last block is the record of that
 // move: it holds the text `develop` had, so a silent change to the Portuguese fails a test.
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { ActionButton } from '../game/actions';
 import { describeRejection } from '../game/log';
 import type { PanelKey } from '../game/panel';
 import type { RejectReason } from '../protocol';
 import { ptBR, type MessageKey } from './catalog.pt-BR';
 import { enUS } from './catalog.en-US';
+import { getLocale, setLocale } from './translate';
 import { message, missingKeys } from './messages';
 
 describe('the pt-BR catalog', () => {
@@ -124,6 +125,14 @@ describe('message', () => {
  * extraction itself, area by area.
  */
 describe('the pt-BR the game shows', () => {
+  // What the game shows is read through `t`, so the locale is pinned here, not left to the runtime.
+  let previous = getLocale();
+  beforeEach(() => {
+    previous = getLocale();
+    setLocale('pt-BR');
+  });
+  afterEach(() => setLocale(previous));
+
   it('carries the sentences of the battle log, with their placeholders', () => {
     expect(ptBR['log.event.moved']).toBe('{actor} moveu de {from} para {to}');
     expect(ptBR['log.event.attacked']).toBe('{actor} acertou {target} por {damage}');
@@ -142,20 +151,32 @@ describe('the pt-BR the game shows', () => {
       'out-of-bounds',
       'cell-occupied',
       'height-step-too-high',
-      'not-enough-movement',
+      'no-path',
       'already-acted',
       'target-out-of-range',
       'target-invalid',
       'no-magazine',
       'magazine-full',
-      'not-adjacent',
       'game-over',
+      'stale-turn',
       'malformed-action',
+      'no-line-of-sight',
+      'no-pending-move',
     ];
 
     for (const reason of reasons) {
       expect(describeRejection(reason), reason).toBe(message('pt-BR', `log.rejection.${reason}`));
     }
+  });
+
+  it('carries the line-of-sight refusal in both catalogs', () => {
+    expect(message('pt-BR', 'log.rejection.no-line-of-sight')).toBe('Sem linha de visão');
+    expect(message('en-US', 'log.rejection.no-line-of-sight')).toBe('No line of sight');
+  });
+
+  it('carries the no-path refusal in both catalogs', () => {
+    expect(message('pt-BR', 'log.rejection.no-path')).toBe('Sem caminho');
+    expect(message('en-US', 'log.rejection.no-path')).toBe('No path');
   });
 
   it('carries the unit panel labels, keyed by the row they belong to', () => {
@@ -196,6 +217,13 @@ describe('the pt-BR the game shows', () => {
     expect(ptBR['hud.panel.unit']).toBe('Unidade');
     expect(ptBR['hud.panel.log']).toBe('Registro');
     expect(ptBR['hud.back']).toBe('Voltar ao início');
+  });
+
+  it('carries the turn banner in both catalogs, one line per side', () => {
+    expect(message('pt-BR', 'hud.banner.yourTurn')).toBe('Sua vez');
+    expect(message('pt-BR', 'hud.banner.enemyTurn')).toBe('Vez do inimigo');
+    expect(message('en-US', 'hud.banner.yourTurn')).toBe('Your turn');
+    expect(message('en-US', 'hud.banner.enemyTurn')).toBe('Enemy turn');
   });
 
   it('carries the match status lines', () => {

@@ -101,7 +101,7 @@ function chooseHumanAction(state: MatchState, actor: UnitState): Action {
     if (applyAction(state, attack).ok) return attack;
   }
 
-  return approachAction(state, actor, enemies) ?? { type: 'endTurn', actor: actor.id };
+  return approachAction(state, actor, enemies) ?? { type: 'endTurn', actor: actor.id, round: state.round };
 }
 
 function toClientAction(action: Action): ClientAction {
@@ -113,7 +113,7 @@ function toClientAction(action: Action): ClientAction {
     case 'reload':
       return { type: 'reload' };
     case 'endTurn':
-      return { type: 'endTurn' };
+      return { type: 'endTurn', round: action.round };
   }
 }
 
@@ -165,8 +165,11 @@ describe('a full match against the bot', () => {
     });
     client.onMessage(MESSAGE.rejected, () => {
       // The scripted action was refused: hand the turn over instead of stalling.
-      const actor = unitOnTurn(replay());
-      if (actor?.team === 'A') client.send(MESSAGE.action, { type: 'endTurn' });
+      const state = replay();
+      const actor = unitOnTurn(state);
+      if (actor?.team === 'A') {
+        client.send(MESSAGE.action, { type: 'endTurn', round: state.round });
+      }
     });
 
     const result = await Promise.race([

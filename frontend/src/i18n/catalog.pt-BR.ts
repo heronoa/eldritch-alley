@@ -55,15 +55,19 @@ export const ptBR = {
   'log.rejection.out-of-bounds': 'Fora do tabuleiro',
   'log.rejection.cell-occupied': 'Casa ocupada',
   'log.rejection.height-step-too-high': 'Desnível alto demais',
-  'log.rejection.not-enough-movement': 'Movimento insuficiente',
+  'log.rejection.no-path': 'Sem caminho',
   'log.rejection.already-acted': 'Ação já usada',
   'log.rejection.target-out-of-range': 'Alvo fora de alcance',
+  'log.rejection.no-line-of-sight': 'Sem linha de visão',
   'log.rejection.target-invalid': 'Alvo inválido',
   'log.rejection.no-magazine': 'Sem carregador',
   'log.rejection.magazine-full': 'Carregador cheio',
-  'log.rejection.not-adjacent': 'Casa não adjacente',
   'log.rejection.game-over': 'Partida encerrada',
+  // A command that names a round the match has left behind: the order arrived too late (EA-4).
+  'log.rejection.stale-turn': 'Ordem atrasada',
   'log.rejection.malformed-action': 'Ação inválida',
+  // A cancel or a confirmation of a move that is not waiting to be confirmed (EA-5).
+  'log.rejection.no-pending-move': 'Nenhum movimento pendente',
   'log.rejection.unknown': 'Ação recusada',
 
   // The unit panel, one label per `PanelKey`, and the two words a turn row can show.
@@ -76,11 +80,14 @@ export const ptBR = {
   'panel.value.spent': 'Gasta',
   'panel.value.available': 'Disponível',
 
-  // The action bar, one label per button id in `actionButtons`.
+  // The action bar, one label per button id in `actionButtons`, and the two controls a pending move
+  // floats above it (EA-5): they are not buttons of the bar, but they are read the same way.
   'action.move': 'Mover',
   'action.attack': 'Atacar',
   'action.reload': 'Recarregar',
   'action.endTurn': 'Terminar turno',
+  'action.confirmMove': 'Confirmar',
+  'action.cancelMove': 'Cancelar',
 
   // The rest of the HUD, and the lines the match shows over it: the two endings, the notice a
   // refused protocol version raises, and the two states of a dropped connection.
@@ -89,6 +96,17 @@ export const ptBR = {
   'hud.panel.unit': 'Unidade',
   'hud.panel.log': 'Registro',
   'hud.back': 'Voltar ao início',
+  // The banner a turn change raises, one line per side. It names the side that just took the turn
+  // rather than the unit, which the carousel already tells apart.
+  'hud.banner.yourTurn': 'Sua vez',
+  'hud.banner.enemyTurn': 'Vez do inimigo',
+  // The automatic end of turn (EA-4): the countdown, the way out of it, the hint the button shows
+  // when the feature is off, and the one option of the settings panel the gear opens.
+  'hud.autoEndTurn.countdown': 'Turno encerrado em {seconds} s',
+  'hud.autoEndTurn.link': 'Não passar automaticamente',
+  'hud.autoEndTurn.hint': 'Nada mais a fazer: termine o turno',
+  'hud.settings': 'Ajustes',
+  'hud.settings.autoEndTurn': 'Passar o turno automaticamente',
   'match.versionMismatch': 'Versão incompatível',
   'match.victory': 'Vitória',
   'match.defeat': 'Derrota',

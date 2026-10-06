@@ -61,7 +61,7 @@ function play(state: MatchState, action: Action): { state: MatchState; events: E
 }
 
 function endTurn(state: MatchState): { state: MatchState; events: Event[] } {
-  return play(state, { type: 'endTurn', actor: currentUnitId(state) });
+  return play(state, { type: 'endTurn', actor: currentUnitId(state), round: state.round });
 }
 
 function unitAt(state: MatchState, id: string) {
@@ -188,7 +188,11 @@ describe('match ends before the body expires', () => {
     expect(body.defeated).toBe(true);
     expect(body.permanentlyDead).toBe(false);
 
-    const next = applyAction(killed.state, { type: 'endTurn', actor: 'a1' });
+    const next = applyAction(killed.state, {
+      type: 'endTurn',
+      actor: 'a1',
+      round: killed.state.round,
+    });
     expect(next.ok).toBe(false);
     if (!next.ok) expect(next.reason).toBe('game-over');
   });

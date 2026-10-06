@@ -47,6 +47,14 @@ export const BUTTON_FILL = 0x23283a;
 export const BUTTON_FILL_DISABLED = 0x171b28;
 export const BUTTON_FILL_SELECTED = PAPER_COLOR;
 
+/**
+ * The pulse the "End turn" button runs once nothing else can be done and the automatic end of turn
+ * is off (EA-4). It breathes between full and faded, so it reads as "press me" without moving; the
+ * two values are the whole of it.
+ */
+export const BUTTON_PULSE_MS = 600;
+export const BUTTON_PULSE_ALPHA = 0.45;
+
 /** The stroke around the unit the player has selected, and the ring of the one on turn. */
 export const SELECTED_COLOR = PAPER_COLOR;
 export const CURRENT_TURN_COLOR = PAPER_COLOR;
