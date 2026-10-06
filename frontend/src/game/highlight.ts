@@ -3,7 +3,7 @@
 import type { PublicState, Team } from '../protocol';
 import type { Cell } from '../view/grid';
 import type { ActionMode } from './actions';
-import { resolveClick } from './selection';
+import { allowsIntent, resolveClick, type Intent } from './selection';
 
 function boardCells(state: PublicState): Cell[] {
   const cells: Cell[] = [];
@@ -20,14 +20,20 @@ export interface HighlightInput {
   humanTeam: Team;
 }
 
-/** Every cell a click would answer with a `send` of the armed kind. Nothing is armed in `inspect`. */
+/** Whether a click on the cell would act with the armed kind. Picking a unit is not acting on a cell. */
+function actsOn(intent: Intent, mode: ActionMode): boolean {
+  if (intent.kind === 'select' || intent.kind === 'none') return false;
+  return mode !== 'inspect' && allowsIntent(mode, intent);
+}
+
+/** Every cell a click would act on with the armed kind. Nothing is armed in `inspect`. */
 export function highlightedCells({ state, selectedId, mode, humanTeam }: HighlightInput): Cell[] {
   if (mode === 'inspect' || selectedId === null) return [];
 
   const cells: Cell[] = [];
   for (const cell of boardCells(state)) {
     const intent = resolveClick({ state, selectedId, cell, humanTeam });
-    if (intent.kind === 'send' && intent.action.type === mode) cells.push(cell);
+    if (actsOn(intent, mode)) cells.push(cell);
   }
   return cells;
 }

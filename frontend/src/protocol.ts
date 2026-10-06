@@ -42,6 +42,16 @@ export interface Abilities {
   support: string | null;
 }
 
+/** What a unit may climb in one step, and what a climb costs. Mirrors the engine's profile. */
+export interface MovementProfile {
+  /** Levels a single step may rise. */
+  maxStepUp: number;
+  /** Levels a single step may drop. */
+  maxStepDown: number;
+  /** Points a step pays on top of its own, for each level it climbs. A descent pays nothing extra. */
+  climbCost: number;
+}
+
 /** A unit as the setup describes it. */
 export interface Unit {
   id: UnitId;
@@ -59,6 +69,8 @@ export interface Unit {
   magazine: number | null;
   /** Movement budget for one turn. */
   movement: number;
+  /** What the unit may climb, or absent in a setup that leaves the default rule in place. */
+  movementProfile?: MovementProfile;
   nerve: number;
   attunement: number;
   primaryClass: string;
@@ -71,6 +83,8 @@ export interface Unit {
  * revival; while the body lasts (`permanentlyDead` false) it occupies its tile.
  */
 export interface UnitState extends Unit {
+  /** What the unit may climb: every unit of a match carries one, so the preview can walk it. */
+  movementProfile: MovementProfile;
   /** HP the unit entered the match with. The ceiling for `health`. */
   maxHealth: number;
   defeated: boolean;
@@ -105,7 +119,8 @@ export type Action =
   | { type: 'endTurn'; actor: UnitId };
 
 export type Event =
-  | { type: 'moved'; actor: UnitId; from: Position; to: Position }
+  /** The walk the engine found, from the first step to `to`, `to` included. */
+  | { type: 'moved'; actor: UnitId; from: Position; to: Position; path: Position[] }
   | {
       type: 'attacked';
       actor: UnitId;
@@ -127,14 +142,13 @@ export type RejectReason =
   | 'out-of-bounds'
   | 'cell-occupied'
   | 'height-step-too-high'
-  | 'not-enough-movement'
+  | 'no-path'
   | 'already-acted'
   | 'target-out-of-range'
   | 'no-line-of-sight'
   | 'target-invalid'
   | 'no-magazine'
   | 'magazine-full'
-  | 'not-adjacent'
   | 'game-over'
   | 'malformed-action';
 
@@ -144,8 +158,10 @@ export type RejectReason =
  *
  * Version 3: the state message carries `mapId`, because the client draws the terrain of the map it is
  * told the match is on rather than a board it is sent cell by cell.
+ * Version 4: a move action names only its destination and the `moved` event carries the `path` the
+ * engine walked, which the client needs to animate the walk (ADR 0010).
  */
-export const PROTOCOL_VERSION = 3;
+export const PROTOCOL_VERSION = 4;
 
 /** The single room type of M2-a. One room is one match. */
 export const ROOM_NAME = 'battle';

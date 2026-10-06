@@ -39,6 +39,20 @@ export interface Abilities {
 }
 
 /**
+ * What a unit may climb in one step, and what a climb costs. The rule the game had before the profile
+ * existed — one level up or down, the climb paid with one extra point — is `{ maxStepUp: 1,
+ * maxStepDown: 1, climbCost: 1 }`.
+ */
+export interface MovementProfile {
+  /** Levels a single step may rise. */
+  maxStepUp: number;
+  /** Levels a single step may drop. */
+  maxStepDown: number;
+  /** Points a step pays on top of its own, for each level it climbs. A descent pays nothing extra. */
+  climbCost: number;
+}
+
+/**
  * A unit as the setup describes it. The progression fields (nerve, attunement, class, equipment,
  * abilities) are carried from M1 on so the type does not have to be redesigned later, but no M1 rule
  * reads them.
@@ -59,6 +73,11 @@ export interface Unit {
   magazine: number | null;
   /** Movement budget for one turn. */
   movement: number;
+  /**
+   * What the unit may climb. A setup that leaves it out walks by the default profile; `newMatch`
+   * writes the profile the match plays with onto every unit state.
+   */
+  movementProfile?: MovementProfile;
   nerve: number;
   attunement: number;
   primaryClass: string;
@@ -72,6 +91,8 @@ export interface Unit {
  * (`permanentlyDead` false) it occupies its tile and cannot be targeted.
  */
 export interface UnitState extends Unit {
+  /** What the unit may climb, filled by `newMatch`, so a unit in a match always carries one. */
+  movementProfile: MovementProfile;
   /** HP the unit entered the match with. The ceiling for `health`; no M2-a rule raises it. */
   maxHealth: number;
   defeated: boolean;
@@ -122,7 +143,11 @@ export type Action =
   | { type: 'endTurn'; actor: UnitId };
 
 export type Event =
-  | { type: 'moved'; actor: UnitId; from: Position; to: Position }
+  /**
+   * The walk the engine found, from the first step to `to`, `to` included. An action names only its
+   * destination; the path is the engine's answer, and replaying it must pay what the move paid.
+   */
+  | { type: 'moved'; actor: UnitId; from: Position; to: Position; path: Position[] }
   /**
    * `rngState` is the random source after the hit roll. Replay applies it instead of rolling again, so
    * a rebuilt match draws the same numbers as the live one, even when a roll takes several draws.
@@ -148,14 +173,13 @@ export type RejectReason =
   | 'out-of-bounds'
   | 'cell-occupied'
   | 'height-step-too-high'
-  | 'not-enough-movement'
+  | 'no-path'
   | 'already-acted'
   | 'target-out-of-range'
   | 'no-line-of-sight'
   | 'target-invalid'
   | 'no-magazine'
   | 'magazine-full'
-  | 'not-adjacent'
   | 'game-over';
 
 export type ActionResult =

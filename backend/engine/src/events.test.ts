@@ -59,6 +59,7 @@ describe('applyEvent', () => {
       actor: 'a1',
       from: { x: 0, y: 0 },
       to: { x: 1, y: 0 },
+      path: [{ x: 1, y: 0 }],
     });
 
     expect(next.units.find((unit) => unit.id === 'a1')?.position).toEqual({ x: 1, y: 0 });

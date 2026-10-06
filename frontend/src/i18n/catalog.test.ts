@@ -142,13 +142,12 @@ describe('the pt-BR the game shows', () => {
       'out-of-bounds',
       'cell-occupied',
       'height-step-too-high',
-      'not-enough-movement',
+      'no-path',
       'already-acted',
       'target-out-of-range',
       'target-invalid',
       'no-magazine',
       'magazine-full',
-      'not-adjacent',
       'game-over',
       'malformed-action',
       'no-line-of-sight',
@@ -162,6 +161,11 @@ describe('the pt-BR the game shows', () => {
   it('carries the line-of-sight refusal in both catalogs', () => {
     expect(message('pt-BR', 'log.rejection.no-line-of-sight')).toBe('Sem linha de visão');
     expect(message('en-US', 'log.rejection.no-line-of-sight')).toBe('No line of sight');
+  });
+
+  it('carries the no-path refusal in both catalogs', () => {
+    expect(message('pt-BR', 'log.rejection.no-path')).toBe('Sem caminho');
+    expect(message('en-US', 'log.rejection.no-path')).toBe('No path');
   });
 
   it('carries the unit panel labels, keyed by the row they belong to', () => {

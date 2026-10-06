@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { moveCost } from './actions';
 import { distance, inBounds } from './board';
 import { currentUnitId, unitById } from './initiative';
 import { applyAction, applyEvents, hashState, newMatch } from './match';
+import { moveCost } from './movement';
 import { createRng, nextInt } from './rng';
 import type { Action, Board, Event, MatchSetup, MatchState, Rng, Team, Unit } from './types';
 

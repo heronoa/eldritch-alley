@@ -8,3 +8,5 @@ export type * from './types';
 export { newMatch, applyAction, applyEvents, publicState, hashState } from './match';
 // Read by the client as well as the server, so the preview and the refusal use one rule (EA-1 D1).
 export { hasLineOfSight } from './sight';
+// The same, for movement: the client paints the cells the engine says a unit reaches (EA-2, EA-7).
+export { findPath, reachableCells } from './movement';

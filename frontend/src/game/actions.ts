@@ -6,10 +6,11 @@
 //
 // The labels come from the catalog, keyed by the button's own id, so a button cannot be added
 // without a word for it.
+import { reachableCells } from '../../../backend/engine/src/movement';
 import { t } from '../i18n';
 import type { PublicState, Team, UnitState } from '../protocol';
 import { highlightedCells } from './highlight';
-import type { Intent } from './selection';
+import { allowsIntent, type Intent } from './selection';
 
 export type ActionMode = 'inspect' | 'move' | 'attack';
 
@@ -44,10 +45,7 @@ export function settleMode(mode: ActionMode, available: AvailableActions): Actio
 
 /** Keeps only the intents the armed mode allows. A mode narrows, it never invents. */
 export function applyMode(mode: ActionMode, intent: Intent): Intent {
-  if (mode === 'inspect') return intent;
-  if (intent.kind === 'select') return intent;
-  if (intent.kind === 'send' && intent.action.type === mode) return intent;
-  return { kind: 'none' };
+  return allowsIntent(mode, intent) ? intent : { kind: 'none' };
 }
 
 export function availableActions(state: PublicState, humanTeam: Team): AvailableActions {
@@ -58,7 +56,8 @@ export function availableActions(state: PublicState, humanTeam: Team): Available
 
   const canAct = !state.hasActed;
   return {
-    canMove: canAct && state.movementLeft > 0,
+    // Movement needs a cell to end on, not only a budget: a walled-in unit has nothing to move.
+    canMove: canAct && reachableCells(state, actor.id).length > 0,
     // The button lights up exactly when the board would highlight a target.
     canAttack: canAct && highlightedCells({ state, selectedId: actor.id, mode: 'attack', humanTeam }).length > 0,
     canReload: canAct && actor.magazine !== null && actor.ammo < actor.magazine,

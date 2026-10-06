@@ -173,30 +173,46 @@ export class UnitSprite extends Phaser.GameObjects.Container {
   }
 
   /**
-   * Slides the unit across the cells it was moved, one step of the walk per 150 ms. The length is the
-   * cell distance, so a step is the same length wherever on the board it happens; the depth follows
-   * the slide so a unit moving towards the viewer comes out over the tiles it passes.
+   * Walks the unit through the cells the server sent, one step of the walk per 150 ms. The steps are
+   * the engine's own path, so the figure follows the route it was moved along instead of a straight
+   * line; the depth follows each step, so a unit moving towards the viewer comes out over the tiles
+   * it passes.
    */
-  slideTo(from: Placement, to: Placement): void {
-    const cells = Math.max(Math.abs(to.cell.x - from.cell.x), Math.abs(to.cell.y - from.cell.y));
-    const fromDepth = depthOfUnit(from.cell);
-    const toDepth = depthOfUnit(to.cell);
+  walkTo(steps: readonly Placement[]): void {
+    const first = steps[0];
+    if (first === undefined) return;
+
+    // A walk with nothing to walk leaves the figure where it is, and stops the walk frame.
+    this.snapTo(first);
+    if (steps.length === 1) {
+      this.moving = null;
+      return;
+    }
 
     this.moving = { start: this.scene.time.now };
-    this.snapTo(from);
-    this.scene.tweens.add({
-      targets: this,
-      x: to.anchor.x,
-      y: to.anchor.y,
-      duration: movementDuration(cells),
-      onUpdate: (tween: Phaser.Tweens.Tween) => {
-        this.setDepth(fromDepth + (toDepth - fromDepth) * tween.progress);
-      },
-      onComplete: () => {
-        this.moving = null;
-        this.setDepth(toDepth);
-      },
-    });
+    const stepMs = movementDuration(1);
+    for (let index = 1; index < steps.length; index += 1) {
+      const from = steps[index - 1];
+      const to = steps[index];
+      const fromDepth = depthOfUnit(from.cell);
+      const toDepth = depthOfUnit(to.cell);
+
+      this.scene.tweens.add({
+        targets: this,
+        x: to.anchor.x,
+        y: to.anchor.y,
+        duration: stepMs,
+        // The steps run one after the other, so the walk covers the whole path in order.
+        delay: (index - 1) * stepMs,
+        onUpdate: (tween: Phaser.Tweens.Tween) => {
+          this.setDepth(fromDepth + (toDepth - fromDepth) * tween.progress);
+        },
+        onComplete: () => {
+          this.setDepth(toDepth);
+          if (index === steps.length - 1) this.moving = null;
+        },
+      });
+    }
   }
 
   /**

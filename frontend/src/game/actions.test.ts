@@ -33,6 +33,7 @@ function makeUnit(spec: UnitSpec): UnitState {
     primaryClass: 'sniper',
     equipment: { armor: null, helmet: null, mainHand: null, offHand: null, accessory1: null, accessory2: null },
     abilities: { activeSets: [null, null], reaction: null, movement: null, support: null },
+    movementProfile: { maxStepUp: 1, maxStepDown: 1, climbCost: 1 },
     defeated: false,
     ammo: spec.ammo ?? (magazine === null ? 0 : magazine),
     permanentlyDead: false,
@@ -103,6 +104,18 @@ describe('availableActions', () => {
     expect(availableActions(state, 'A').canMove).toBe(false);
   });
 
+  it('refuses movement when no cell is reachable, however much budget is left', () => {
+    // Buildings on the three neighbours of a unit in the corner: there is nowhere to step.
+    const levels = new Array<number>(64).fill(0);
+    levels[1] = 5; // (1,0)
+    levels[8] = 5; // (0,1)
+    levels[9] = 5; // (1,1)
+    const state = makeState([SNIPER, ENEMY], 0, { board: { width: 8, height: 8, levels } });
+
+    expect(state.movementLeft).toBe(3);
+    expect(availableActions(state, 'A').canMove).toBe(false);
+  });
+
   it('refuses an attack when no enemy is inside the reach', () => {
     const far = makeUnit({ id: 'B-priest', team: 'B', at: { x: 4, y: 0 } });
     const state = makeState([SNIPER, far]);
@@ -155,11 +168,28 @@ describe('applyMode', () => {
   const MOVE: Intent = { kind: 'send', action: { type: 'move', to: { x: 1, y: 0 } } };
   const ATTACK: Intent = { kind: 'send', action: { type: 'attack', target: 'B-priest' } };
   const NOTHING: Intent = { kind: 'none' };
+  const PREVIEW: Intent = {
+    kind: 'move-preview',
+    to: { x: 0, y: 2 },
+    path: [
+      { x: 0, y: 1 },
+      { x: 0, y: 2 },
+    ],
+    cost: 2,
+  };
 
   it('hands every intent back untouched while nothing is armed', () => {
-    for (const intent of [SELECT, MOVE, ATTACK, NOTHING]) {
+    for (const intent of [SELECT, MOVE, ATTACK, NOTHING, PREVIEW]) {
       expect(applyMode('inspect', intent)).toEqual(intent);
     }
+  });
+
+  it('keeps the preview of a move while the move mode is armed', () => {
+    expect(applyMode('move', PREVIEW)).toEqual(PREVIEW);
+  });
+
+  it('drops a move preview while another mode is armed', () => {
+    expect(applyMode('attack', PREVIEW)).toEqual({ kind: 'none' });
   });
 
   it('keeps a selection in every mode', () => {

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { moveCost, resolveHit } from './actions';
+import { resolveHit } from './actions';
 import { currentUnitId } from './initiative';
 import { applyAction, hashState, newMatch } from './match';
+import { moveCost } from './movement';
 import { createRng } from './rng';
 import type {
   ActionResult,
@@ -123,7 +124,13 @@ describe('actions: move', () => {
 
     const first = accepted(applyAction(state, { type: 'move', actor: 'a1', to: { x: 1, y: 0 } }));
     expect(first.events).toEqual([
-      { type: 'moved', actor: 'a1', from: { x: 0, y: 0 }, to: { x: 1, y: 0 } },
+      {
+        type: 'moved',
+        actor: 'a1',
+        from: { x: 0, y: 0 },
+        to: { x: 1, y: 0 },
+        path: [{ x: 1, y: 0 }],
+      },
     ]);
     expect(unitAt(first.state, 'a1').position).toEqual({ x: 1, y: 0 });
     expect(first.state.movementLeft).toBe(3);
@@ -145,6 +152,53 @@ describe('actions: move', () => {
     const state = newMatch(twoUnitSetup({ position: { x: 0, y: 0 } }, {}, { '0,0': 1 }));
     const result = accepted(applyAction(state, { type: 'move', actor: 'a1', to: { x: 0, y: 1 } }));
     expect(result.state.movementLeft).toBe(3);
+  });
+
+  it('walks the cheapest path to a destination more than one step away', () => {
+    const state = newMatch(twoUnitSetup({ movement: 4 }));
+    const result = accepted(applyAction(state, { type: 'move', actor: 'a1', to: { x: 2, y: 0 } }));
+
+    expect(result.events).toEqual([
+      {
+        type: 'moved',
+        actor: 'a1',
+        from: { x: 0, y: 0 },
+        to: { x: 2, y: 0 },
+        path: [
+          { x: 1, y: 0 },
+          { x: 2, y: 0 },
+        ],
+      },
+    ]);
+    expect(unitAt(result.state, 'a1').position).toEqual({ x: 2, y: 0 });
+    expect(result.state.movementLeft).toBe(2);
+  });
+
+  it('refuses a step of two levels with the height rule, which is what the step itself is', () => {
+    const state = newMatch(twoUnitSetup({}, {}, { '0,1': 2 }));
+
+    expect(rejected(applyAction(state, { type: 'move', actor: 'a1', to: { x: 0, y: 1 } })).reason).toBe(
+      'height-step-too-high',
+    );
+  });
+
+  it('refuses a destination whose only route needs a forbidden step with no-path', () => {
+    // Buildings at (1,0) and (0,1) leave (1,1) as the only way out, and that step is two levels up:
+    // the level is the obstacle, but the cell being stepped on is not the destination.
+    const state = newMatch(twoUnitSetup({}, {}, { '1,0': 5, '0,1': 5, '1,1': 2 }));
+
+    expect(rejected(applyAction(state, { type: 'move', actor: 'a1', to: { x: 2, y: 0 } })).reason).toBe(
+      'no-path',
+    );
+  });
+
+  it('refuses a climb with one point left, which is the case measured in the playtest', () => {
+    // One step onto a cell one level up costs 2, so a unit with a single point left cannot take it.
+    const state = newMatch(twoUnitSetup({ movement: 1 }, {}, { '0,1': 1 }));
+
+    expect(rejected(applyAction(state, { type: 'move', actor: 'a1', to: { x: 0, y: 1 } })).reason).toBe(
+      'no-path',
+    );
   });
 
   it('rejects movement after the action is spent, because the turn is move first, then act', () => {
@@ -438,8 +492,8 @@ describe('rejections', () => {
       action: { type: 'move', actor: 'a1', to: { x: -1, y: 0 } },
     },
     {
-      reason: 'not-adjacent',
-      setup: twoUnitSetup(),
+      reason: 'no-path',
+      setup: twoUnitSetup({ movement: 1 }),
       action: { type: 'move', actor: 'a1', to: { x: 2, y: 0 } },
     },
     {
@@ -450,11 +504,6 @@ describe('rejections', () => {
     {
       reason: 'height-step-too-high',
       setup: twoUnitSetup({}, {}, { '0,1': 2 }),
-      action: { type: 'move', actor: 'a1', to: { x: 0, y: 1 } },
-    },
-    {
-      reason: 'not-enough-movement',
-      setup: twoUnitSetup({ movement: 1 }, {}, { '0,1': 1 }),
       action: { type: 'move', actor: 'a1', to: { x: 0, y: 1 } },
     },
     {

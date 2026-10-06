@@ -94,6 +94,20 @@ Planned features are not debt: they live in [backlog.md](./backlog.md).
 - **Trigger:** the next change to `battle-room.test.ts`.
 - **Evidence:** `backend/game-server/src/battle-room.test.ts:75-80` (the test that expects `room full` prints it in the output).
 
+### DT-70 · The client imports the engine's source file, not the package entry
+- **Category:** Architecture (design)
+- **Risk if untreated:** a change to the internal layout of the engine breaks the frontend build without any contract change to warn about. The export added to `backend/engine/src/index.ts` for the client is not used, and its comment says it is.
+- **Effort:** P
+- **Trigger:** before EA-2 and EA-5 import `reachableCells` and `attackArea` from the engine, so the shortcut is not repeated.
+- **Evidence:** `frontend/src/game/selection.ts:4` imports `../../../backend/engine/src/sight`; `frontend/package.json` declares no engine dependency; `backend/engine/src/index.ts:9-10` exports `hasLineOfSight` with a comment that says the client reads it from there.
+
+### DT-71 · The engine's symmetry test depends on the game server's source
+- **Category:** Testing
+- **Risk if untreated:** the engine's test suite fails when the game server's map data moves, and the engine, which is the leaf package, depends on the server. `actions.test.ts` embeds the same heights instead, so the two test files disagree on the pattern.
+- **Effort:** P
+- **Trigger:** when the symmetry sweep is reused by EA-5 or EA-6, or the next change to `backend/game-server/src/maps/prototype-maps.ts`.
+- **Evidence:** `backend/engine/src/sight.test.ts:6` imports `PROTOTYPE_MAPS` from `../../game-server/src/maps/prototype-maps`; `backend/engine/src/actions.test.ts` builds its boards from literal heights.
+
 ---
 
 ## Closed

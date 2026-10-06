@@ -1,12 +1,12 @@
 // Validation and event building for the three actions of M1. Nothing here changes the state: an
 // accepted action is turned into events, and events.ts applies them.
-import { distance, inBounds, levelAt } from './board';
+import { distance, inBounds } from './board';
 import { currentUnitId, isAlive, unitById } from './initiative';
+import { findPath, movementProfile, stepAllowed } from './movement';
 import { nextInt } from './rng';
 import { hasLineOfSight } from './sight';
 import type {
   Action,
-  Board,
   Event,
   MatchState,
   Position,
@@ -21,12 +21,6 @@ import type {
 type MoveAction = Extract<Action, { type: 'move' }>;
 type AttackAction = Extract<Action, { type: 'attack' }>;
 type ReloadAction = Extract<Action, { type: 'reload' }>;
-
-/** A step costs 1, climbing one level adds 1, descending adds nothing. */
-export function moveCost(board: Board, from: Position, to: Position): number {
-  const climb = levelAt(board, to) - levelAt(board, from);
-  return 1 + Math.max(0, climb);
-}
 
 /**
  * The single place a hit is decided. M1 reads the attacker's accuracy; Nerve, height and cover will
@@ -89,17 +83,25 @@ function validateReload(state: MatchState, action: ReloadAction): RejectReason |
   return null;
 }
 
+/**
+ * Whether the refusal is the step's own fault: a forbidden step onto a cell one step away is the
+ * height rule (D3), while anything further away is a route the profile does not open.
+ */
+function isForbiddenStep(state: MatchState, actor: UnitState, to: Position): boolean {
+  if (distance(actor.position, to) !== 1) return false;
+  return !stepAllowed(movementProfile(actor), state.board, actor.position, to);
+}
+
 function validateMove(state: MatchState, action: MoveAction): RejectReason | null {
   const actor = unitById(state, action.actor);
   const to = action.to;
 
   if (!inBounds(state.board, to)) return 'out-of-bounds';
-  if (distance(actor.position, to) !== 1) return 'not-adjacent';
   if (occupantAt(state, to)) return 'cell-occupied';
-  if (Math.abs(levelAt(state.board, to) - levelAt(state.board, actor.position)) > 1) {
-    return 'height-step-too-high';
+  // The engine finds the walk: the action names the destination alone (ADR 0010, D1).
+  if (findPath(state, actor.id, to) === null) {
+    return isForbiddenStep(state, actor, to) ? 'height-step-too-high' : 'no-path';
   }
-  if (moveCost(state.board, actor.position, to) > state.movementLeft) return 'not-enough-movement';
   // The turn is move first, then one action (plan section 2): no movement once the action is spent.
   if (state.hasActed) return 'already-acted';
   return null;
@@ -152,12 +154,19 @@ export function buildEvents(state: MatchState, action: Action, rng: Rng): Event[
 
   if (action.type === 'move') {
     const actor = unitById(state, action.actor);
+    const walk = findPath(state, actor.id, action.to);
+    // Validation walked the same state, so an accepted move always has a path.
+    if (walk === null) {
+      throw new RangeError(`no path to the destination of an accepted move: ${action.to.x},${action.to.y}`);
+    }
+
     return [
       {
         type: 'moved',
         actor: actor.id,
         from: { x: actor.position.x, y: actor.position.y },
         to: { x: action.to.x, y: action.to.y },
+        path: walk.path,
       },
     ];
   }

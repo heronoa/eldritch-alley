@@ -13,7 +13,7 @@ import {
 import { highlightedCells } from '../game/highlight';
 import { describeEvent, describeRejection, type UnitNames } from '../game/log';
 import { presentationOf, type Cue, type Snapshot } from '../game/presentation';
-import { resolveClick } from '../game/selection';
+import { confirmMove, resolveClick } from '../game/selection';
 import { t } from '../i18n';
 import { terrainOf, type Terrain } from '../maps/terrain';
 import { Session } from '../net/session';
@@ -91,6 +91,8 @@ export class MatchScene extends Phaser.Scene {
   private selectedId: string | null = null;
   /** The armed mode. `move` and `attack` narrow the next board click; `inspect` leaves it alone. */
   private mode: ActionMode = 'inspect';
+  /** The destination the first tap of a move armed. The second tap on it sends the move (EA-7). */
+  private armedMove: Cell | null = null;
   private logLines: string[] = [];
   /** Set when the match is over or lost, after which clicks are ignored. */
   private finished = false;
@@ -125,6 +127,7 @@ export class MatchScene extends Phaser.Scene {
     this.state = null;
     this.selectedId = null;
     this.mode = 'inspect';
+    this.armedMove = null;
     this.logLines = [];
     this.finished = false;
     this.reconnecting = false;
@@ -218,10 +221,15 @@ export class MatchScene extends Phaser.Scene {
     );
     if (cell === null) return;
 
-    const intent = applyMode(
-      this.mode,
-      resolveClick({ state: this.state, selectedId: this.selectedId, cell, humanTeam: HUMAN_TEAM }),
-    );
+    // A move takes two taps: the first arms the destination, the second on the same cell sends it.
+    const pending = resolveClick({
+      state: this.state,
+      selectedId: this.selectedId,
+      cell,
+      humanTeam: HUMAN_TEAM,
+    });
+    const intent = applyMode(this.mode, confirmMove(this.armedMove, pending));
+    this.armedMove = intent.kind === 'move-preview' ? intent.to : null;
 
     switch (intent.kind) {
       case 'select':
@@ -268,6 +276,8 @@ export class MatchScene extends Phaser.Scene {
     // can actually act; the mode then falls back if the new turn has nothing left to do.
     const actor = this.actor();
     if (actor && actor.team === HUMAN_TEAM) this.selectedId = actor.id;
+    // A new state is a new board: a destination armed on the old one is stale.
+    this.armedMove = null;
     this.mode = settleMode(this.mode, availableActions(message.state, HUMAN_TEAM));
 
     this.redraw(message.state);
@@ -339,7 +349,7 @@ export class MatchScene extends Phaser.Scene {
   private play(cue: Cue): void {
     switch (cue.kind) {
       case 'move':
-        this.sprites.get(cue.unitId)?.slideTo(this.placementOf(cue.from), this.placementOf(cue.to));
+        this.sprites.get(cue.unitId)?.walkTo(cue.steps.map((step) => this.placementOf(step)));
         break;
 
       case 'attack': {

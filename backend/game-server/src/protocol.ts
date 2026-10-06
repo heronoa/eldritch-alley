@@ -9,8 +9,10 @@ import type { MapId } from './map';
  *
  * Version 3: the state message carries `mapId`, because the client draws the terrain of the map it is
  * told the match is on rather than a board it is sent cell by cell.
+ * Version 4: a move action names only its destination and the `moved` event carries the `path` the
+ * engine walked, which the client needs to animate the walk (ADR 0010).
  */
-export const PROTOCOL_VERSION = 3;
+export const PROTOCOL_VERSION = 4;
 
 /** The single room type of M2-a. One room is one match. */
 export const ROOM_NAME = 'battle';

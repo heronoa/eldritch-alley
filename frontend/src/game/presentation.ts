@@ -7,7 +7,8 @@ import { EFFECTS, attackStyle, type Effect } from '../view/effects';
 
 /** One thing to play. The scene reads the cue; nothing here touches Phaser. */
 export type Cue =
-  | { kind: 'move'; unitId: string; from: Position; to: Position }
+  /** The cells of the walk, `from` first, so the scene can tween the figure step by step. */
+  | { kind: 'move'; unitId: string; from: Position; to: Position; steps: Position[] }
   | {
       kind: 'attack';
       actorId: string;
@@ -34,7 +35,15 @@ export interface Snapshot {
 export function presentationOf(event: Event, units: ReadonlyMap<string, Snapshot>): Cue[] {
   switch (event.type) {
     case 'moved':
-      return [{ kind: 'move', unitId: event.actor, from: event.from, to: event.to }];
+      return [
+        {
+          kind: 'move',
+          unitId: event.actor,
+          from: event.from,
+          to: event.to,
+          steps: [event.from, ...event.path],
+        },
+      ];
 
     case 'attacked': {
       const actor = units.get(event.actor);

@@ -1,9 +1,9 @@
 // The single place where match state changes. Live play and replay both go through applyEvent, so a
 // sequence of events always rebuilds the same state (ADR 0005).
-import { moveCost } from './actions';
 import { corpseRounds } from './corpse';
 import { advanceIndex, removeFromInitiative, unitById } from './initiative';
-import type { Event, MatchState } from './types';
+import { movementProfile, stepCost } from './movement';
+import type { Event, MatchState, Position } from './types';
 
 function cloneState(state: MatchState): MatchState {
   return {
@@ -21,8 +21,19 @@ export function applyEvent(state: MatchState, event: Event): MatchState {
   switch (event.type) {
     case 'moved': {
       const actor = unitById(next, event.actor);
-      next.movementLeft -= moveCost(next.board, event.from, event.to);
-      actor.position = { x: event.to.x, y: event.to.y };
+      const profile = movementProfile(actor);
+      // The walk pays for every step it takes, and the unit ends on the last cell of it. The
+      // destination alone is the degenerate walk, for an event that carries no path.
+      const steps: readonly Position[] = event.path.length > 0 ? event.path : [event.to];
+      let previous = event.from;
+      let cost = 0;
+      for (const step of steps) {
+        cost += stepCost(profile, next.board, previous, step);
+        previous = step;
+      }
+
+      next.movementLeft -= cost;
+      actor.position = { x: previous.x, y: previous.y };
       break;
     }
 

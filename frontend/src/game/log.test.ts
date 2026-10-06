@@ -10,7 +10,13 @@ const NAMES: Record<string, string> = {
 
 describe('describeEvent', () => {
   it('describes a move with both cells', () => {
-    const event: Event = { type: 'moved', actor: 'A-sniper', from: { x: 0, y: 0 }, to: { x: 1, y: 0 } };
+    const event: Event = {
+      type: 'moved',
+      actor: 'A-sniper',
+      from: { x: 0, y: 0 },
+      to: { x: 1, y: 0 },
+      path: [{ x: 1, y: 0 }],
+    };
 
     expect(describeEvent(event, NAMES)).toBe('Sniper moveu de (0,0) para (1,0)');
   });
@@ -81,14 +87,13 @@ describe('describeRejection', () => {
     'out-of-bounds': 'Fora do tabuleiro',
     'cell-occupied': 'Casa ocupada',
     'height-step-too-high': 'Desnível alto demais',
-    'not-enough-movement': 'Movimento insuficiente',
+    'no-path': 'Sem caminho',
     'already-acted': 'Ação já usada',
     'target-out-of-range': 'Alvo fora de alcance',
     'no-line-of-sight': 'Sem linha de visão',
     'target-invalid': 'Alvo inválido',
     'no-magazine': 'Sem carregador',
     'magazine-full': 'Carregador cheio',
-    'not-adjacent': 'Casa não adjacente',
     'game-over': 'Partida encerrada',
     'malformed-action': 'Ação inválida',
   };
