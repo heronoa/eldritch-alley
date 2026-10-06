@@ -89,6 +89,10 @@ export const ptBR = {
   'hud.panel.unit': 'Unidade',
   'hud.panel.log': 'Registro',
   'hud.back': 'Voltar ao início',
+  // The banner a turn change raises, one line per side. It names the side that just took the turn
+  // rather than the unit, which the carousel already tells apart.
+  'hud.banner.yourTurn': 'Sua vez',
+  'hud.banner.enemyTurn': 'Vez do inimigo',
   'match.versionMismatch': 'Versão incompatível',
   'match.victory': 'Vitória',
   'match.defeat': 'Derrota',

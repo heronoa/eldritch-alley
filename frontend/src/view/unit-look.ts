@@ -65,6 +65,25 @@ export function pipsFor(unit: { magazine: number | null; ammo: number }): Pips |
   return { total: unit.magazine, filled: Math.min(unit.magazine, Math.max(0, unit.ammo)) };
 }
 
+/**
+ * How solid a unit is drawn while somebody else is on turn. Decision D2 of the EA-3 plan assumed
+ * 0.6 for the units that are not acting, to be confirmed or changed after a phone test.
+ */
+export const DIM_ALPHA = 0.6;
+
+/** What the turn says about drawing a unit: the one on turn carries the arrow, the others step back. */
+export interface TurnLook {
+  /** True only for the unit acting now: it carries the arrow over its head. */
+  arrow: boolean;
+  /** Alpha of the whole figure, 0..1. */
+  alpha: number;
+}
+
+/** How a unit is drawn: on turn it is at full strength under the arrow, off turn it steps back. */
+export function turnLook(isActive: boolean): TurnLook {
+  return { arrow: isActive, alpha: isActive ? 1 : DIM_ALPHA };
+}
+
 /** How the ground marker tells one team from the other: colour, and shape for the bot's side. */
 export function markerStyle(team: Team): MarkerStyle {
   return { diamond: true, corners: team === 'B' };

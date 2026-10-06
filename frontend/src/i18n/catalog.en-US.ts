@@ -38,4 +38,8 @@ export const enUS: Partial<Record<MessageKey, string>> = {
   // The battle log's refusals the game itself adds: a blocked shot, and a destination no walk reaches.
   'log.rejection.no-line-of-sight': 'No line of sight',
   'log.rejection.no-path': 'No path',
+
+  // The banner a turn change raises (EA-3). Short on purpose: it is read at a glance, over the board.
+  'hud.banner.yourTurn': 'Your turn',
+  'hud.banner.enemyTurn': 'Enemy turn',
 };

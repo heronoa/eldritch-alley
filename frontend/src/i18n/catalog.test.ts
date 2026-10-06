@@ -208,6 +208,13 @@ describe('the pt-BR the game shows', () => {
     expect(ptBR['hud.back']).toBe('Voltar ao início');
   });
 
+  it('carries the turn banner in both catalogs, one line per side', () => {
+    expect(message('pt-BR', 'hud.banner.yourTurn')).toBe('Sua vez');
+    expect(message('pt-BR', 'hud.banner.enemyTurn')).toBe('Vez do inimigo');
+    expect(message('en-US', 'hud.banner.yourTurn')).toBe('Your turn');
+    expect(message('en-US', 'hud.banner.enemyTurn')).toBe('Enemy turn');
+  });
+
   it('carries the match status lines', () => {
     expect(ptBR['match.versionMismatch']).toBe('Versão incompatível');
     expect(ptBR['match.victory']).toBe('Vitória');

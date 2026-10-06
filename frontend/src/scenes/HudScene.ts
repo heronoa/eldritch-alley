@@ -3,11 +3,13 @@
 // colour comes from the tested `game/` and `view/` modules, and it never reads the game's state itself.
 import Phaser from 'phaser';
 import type { ActionButton, ActionMode } from '../game/actions';
+import { bannerFor } from '../game/banner';
 import { unitPanel } from '../game/panel';
-import { turnOrder } from '../game/turn-order';
+import { activeSlot, turnOrder, type TurnSlot } from '../game/turn-order';
 import { t } from '../i18n';
-import type { PublicState } from '../protocol';
+import type { PublicState, Team } from '../protocol';
 import {
+  BANNER_RECT,
   LEGEND_RECT,
   LOG_RECT,
   LOG_TEXT_POINT,
@@ -33,7 +35,7 @@ import {
   TEXT_COLOR_ALERT,
   TEXT_COLOR_DISABLED,
 } from '../view/theme';
-import { Button, createPanel, createTurnChip } from './widgets';
+import { Banner, Button, createPanel, createTurnChip } from './widgets';
 
 /** Space between the result text and the frame drawn around it. */
 const STAMP_PADDING = 16;
@@ -41,6 +43,8 @@ const STAMP_PADDING = 16;
 /** Everything the HUD shows at one moment, as the match scene knows it. */
 export interface HudView {
   state: PublicState | null;
+  /** The side the person at the keyboard plays, which is what the turn banner names. */
+  humanTeam: Team;
   selectedId: string | null;
   mode: ActionMode;
   finished: boolean;
@@ -53,6 +57,7 @@ export interface HudView {
 
 const EMPTY_VIEW: HudView = {
   state: null,
+  humanTeam: 'A',
   selectedId: null,
   mode: 'inspect',
   finished: false,
@@ -70,6 +75,12 @@ export class HudScene extends Phaser.Scene {
 
   private chips!: Phaser.GameObjects.Container;
   private panelRows!: Phaser.GameObjects.Container;
+  private banner!: Banner;
+  /**
+   * The unit the last drawn state had on turn, so the HUD can tell a hand-over from a redraw of the
+   * same turn. Nothing else of the view is remembered.
+   */
+  private lastActive: TurnSlot | null = null;
   private buttons: Button[] = [];
   private logText!: Phaser.GameObjects.Text;
   private status!: Phaser.GameObjects.Text;
@@ -120,6 +131,9 @@ export class HudScene extends Phaser.Scene {
 
     this.wayOut = new Button(this, RESULT_BUTTON_RECT, t('hud.back')).setVisible(false);
 
+    // Added last: a turn change floats over the panels, and it is gone before the next one comes.
+    this.banner = new Banner(this, BANNER_RECT);
+
     this.built = true;
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.teardown());
     this.apply(this.view);
@@ -135,6 +149,7 @@ export class HudScene extends Phaser.Scene {
   private teardown(): void {
     this.children.removeAll(true);
     this.buttons = [];
+    this.lastActive = null;
     this.built = false;
   }
 
@@ -142,6 +157,7 @@ export class HudScene extends Phaser.Scene {
     this.drawChips(view.state);
     this.drawPanel(view.state, view.selectedId);
     this.drawButtons(view);
+    this.drawBanner(view);
 
     this.logText.setText(view.logLines.join('\n'));
     this.status.setText(view.status);
@@ -158,6 +174,21 @@ export class HudScene extends Phaser.Scene {
     turnOrder(state).forEach((slot, index) => {
       this.chips.add(createTurnChip(this, carouselSlotRect(index), slot));
     });
+  }
+
+  /**
+   * The banner of a turn change (EA-3). The HUD is handed a whole state on every redraw, including
+   * the ones a log line raises, so the unit on turn is compared with the one of the last state and
+   * only a real hand-over — or the opening state of the match — raises a banner.
+   */
+  private drawBanner(view: HudView): void {
+    if (view.state === null) return;
+
+    const current = activeSlot(view.state);
+    const banner = bannerFor(this.lastActive, current, view.humanTeam);
+    this.lastActive = current;
+
+    if (banner !== null) this.banner.show(banner.text, banner.durationMs);
   }
 
   private drawPanel(state: PublicState | null, selectedId: string | null): void {

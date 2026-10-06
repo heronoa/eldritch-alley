@@ -1,6 +1,6 @@
 // The initiative queue, rotated so the unit whose turn it is comes first. Pure: the carousel draws
 // the slots in the order it is handed them and nothing else.
-import type { PublicState, UnitState } from '../protocol';
+import type { PublicState, Team, UnitState } from '../protocol';
 
 export interface TurnSlot {
   unit: UnitState;
@@ -20,4 +20,24 @@ export function turnOrder(state: PublicState): TurnSlot[] {
   }
 
   return slots;
+}
+
+/**
+ * The slot of the unit whose turn it is: the head of the queue `turnOrder` builds, without building
+ * the rest of it. Null when nobody is on turn — an empty queue, an index past its end, or a queue
+ * that names a unit the state does not carry.
+ */
+export function activeSlot(state: PublicState): TurnSlot | null {
+  const id = state.initiative[state.currentIndex];
+  if (id === undefined) return null;
+
+  const unit = state.units.find((candidate) => candidate.id === id);
+  if (unit === undefined) return null;
+
+  return { unit, isCurrent: true };
+}
+
+/** Whether the unit on turn belongs to the team the person at the keyboard plays. */
+export function isHumanTurn(state: PublicState, humanTeam: Team): boolean {
+  return activeSlot(state)?.unit.team === humanTeam;
 }

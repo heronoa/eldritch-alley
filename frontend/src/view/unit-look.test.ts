@@ -1,6 +1,16 @@
 import type { UnitState } from '../protocol';
 import { describe, expect, it } from 'vitest';
-import { chipFrameOf, classRow, frameIndex, healthFraction, markerStyle, pipsFor, spriteSheetOf } from './unit-look';
+import {
+  DIM_ALPHA,
+  chipFrameOf,
+  classRow,
+  frameIndex,
+  healthFraction,
+  markerStyle,
+  pipsFor,
+  spriteSheetOf,
+  turnLook,
+} from './unit-look';
 
 describe('spriteSheetOf', () => {
   it('gives the human side the ally sheet and the bot the enemy sheet', () => {
@@ -78,5 +88,19 @@ describe('chipFrameOf', () => {
     const unknown = { primaryClass: 'soldier' } as UnitState;
 
     expect(chipFrameOf(unknown)).toBe(frameIndex(0, 0));
+  });
+});
+
+describe('turnLook', () => {
+  it('gives the unit on turn the arrow and steps nothing back', () => {
+    expect(turnLook(true)).toEqual({ arrow: true, alpha: 1 });
+  });
+
+  it('steps back the units that are not acting, and gives them no arrow', () => {
+    expect(turnLook(false)).toEqual({ arrow: false, alpha: DIM_ALPHA });
+  });
+
+  it('dims to the alpha the plan assumed until the phone test says otherwise', () => {
+    expect(DIM_ALPHA).toBe(0.6);
   });
 });

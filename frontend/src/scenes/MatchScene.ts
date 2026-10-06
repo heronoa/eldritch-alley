@@ -14,6 +14,7 @@ import { highlightedCells } from '../game/highlight';
 import { describeEvent, describeRejection, type UnitNames } from '../game/log';
 import { presentationOf, type Cue, type Snapshot } from '../game/presentation';
 import { confirmMove, resolveClick } from '../game/selection';
+import { activeSlot, isHumanTurn } from '../game/turn-order';
 import { t } from '../i18n';
 import { terrainOf, type Terrain } from '../maps/terrain';
 import { Session } from '../net/session';
@@ -25,7 +26,6 @@ import {
   type PublicState,
   type StateMessage,
   type Team,
-  type UnitState,
 } from '../protocol';
 import { NO_FLOOR, type Cell, type Pixel } from '../view/grid';
 import { MIN_ZOOM, zoomAbout, type CameraView } from '../view/camera';
@@ -274,8 +274,8 @@ export class MatchScene extends Phaser.Scene {
 
     // The acting unit is selected for the player, so the board and the panel are about the unit that
     // can actually act; the mode then falls back if the new turn has nothing left to do.
-    const actor = this.actor();
-    if (actor && actor.team === HUMAN_TEAM) this.selectedId = actor.id;
+    const actor = activeSlot(message.state);
+    if (actor !== null && isHumanTurn(message.state, HUMAN_TEAM)) this.selectedId = actor.unit.id;
     // A new state is a new board: a destination armed on the old one is stale.
     this.armedMove = null;
     this.mode = settleMode(this.mode, availableActions(message.state, HUMAN_TEAM));
@@ -299,12 +299,6 @@ export class MatchScene extends Phaser.Scene {
     this.mapView?.destroy();
     this.map = terrainOf(mapId);
     this.mapView = new MapView(this, this.map);
-  }
-
-  private actor(): UnitState | undefined {
-    if (!this.state) return undefined;
-    const currentId = this.state.initiative[this.state.currentIndex];
-    return this.state.units.find((unit) => unit.id === currentId);
   }
 
   /**
@@ -458,6 +452,7 @@ export class MatchScene extends Phaser.Scene {
     this.buttonModel = this.state ? actionButtons(this.state, HUMAN_TEAM) : [];
     this.hud.render({
       state: this.state,
+      humanTeam: HUMAN_TEAM,
       selectedId: this.selectedId,
       mode: this.mode,
       finished: this.finished,
@@ -524,17 +519,19 @@ export class MatchScene extends Phaser.Scene {
    */
   private redrawUnits(state: PublicState): void {
     const inPlay = new Set<string>();
+    const activeId = activeSlot(state)?.unit.id ?? null;
 
     for (const unit of state.units) {
       if (unit.permanentlyDead) continue;
       inPlay.add(unit.id);
 
+      const marks = { selected: unit.id === this.selectedId, active: unit.id === activeId };
       let sprite = this.sprites.get(unit.id);
       if (sprite === undefined) {
-        sprite = new UnitSprite(this, unit, unit.id === this.selectedId, this.placementOf(unit.position));
+        sprite = new UnitSprite(this, unit, marks, this.placementOf(unit.position));
         this.sprites.set(unit.id, sprite);
       } else {
-        sprite.sync(unit, unit.id === this.selectedId, this.placementOf(unit.position));
+        sprite.sync(unit, marks, this.placementOf(unit.position));
       }
     }
 

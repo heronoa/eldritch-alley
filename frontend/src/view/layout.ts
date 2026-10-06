@@ -35,6 +35,13 @@ const COLUMN_HEIGHT = 300;
 /** The way out of a finished match, under the result, centred on the canvas. */
 export const RESULT_BUTTON_RECT: Rect = { x: 540, y: 440, width: 200, height: 56 };
 
+/**
+ * The banner of a turn change: centred on the canvas, narrow enough to fall between the two columns
+ * of the HUD. It is deliberately not one of `hudRects` — it fades over the board, and the map and the
+ * action bar stay usable underneath it.
+ */
+export const BANNER_RECT: Rect = { x: 340, y: 324, width: 600, height: 72 };
+
 /** The turn-order carousel: one chip per unit still in play, the acting unit first. */
 export const CAROUSEL_RECT: Rect = { x: CENTRED_X, y: PADDING, width: CENTRED_WIDTH, height: 80 };
 
@@ -175,6 +182,15 @@ export function carouselSlotRect(index: number): Rect {
     height: CAROUSEL_SLOT.height,
   };
 }
+
+/**
+ * The tip of the arrow that marks the unit on turn, in the sprite's own coordinates: straight above
+ * the feet of the figure, clear of its head (48 px up), its health bar (54) and its pips (64).
+ */
+export const TURN_ARROW_POINT: Pixel = { x: 0, y: -72 };
+
+/** Half the width of that arrow, and how far its base sits above its tip. */
+export const TURN_ARROW = { halfWidth: 9, height: 14 };
 
 /** The top-left of the nth row of the panel, below its title. */
 export function panelRowPoint(index: number): Pixel {

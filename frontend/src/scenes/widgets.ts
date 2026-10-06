@@ -145,6 +145,52 @@ export function createPanel(
   return scene.add.container(rect.x, rect.y, [frame, inner, heading]);
 }
 
+/**
+ * The banner a turn change raises: one line over the board, framed like a panel. It fades out on its
+ * own (decision D1 of the EA-3 plan) and takes no pointer input, so the bar and the map stay usable
+ * while it is on the screen.
+ */
+export class Banner extends Phaser.GameObjects.Container {
+  private readonly caption: Phaser.GameObjects.Text;
+  private fade: Phaser.Tweens.Tween | null = null;
+
+  constructor(scene: Phaser.Scene, rect: Rect) {
+    super(scene, rect.x, rect.y);
+
+    const frame = scene.add.rectangle(0, 0, rect.width, rect.height, PANEL_FILL).setOrigin(0);
+    frame.setStrokeStyle(1, PANEL_STROKE);
+    frame.setAlpha(PANEL_ALPHA);
+
+    this.caption = scene.add
+      .text(rect.width / 2, rect.height / 2, '', {
+        fontFamily: FONT_TITLE,
+        fontSize: FONT_SIZE.title,
+        color: TEXT_COLOR,
+      })
+      .setOrigin(0.5);
+
+    this.add([frame, this.caption]);
+    this.setVisible(false);
+    scene.add.existing(this);
+  }
+
+  /** Shows one line at full strength and lets it fade away over `durationMs`. */
+  show(text: string, durationMs: number): void {
+    this.caption.setText(text);
+    this.setAlpha(1);
+    this.setVisible(true);
+
+    // A turn can change while the banner of the last one is still fading; that one is dropped.
+    this.fade?.remove();
+    this.fade = this.scene.tweens.add({
+      targets: this,
+      alpha: 0,
+      duration: durationMs,
+      onComplete: () => this.setVisible(false),
+    });
+  }
+}
+
 /** The fill of a unit: the colour of its team, greyed out once it has fallen. */
 export function fillColorOf(unit: UnitState): number {
   return unit.defeated ? CORPSE_COLOR : TEAM_COLOR[unit.team];
