@@ -42,10 +42,18 @@ export const ptBR = {
   // The battle log. One sentence per event, and the placeholders are filled by `interpolate`.
   'log.event.moved': '{actor} moveu de {from} para {to}',
   'log.event.attacked': '{actor} acertou {target} por {damage}',
-  // The same hit, told with the crate the target was crouched behind: the engine's word is cover, the
-  // screen's is the fiction's (ADR 0012 § D3).
-  'log.event.attackedCover': '{actor} acertou {target} por {damage}, apesar da cobertura',
-  'log.event.missed': '{actor} errou',
+  // The same shot told with the crate one of the two ends was behind: the engine's word is cover, the
+  // screen's is the fiction's (ADR 0012 § D3). Which end it was is the whole difference between the
+  // four pairs, and the shooter's own cover is read on the board, because the event carries only the
+  // target's (ADR 0012 § D4, ADR 0013).
+  'log.event.attackedCover': '{actor} acertou {target} por {damage} em cobertura',
+  'log.event.missed': '{actor} errou {target}',
+  'log.event.missedCover': '{actor} errou {target} em cobertura',
+  'log.event.attackedFromCover': '{actor}, em cobertura, acertou {target} por {damage}',
+  'log.event.missedFromCover': '{actor}, em cobertura, errou {target}',
+  'log.event.attackedBothCover':
+    '{actor}, em cobertura, acertou {target} por {damage}, que também estava em cobertura',
+  'log.event.missedBothCover': '{actor}, em cobertura, errou {target}, que também estava em cobertura',
   'log.event.reloaded': '{actor} recarregou',
   // The same action for a magic class (ADR 0011 §3): the engine calls it a reload either way, and the
   // player reads the word of their own class.
@@ -116,13 +124,28 @@ export const ptBR = {
   'hud.autoEndTurn.countdown': 'Turno encerrado em {seconds} s',
   'hud.autoEndTurn.link': 'Não passar automaticamente',
   'hud.autoEndTurn.hint': 'Nada mais a fazer: termine o turno',
-  // The settings panel the gear opens: the toggle of the automatic end of turn, and the stepper of the
-  // drag sensitivity (owner's request) with the value it reads between its two signs. The label of the
-  // second row is drawn beside that stepper, so it stays short: a longer one runs under the −.
+  // The settings panel the gear opens: the toggle of the automatic end of turn, the stepper of the
+  // drag sensitivity (owner's request) with the value it reads between its two signs, and the checkbox
+  // of the marks of the rules (owner's request, EA-15). The label of the second row is drawn beside
+  // that stepper, so it stays short: a longer one runs under the −.
   'hud.settings': 'Ajustes',
   'hud.settings.autoEndTurn': 'Passar o turno automaticamente',
   'hud.settings.panSensitivity': 'Arrasto do mapa',
   'hud.settings.panSensitivity.value': '{percent}%',
+  'hud.settings.highlightCovers': 'Realçar Coberturas',
+  // The badge a unit in cover wears over its head: the sentence, the conjunction that joins two sides,
+  // and the name of each of the eight. The sides are the board's own and the camera never renames one
+  // (m3-02, D1), so these are not the letters of the camera panel above.
+  'hud.cover.sides': 'Em cobertura a {sides}',
+  'hud.cover.and': ' e ',
+  'hud.cover.north': 'norte',
+  'hud.cover.northeast': 'nordeste',
+  'hud.cover.east': 'leste',
+  'hud.cover.southeast': 'sudeste',
+  'hud.cover.south': 'sul',
+  'hud.cover.southwest': 'sudoeste',
+  'hud.cover.west': 'oeste',
+  'hud.cover.northwest': 'noroeste',
   // The camera panel (EA-12): the view the camera looks from, the zoom step it is on, and the letter
   // each direction is written as — Norte, Leste, Sul, Oeste, as the prototype prints them.
   'hud.camera': 'Câmera',

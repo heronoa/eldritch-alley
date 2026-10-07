@@ -20,11 +20,16 @@ import {
   LOG_RECT,
   LOG_TOGGLE_RECT,
   SETTINGS_BUTTON_RECT,
+  SETTINGS_COVERS_ROW_RECT,
   SETTINGS_PANEL_RECT,
   SETTINGS_PAN_MINUS_RECT,
   SETTINGS_PAN_PLUS_RECT,
 } from '../view/layout';
 import { MatchScene } from './MatchScene';
+import { UnitSprite } from './units';
+
+/** What the stand-in map was told, so a test can read back the calls the canvas would have painted. */
+const mapCalls = vi.hoisted(() => ({ marksVisible: [] as boolean[] }));
 
 vi.mock('phaser', async () => ({ default: (await import('./testing/phaser-stub')).stub() }));
 // The map is painted on canvases the Node run does not have: the scene's wiring does not depend on it.
@@ -35,6 +40,9 @@ vi.mock('./map/MapView', () => ({
     destroy() {}
     update() {}
     setCovered(_cells: readonly { x: number; y: number }[]) {}
+    setMarksVisible(visible: boolean) {
+      mapCalls.marksVisible.push(visible);
+    }
   },
 }));
 
@@ -137,7 +145,26 @@ function message(state: PublicState): StateMessage {
   return { version: PROTOCOL_VERSION, mapId: 'street', state };
 }
 
+const HIGHLIGHT_COVERS_KEY = 'eldritch-alley.highlightCovers';
+
+/**
+ * A browser storage with what it already holds, and the writes the scene makes to it. The settings are
+ * read at boot, so this has to be in place before the scene is created.
+ */
+function withStorage(saved: Record<string, string> = {}): Record<string, string> {
+  const writes: Record<string, string> = {};
+  (globalThis as { localStorage?: unknown }).localStorage = {
+    getItem: (key: string) => saved[key] ?? null,
+    setItem: (key: string, value: string) => void (writes[key] = value),
+  };
+  return writes;
+}
+
 beforeEach(() => setLocale('pt-BR'));
+beforeEach(() => {
+  mapCalls.marksVisible.length = 0;
+  delete (globalThis as { localStorage?: unknown }).localStorage;
+});
 
 describe('the match scene', () => {
   it('hands the HUD the state, with the human unit on turn selected', () => {
@@ -446,5 +473,77 @@ describe('the match scene', () => {
     expect(view.finished).toBe(true);
     expect(view.wayOutVisible).toBe(true);
     expect(view.result).toBe('Vitória');
+  });
+
+  it('hangs the cover badge over the units, naming the side the prop is on', () => {
+    const { session } = startMatch();
+    const board: BoardState = { ...BOARD, props: [{ position: { x: 1, y: 0 }, kind: 'cover' }] };
+    const state = { ...stateFor({ onTurn: 'A', spent: false }), board };
+
+    // Phaser's Text cannot be read back here (the stand-in swallows it), so the sentence is read at the
+    // seam the scene hands it over: the sprite. The sides are the board's own, whatever the view is
+    // turned to (ADR 0012 § D5).
+    const badge = vi.spyOn(UnitSprite.prototype, 'setCoverBadge');
+    try {
+      session.emit.state(message(state));
+
+      // Sniper stands at (0,0), with the crate on its east; the priest at (7,7) has none beside it.
+      expect(badge.mock.calls.map(([sentence]) => sentence)).toEqual(['Em cobertura a leste', null]);
+    } finally {
+      badge.mockRestore();
+    }
+  });
+
+  it('takes the badge off a unit that has fallen, which is covered by nothing', () => {
+    const { session } = startMatch();
+    const board: BoardState = { ...BOARD, props: [{ position: { x: 1, y: 0 }, kind: 'cover' }] };
+    const down = { ...makeUnit('A-sniper', 'A', 0, 0), defeated: true };
+    const state = {
+      ...stateFor({ onTurn: 'A', spent: false }),
+      board,
+      units: [down, makeUnit('B-priest', 'B', 7, 7)],
+    };
+
+    const badge = vi.spyOn(UnitSprite.prototype, 'setCoverBadge');
+    try {
+      session.emit.state(message(state));
+
+      expect(badge.mock.calls.map(([sentence]) => sentence)).toEqual([null, null]);
+    } finally {
+      badge.mockRestore();
+    }
+  });
+
+  it('starts with the cover marks off when the browser was told so, and says so in the HUD', () => {
+    withStorage({ [HIGHLIGHT_COVERS_KEY]: 'false' });
+    const { session, render } = startMatch();
+    session.emit.state(message(stateFor({ onTurn: 'A', spent: false })));
+
+    expect(lastView(render).highlightCovers).toBe(false);
+    expect(mapCalls.marksVisible[mapCalls.marksVisible.length - 1]).toBe(false);
+  });
+
+  it('turns the cover marks on and off from the settings panel, and remembers the choice', () => {
+    const writes = withStorage();
+    const { scene, session, render } = startMatch();
+    session.emit.state(message(stateFor({ onTurn: 'A', spent: false })));
+
+    const scene_ = scene as unknown as { hudTakesPress(p: { x: number; y: number }): boolean };
+    const at = (rect: { x: number; y: number }) => ({ x: rect.x + 1, y: rect.y + 1 });
+    // The marks are on for a build that says nothing, and the panel is where they are turned off.
+    expect(lastView(render).highlightCovers).toBe(true);
+
+    expect(scene_.hudTakesPress(at(SETTINGS_BUTTON_RECT))).toBe(true);
+    expect(scene_.hudTakesPress(at(SETTINGS_COVERS_ROW_RECT))).toBe(true);
+
+    expect(lastView(render).highlightCovers).toBe(false);
+    expect(writes[HIGHLIGHT_COVERS_KEY]).toBe('false');
+    expect(mapCalls.marksVisible[mapCalls.marksVisible.length - 1]).toBe(false);
+
+    // And back on: the checkbox is one control, read the same way both ways.
+    expect(scene_.hudTakesPress(at(SETTINGS_COVERS_ROW_RECT))).toBe(true);
+    expect(lastView(render).highlightCovers).toBe(true);
+    expect(writes[HIGHLIGHT_COVERS_KEY]).toBe('true');
+    expect(mapCalls.marksVisible[mapCalls.marksVisible.length - 1]).toBe(true);
   });
 });

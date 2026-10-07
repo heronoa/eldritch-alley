@@ -5,6 +5,7 @@ import Phaser from 'phaser';
 import type { ActionButton, ActionMode, MoveChip } from '../game/actions';
 import type { AutoEndPhase } from '../game/autoEndTurn';
 import { bannerFor } from '../game/banner';
+import { HIGHLIGHT_COVERS_DEFAULT } from '../game/highlightCovers';
 import { unitSheet } from '../game/inspect-window';
 import { unitPanel, type PanelRow } from '../game/panel';
 import { PAN_SENSITIVITY_DEFAULT } from '../game/panSensitivity';
@@ -36,6 +37,7 @@ import {
   PADDING,
   RESULT_BUTTON_RECT,
   SETTINGS_BUTTON_RECT,
+  SETTINGS_COVERS_ROW_RECT,
   SETTINGS_PANEL_RECT,
   SETTINGS_PAN_MINUS_RECT,
   SETTINGS_PAN_PLUS_RECT,
@@ -168,6 +170,8 @@ export interface HudView {
   autoEndTurn: AutoEndView;
   /** How hard a drag moves the map, as the stepper of the settings prints it (owner's request). */
   panSensitivity: PanSensitivityView;
+  /** Whether the board draws the marks of the rules, as the checkbox of the settings shows (EA-15). */
+  highlightCovers: boolean;
   /** Where the map camera is, as the camera panel prints it (EA-12). */
   camera: CameraPanelView;
 }
@@ -196,6 +200,7 @@ const EMPTY_VIEW: HudView = {
   settingsOpen: false,
   autoEndTurn: { phase: 'idle', seconds: 0, enabled: true },
   panSensitivity: { percent: PAN_SENSITIVITY_DEFAULT, canDecrease: true, canIncrease: true },
+  highlightCovers: HIGHLIGHT_COVERS_DEFAULT,
   camera: { view: 'north', zoom: MIN_ZOOM },
 };
 
@@ -598,28 +603,37 @@ export class HudScene extends Phaser.Scene {
     this.settingsRows.removeAll(true);
     if (!view.settingsOpen) return;
 
+    this.drawCheckRow(SETTINGS_TOGGLE_RECT, view.autoEndTurn.enabled, t('hud.settings.autoEndTurn'));
+    this.drawPanRow(view);
+    this.drawCheckRow(SETTINGS_COVERS_ROW_RECT, view.highlightCovers, t('hud.settings.highlightCovers'));
+  }
+
+  /**
+   * One row of the settings that is a checkbox and a label: a full box while the setting is on, the
+   * fill of the panel while it is off. Two rows of the panel are these — the automatic end of turn
+   * (EA-4) and the marks of the rules (EA-15) — so they are drawn by one method. The scene reads the
+   * rectangle the row is drawn on, which is the press the player makes.
+   */
+  private drawCheckRow(row: Rect, enabled: boolean, label: string): void {
     const box = this.add
       .rectangle(
-        SETTINGS_TOGGLE_RECT.x,
-        SETTINGS_TOGGLE_RECT.y + (SETTINGS_TOGGLE_RECT.height - TOGGLE_BOX) / 2,
+        row.x,
+        row.y + (row.height - TOGGLE_BOX) / 2,
         TOGGLE_BOX,
         TOGGLE_BOX,
-        view.autoEndTurn.enabled ? PAPER_COLOR : PANEL_FILL,
+        enabled ? PAPER_COLOR : PANEL_FILL,
       )
       .setOrigin(0)
       .setStrokeStyle(1, PANEL_STROKE);
 
-    const label = this.add
-      .text(
-        SETTINGS_TOGGLE_RECT.x + TOGGLE_BOX + TOGGLE_LABEL_GAP,
-        SETTINGS_TOGGLE_RECT.y + SETTINGS_TOGGLE_RECT.height / 2,
-        t('hud.settings.autoEndTurn'),
-        ROW_TEXT_STYLE,
-      )
-      .setOrigin(0, 0.5);
+    const text = this.rowLabel(row.x + TOGGLE_BOX + TOGGLE_LABEL_GAP, row, label);
 
-    this.settingsRows.add([box, label]);
-    this.drawPanRow(view);
+    this.settingsRows.add([box, text]);
+  }
+
+  /** A line of a settings row: the panel's own text style, in the middle of the row it belongs to. */
+  private rowLabel(x: number, row: Rect, label: string): Phaser.GameObjects.Text {
+    return this.add.text(x, row.y + row.height / 2, label, ROW_TEXT_STYLE).setOrigin(0, 0.5);
   }
 
   /**
@@ -633,14 +647,11 @@ export class HudScene extends Phaser.Scene {
    * are drawn on.
    */
   private drawPanRow(view: HudView): void {
-    const panLabel = this.add
-      .text(
-        SETTINGS_PAN_ROW_RECT.x,
-        SETTINGS_PAN_ROW_RECT.y + SETTINGS_PAN_ROW_RECT.height / 2,
-        t('hud.settings.panSensitivity'),
-        ROW_TEXT_STYLE,
-      )
-      .setOrigin(0, 0.5);
+    const panLabel = this.rowLabel(
+      SETTINGS_PAN_ROW_RECT.x,
+      SETTINGS_PAN_ROW_RECT,
+      t('hud.settings.panSensitivity'),
+    );
 
     const value = this.add
       .text(

@@ -31,9 +31,12 @@ import {
   savePanSensitivity,
   stepPanSensitivity,
 } from '../game/panSensitivity';
+import { coverSentence } from '../game/coverBadge';
+import { readHighlightCovers, saveHighlightCovers } from '../game/highlightCovers';
+import { buildEnv, highlightCoversDefault } from '../config';
 import { HIT_MARGIN_PX, unitAtPoint, type SpriteLayout } from '../game/hit';
 import { highlightedCells, highlightTone } from '../game/highlight';
-import { describeEvent, describeRejection, type UnitNames } from '../game/log';
+import { describeEvent, describeRejection, type Battlefield, type UnitNames } from '../game/log';
 import { presentationOf, type Cue, type Snapshot } from '../game/presentation';
 import { Gestures, LONG_PRESS_MS, type Pinch, type PressPointer } from '../game/press';
 import { resolveClick, resolveInspect } from '../game/selection';
@@ -74,6 +77,7 @@ import {
   INSPECT_RECT,
   RESULT_BUTTON_RECT,
   SETTINGS_BUTTON_RECT,
+  SETTINGS_COVERS_ROW_RECT,
   SETTINGS_PANEL_RECT,
   SETTINGS_PAN_MINUS_RECT,
   SETTINGS_PAN_PLUS_RECT,
@@ -108,6 +112,13 @@ import { UnitSprite, type Placement } from './units';
 
 /** The side the person at the keyboard plays. */
 const HUMAN_TEAM: Team = 'A';
+
+/**
+ * What this build starts with for the marks of the rules, before the player's own choice is read
+ * (EA-15). Resolved once, at load: a build that declares a value the client cannot read fails here
+ * rather than quietly drawing the wrong default (config D4).
+ */
+const HIGHLIGHT_COVERS_BUILD_DEFAULT = highlightCoversDefault(buildEnv());
 
 /** How far an arrow key, or one of WASD, slides the map, in canvas pixels. */
 const PAN_KEY_PX = 80;
@@ -206,6 +217,8 @@ export class MatchScene extends Phaser.Scene {
   private settingsOpen = false;
   /** How much of a finger's travel drags the map, as a percentage of it (owner's request). */
   private panSensitivity: number = PAN_SENSITIVITY_DEFAULT;
+  /** Whether the board draws the marks of the rules, as the settings checkbox has it (EA-15). */
+  private highlightCovers: boolean = HIGHLIGHT_COVERS_BUILD_DEFAULT;
   /** The clock of the last frame, so the machine is handed elapsed time and never reads the clock. */
   private lastFrameMs = 0;
 
@@ -258,6 +271,9 @@ export class MatchScene extends Phaser.Scene {
     // The same reason as the setting above: the drag the player last chose may have been chosen
     // elsewhere, and every match opens on it.
     this.panSensitivity = readPanSensitivity();
+    // And the marks of the rules: the player's own choice where there is one, the build's default
+    // where there is none (EA-15).
+    this.highlightCovers = readHighlightCovers(HIGHLIGHT_COVERS_BUILD_DEFAULT);
     this.lastFrameMs = 0;
     this.buttonModel = [];
     this.chipModel = [];
@@ -480,6 +496,7 @@ export class MatchScene extends Phaser.Scene {
       if (containsPoint(SETTINGS_TOGGLE_RECT, point)) this.setAutoEndTurn(!this.autoEndTurn.enabled);
       else if (containsPoint(SETTINGS_PAN_MINUS_RECT, point)) this.pressPanStepper(-1);
       else if (containsPoint(SETTINGS_PAN_PLUS_RECT, point)) this.pressPanStepper(1);
+      else if (containsPoint(SETTINGS_COVERS_ROW_RECT, point)) this.setHighlightCovers(!this.highlightCovers);
       return true;
     }
 
@@ -742,15 +759,24 @@ export class MatchScene extends Phaser.Scene {
   /**
    * Builds the map the state names, once. A room always plays on the same map, so a different id only
    * happens on a re-join; rebuilding is the cheap correct answer and it costs one comparison per state.
-   * The marks are read here and not by the caller, because a board's props do not change during a match:
-   * a state that finds the map already built has nothing to mark.
    */
   private ensureMap(mapId: StateMessage['mapId'], board: BoardState): void {
     if (this.map !== null && this.map.id === mapId) return;
 
+    this.buildMap(mapId, board);
+  }
+
+  /**
+   * Builds the detailed map of a view, and puts the marks of the board on it. Both the first build and
+   * the one every turn of the camera asks for come through here, so a view built again never loses the
+   * marks nor the player's setting for them. A null board is a match whose first state has not arrived:
+   * the map is built with nothing marked.
+   */
+  private buildMap(mapId: StateMessage['mapId'], board: BoardState | null): void {
     this.mapView?.destroy();
     this.map = terrainOf(mapId, this.viewSteps);
-    this.mapView = new MapView(this, this.map, boardMarks(board));
+    this.mapView = new MapView(this, this.map, board === null ? [] : boardMarks(board));
+    this.mapView.setMarksVisible(this.highlightCovers);
   }
 
   /**
@@ -801,9 +827,9 @@ export class MatchScene extends Phaser.Scene {
     this.turn = null;
 
     this.viewSteps += turn.steps;
-    this.map = terrainOf(turn.from.id, this.viewSteps);
-    this.mapView?.destroy();
-    this.mapView = new MapView(this, this.map);
+    // The marks belong to the board, not to the view, so the map of the new view carries them as the
+    // one it replaces did.
+    this.buildMap(turn.from.id, this.state?.board ?? null);
     if (this.state !== null) this.redraw(this.state);
   }
 
@@ -856,14 +882,29 @@ export class MatchScene extends Phaser.Scene {
 
   /**
    * Plays the events of one accepted action, then writes them into the log. The snapshot is read
-   * for the cues and moved forward after them, so each event is read against the board it found.
+   * for the cues and moved forward after them, so each event is read against the board it found —
+   * and that is also what the log is handed, because a shot says where both ends stood (EA-15).
    */
   private handleEvents(events: Event[]): void {
     for (const event of events) {
       for (const cue of presentationOf(event, this.snapshot)) this.play(cue);
+      this.appendLog(describeEvent(event, UNIT_NAMES, this.battlefield()));
       this.advanceSnapshot(event);
-      this.appendLog(describeEvent(event, UNIT_NAMES));
     }
+  }
+
+  /**
+   * The board and the positions the events are read against, as `describeEvent` takes them. The shots
+   * that arrive before the first state have no board to be read on, and the log says nothing of cover
+   * then (the server sends the state before the events of an action, so this is the first action only).
+   */
+  private battlefield(): Battlefield | undefined {
+    if (this.state === null) return undefined;
+
+    return {
+      board: this.state.board,
+      positions: Object.fromEntries([...this.snapshot].map(([id, unit]) => [id, unit.position])),
+    };
   }
 
   private play(cue: Cue): void {
@@ -1035,6 +1076,17 @@ export class MatchScene extends Phaser.Scene {
   }
 
   /**
+   * The third option: the marks of the rules (EA-15). The choice is the player's and outlives the page,
+   * so it is saved here; the map is told at once, because hiding them repaints nothing.
+   */
+  private setHighlightCovers(enabled: boolean): void {
+    this.highlightCovers = enabled;
+    saveHighlightCovers(enabled);
+    this.mapView?.setMarksVisible(enabled);
+    this.pushHud();
+  }
+
+  /**
    * Back to the title. The session is closed first, so the room does not report the exit as a drop,
    * and then the game goes: the canvas and the scenes are the match, and the title is a page of its
    * own, so there is nothing left of the match to hand over. Phaser destroys the game on the next
@@ -1137,6 +1189,9 @@ export class MatchScene extends Phaser.Scene {
       result: this.resultText,
       wayOutVisible: this.finished,
       settingsOpen: this.settingsOpen,
+      // Whether the board draws the marks of the rules (EA-15). The setting lives here; the HUD only
+      // draws the tick of its checkbox.
+      highlightCovers: this.highlightCovers,
       // Which ends of the stepper still do something is decided here, where the setting lives, and only
       // drawn by the HUD — the same way the setting of the automatic end of turn is.
       panSensitivity: {
@@ -1317,6 +1372,10 @@ export class MatchScene extends Phaser.Scene {
       } else {
         sprite.sync(unit, marks, this.placementOf(unit.position), facing);
       }
+
+      // The words over its head are read from the board's own sides (EA-15), so they say the same thing
+      // the rule does — and a unit that has fallen is covered by nothing.
+      sprite.setCoverBadge(unit.defeated ? null : coverSentence(state.board, unit.position));
     }
 
     for (const id of [...this.sprites.keys()]) {

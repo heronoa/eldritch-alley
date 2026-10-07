@@ -16,3 +16,4 @@ Short records of decisions that shape the game and the codebase. Each ADR has a 
 | [0010](0010-movement-by-destination-and-turn-scoped-commands.md) | Movement by destination and turn-scoped commands | Accepted |
 | [0011](0011-mana-as-magic-class-resource.md) | Mana as the magic classes' resource | Accepted |
 | [0012](0012-cover-and-typed-props.md) | Cover and typed props on the board | Accepted |
+| [0013](0013-no-cover-under-the-feet.md) | A prop under the feet gives no cover | Accepted |

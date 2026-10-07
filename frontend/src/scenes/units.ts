@@ -19,14 +19,19 @@ import type { Cell, Pixel } from '../view/grid';
 import { TILE_H, TILE_W, depthOfUnit } from '../view/iso';
 import { TURN_ARROW, TURN_ARROW_POINT } from '../view/layout';
 import {
+  COVER_BADGE_FILL,
+  COVER_BADGE_STROKE,
   CORPSE_COLOR,
   CORPSE_OUTLINE_COLOR,
+  FONT_BODY,
+  FONT_SIZE,
   MANA_COLOR,
   PANEL_STROKE,
   PAPER_COLOR,
   SELECTED_COLOR,
   TEAM_COLOR,
   WARM_COLOR,
+  cssColor,
 } from '../view/theme';
 import {
   BODY_HEIGHT,
@@ -79,6 +84,13 @@ const RING_GAP = 3;
 const HEALTH_BAR = { width: 32, height: 4, gapAboveBody: 6 };
 const PIP = { size: 4, gap: 3, gapAboveBar: 6 };
 
+/**
+ * The badge a unit in cover wears (EA-15), over everything else the sprite raises: its bottom sits
+ * above the tip of the turn arrow (-72) so the two never share a line, and it grows upwards from
+ * there. The arrow is the highest of the other marks, so the badge clears all of them.
+ */
+const COVER_BADGE = { gapAboveArrow: 6, strokeThickness: 4 };
+
 /** What the sprite is busy with, and when it started. Only one action runs at a time. */
 type Action =
   | { kind: 'attack'; style: 'melee' | 'ranged'; hit: boolean; start: number; impactAt: number; impactUntil: number }
@@ -122,6 +134,8 @@ export class UnitSprite extends Phaser.GameObjects.Container {
   private readonly bars: Phaser.GameObjects.Graphics;
   private readonly ring: Phaser.GameObjects.Graphics;
   private readonly arrow: Phaser.GameObjects.Graphics;
+  /** The words over the head of a unit in cover, or nothing at all (EA-15). */
+  private readonly coverBadge: Phaser.GameObjects.Text;
 
   private team: Team = 'A';
   /** The row of the sheet this unit is drawn from. A class without one falls back to Combatant. */
@@ -147,14 +161,24 @@ export class UnitSprite extends Phaser.GameObjects.Container {
     super(scene, 0, 0);
     this.bornAt = scene.time.now;
 
-    // Drawing order inside the container: the ground, the body on it, the bars, the arrow, the ring.
+    // Drawing order inside the container: the ground, the body on it, the bars, the arrow, the ring,
+    // and the words of cover over the lot.
     this.marker = scene.add.graphics();
     this.corpse = scene.add.graphics();
     this.figure = scene.add.sprite(0, 0, 'unit-ally', 0).setOrigin(0.5, 1).setScale(BODY_SCALE);
     this.bars = scene.add.graphics();
     this.arrow = scene.add.graphics();
     this.ring = scene.add.graphics();
-    this.add([this.marker, this.corpse, this.figure, this.bars, this.arrow, this.ring]);
+    this.coverBadge = scene.add
+      .text(0, TURN_ARROW_POINT.y - TURN_ARROW.height - COVER_BADGE.gapAboveArrow, '', {
+        fontFamily: FONT_BODY,
+        fontSize: `${FONT_SIZE.log}px`,
+        color: cssColor(COVER_BADGE_FILL),
+      })
+      .setOrigin(0.5, 1)
+      .setStroke(cssColor(COVER_BADGE_STROKE), COVER_BADGE.strokeThickness)
+      .setVisible(false);
+    this.add([this.marker, this.corpse, this.figure, this.bars, this.arrow, this.ring, this.coverBadge]);
 
     scene.add.existing(this);
     this.sync(unit, marks, placement, facesRight);
@@ -194,10 +218,22 @@ export class UnitSprite extends Phaser.GameObjects.Container {
   /** The body falls: grey, outlined, with no bars, and it stays on its tile until it is removed. */
   markDefeated(): void {
     this.defeated = true;
+    // A fallen unit is covered by nothing, and the words would hang over the body it left (EA-15).
+    this.setCoverBadge(null);
     this.drawMarker();
     this.drawCorpse();
     this.drawArrow();
     this.drawBars(this.scene.time.now);
+  }
+
+  /**
+   * Writes the words the scene worked out over the unit's head, or takes them down with `null`. The
+   * sprite decides nothing: which sides carry cover and in which language is the scene's business
+   * (`game/coverBadge.ts`), and this only draws what it is handed.
+   */
+  setCoverBadge(text: string | null): void {
+    this.coverBadge.setText(text ?? '');
+    this.coverBadge.setVisible(text !== null);
   }
 
   /**

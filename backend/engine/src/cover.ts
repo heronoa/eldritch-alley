@@ -19,12 +19,15 @@ export const COVER_HIT_PENALTY = 25;
 
 /**
  * Whether the target of a shot stands behind cover from `attacker`. True when a `cover` prop stands on
- * the cell of the target, or on one of the eight cells around it that lies on the side the attacker is
- * on — the crate the target is crouched behind, not the one behind its back.
+ * one of the eight cells around the target that lies on the side the attacker is on — the crate the
+ * target is crouched behind, not the one behind its back.
  *
- * The cell the attacker itself stands on never counts: a shooter standing on a crate has the crate
- * under its feet, not between the two. Pure, integer, no state; a position outside the board is a
- * programming error and throws, like `levelAt`.
+ * Only the neighbours count, for both ends of the shot (ADR 0013): a prop under the feet is under the
+ * feet of whoever stands there, and a unit on top of the car is more exposed than one beside it, not
+ * covered all round. The rule is symmetric — the cell the attacker stands on never counts either.
+ *
+ * Pure, integer, no state; a position outside the board is a programming error and throws, like
+ * `levelAt`.
  */
 export function coverFor(board: Board, target: Position, attacker: Position): boolean {
   if (!inBounds(board, target)) {
@@ -33,9 +36,6 @@ export function coverFor(board: Board, target: Position, attacker: Position): bo
   if (!inBounds(board, attacker)) {
     throw new RangeError(`position outside the board: ${attacker.x},${attacker.y}`);
   }
-
-  // A prop on the cell the target stands on is cover from every direction: it is crouching behind it.
-  if (propAt(board, target, 'cover') !== undefined) return true;
 
   const ax = Math.sign(attacker.x - target.x);
   const ay = Math.sign(attacker.y - target.y);

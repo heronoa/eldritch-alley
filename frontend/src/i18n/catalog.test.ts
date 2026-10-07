@@ -6,6 +6,7 @@
 // move: it holds the text `develop` had, so a silent change to the Portuguese fails a test.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { ActionButton } from '../game/actions';
+import { COVER_SIDES, type CoverSide } from '../game/coverBadge';
 import { describeRejection } from '../game/log';
 import type { PanelKey } from '../game/panel';
 import type { RejectReason } from '../protocol';
@@ -136,7 +137,7 @@ describe('the pt-BR the game shows', () => {
   it('carries the sentences of the battle log, with their placeholders', () => {
     expect(ptBR['log.event.moved']).toBe('{actor} moveu de {from} para {to}');
     expect(ptBR['log.event.attacked']).toBe('{actor} acertou {target} por {damage}');
-    expect(ptBR['log.event.missed']).toBe('{actor} errou');
+    expect(ptBR['log.event.missed']).toBe('{actor} errou {target}');
     expect(ptBR['log.event.reloaded']).toBe('{actor} recarregou');
     // The refill of a magic class' pool, which the engine calls a reload all the same (ADR 0011 §3).
     expect(ptBR['log.event.meditated']).toBe('{actor} meditou');
@@ -147,14 +148,67 @@ describe('the pt-BR the game shows', () => {
     expect(ptBR['log.event.unknown']).toBe('evento desconhecido');
   });
 
-  it('carries the cover sentence of an attack in both catalogs', () => {
+  it('carries the four cover sentences of an attack in both catalogs', () => {
     // The engine's word for the effect is cover; the screen's word is the fiction's (ADR 0012 § D3).
-    expect(message('pt-BR', 'log.event.attackedCover')).toBe(
-      '{actor} acertou {target} por {damage}, apesar da cobertura',
+    // Which end of the shot the crate was on is the whole difference between the pairs.
+    expect(message('pt-BR', 'log.event.attackedCover')).toBe('{actor} acertou {target} por {damage} em cobertura');
+    expect(message('en-US', 'log.event.attackedCover')).toBe('{actor} hit {target} for {damage} in cover');
+    expect(message('pt-BR', 'log.event.missedCover')).toBe('{actor} errou {target} em cobertura');
+    expect(message('en-US', 'log.event.missedCover')).toBe('{actor} missed {target} in cover');
+    expect(message('pt-BR', 'log.event.attackedFromCover')).toBe('{actor}, em cobertura, acertou {target} por {damage}');
+    expect(message('en-US', 'log.event.attackedFromCover')).toBe('{actor}, in cover, hit {target} for {damage}');
+    expect(message('pt-BR', 'log.event.missedFromCover')).toBe('{actor}, em cobertura, errou {target}');
+    expect(message('en-US', 'log.event.missedFromCover')).toBe('{actor}, in cover, missed {target}');
+    expect(message('pt-BR', 'log.event.attackedBothCover')).toBe(
+      '{actor}, em cobertura, acertou {target} por {damage}, que também estava em cobertura',
     );
-    expect(message('en-US', 'log.event.attackedCover')).toBe(
-      '{actor} hit {target} for {damage} through cover',
+    expect(message('en-US', 'log.event.attackedBothCover')).toBe(
+      '{actor}, in cover, hit {target} for {damage}, who was in cover too',
     );
+    expect(message('pt-BR', 'log.event.missedBothCover')).toBe(
+      '{actor}, em cobertura, errou {target}, que também estava em cobertura',
+    );
+    expect(message('en-US', 'log.event.missedBothCover')).toBe(
+      '{actor}, in cover, missed {target}, who was in cover too',
+    );
+  });
+
+  it('carries the badge of a unit in cover, one name per side, in both catalogs', () => {
+    // The sides are the board's own (m3-02 fixes east as +x), and the badge names them in the order
+    // the module reads them (ADR 0012 § D5 is what they mean).
+    const sides: Record<CoverSide, string> = {
+      north: 'norte',
+      northeast: 'nordeste',
+      east: 'leste',
+      southeast: 'sudeste',
+      south: 'sul',
+      southwest: 'sudoeste',
+      west: 'oeste',
+      northwest: 'noroeste',
+    };
+    const english: Record<CoverSide, string> = {
+      north: 'North',
+      northeast: 'Northeast',
+      east: 'East',
+      southeast: 'Southeast',
+      south: 'South',
+      southwest: 'Southwest',
+      west: 'West',
+      northwest: 'Northwest',
+    };
+
+    for (const side of COVER_SIDES) {
+      expect(message('pt-BR', `hud.cover.${side}`), side).toBe(sides[side]);
+      expect(message('en-US', `hud.cover.${side}`), side).toBe(english[side]);
+    }
+
+    expect(message('pt-BR', 'hud.cover.sides')).toBe('Em cobertura a {sides}');
+    expect(message('en-US', 'hud.cover.sides')).toBe('In cover for {sides}');
+    expect(message('pt-BR', 'hud.cover.and')).toBe(' e ');
+    expect(message('en-US', 'hud.cover.and')).toBe(' and ');
+    // The label of the checkbox is the owner's own wording.
+    expect(ptBR['hud.settings.highlightCovers']).toBe('Realçar Coberturas');
+    expect(message('en-US', 'hud.settings.highlightCovers')).toBe('Highlight Covers');
   });
 
   it('answers every refusal code out of the catalog, keyed by the code itself', () => {

@@ -71,6 +71,10 @@ export class MapView {
   private readonly lines: Layer | null;
   /** One cell's canvases by the cell they draw, so a cell can be drawn translucent on its own. */
   private readonly cellLayers = new Map<string, Layer[]>();
+  /** The canvases that carry the marks of the rules, on their own so they can be hidden at once. */
+  private readonly markLayers: Layer[] = [];
+  /** Whether those marks are drawn. The scene sets it from the player's setting. */
+  private marksVisible = true;
   /** The cells drawn translucent now, so the next call can put them back to solid. */
   private covered: Cell[] = [];
 
@@ -125,6 +129,16 @@ export class MapView {
     for (const cell of this.covered) this.setCellAlpha(cell, COVERED_ALPHA);
   }
 
+  /**
+   * Shows or hides the marks of the rules (ADR 0012) — the diamonds that say which cells carry cover.
+   * They are a debugging aid the player can switch off from the settings, so this is a `setVisible`
+   * over the canvases that carry them: nothing is repainted, and the props themselves stay drawn.
+   */
+  setMarksVisible(visible: boolean): void {
+    this.marksVisible = visible;
+    for (const layer of this.markLayers) layer.image.setVisible(visible);
+  }
+
   /** Repaints what moves: the cells with an animated prop, the water, and the clotheslines. */
   update(timeMs: number): void {
     const seconds = timeMs / 1000;
@@ -147,6 +161,7 @@ export class MapView {
 
     this.layers.length = 0;
     this.moving.length = 0;
+    this.markLayers.length = 0;
     this.cellLayers.clear();
     this.covered = [];
   }
@@ -177,11 +192,20 @@ export class MapView {
       this.layer(`${key}-still`, box.width, box.height, depth, at, anchor, (ctx) => {
         drawCell({ ctx, terrain, cell, at: anchor, time: 0 });
         for (const prop of still) drawProp(ctx, prop, anchor, 0);
-        // The badge of the rules goes over the art, because what it says is what a shot at this cell
-        // costs — the one thing about the cell the player cannot read off the drawing itself.
-        if (mark !== undefined) drawMark(ctx, mark.kind, anchor);
       }),
     ];
+
+    // The badge of the rules goes over the art, because what it says is what a shot at this cell costs
+    // — the one thing about the cell the player cannot read off the drawing itself. It keeps a canvas
+    // of its own so hiding it is a `setVisible` and never a repaint (EA-15, D6).
+    if (mark !== undefined) {
+      const badge = this.layer(`${key}-mark`, box.width, box.height, LAYER.highlight(cell), at, anchor, (ctx) =>
+        drawMark(ctx, mark.kind, anchor),
+      );
+      badge.image.setVisible(this.marksVisible);
+      this.markLayers.push(badge);
+      canvases.push(badge);
+    }
 
     if (moving.length > 0 || tileMoves) {
       const layer = this.layer(`${key}-moving`, box.width, box.height, depth, at, anchor, () => {});

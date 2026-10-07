@@ -6,7 +6,7 @@
 // `stamp.ts`, the state of the call to action in `connect-flow.ts`, the wording in `copy.ts`, what a
 // failure says in `notice.ts`, which languages the switcher offers in `language.ts`, and what may
 // move in `motion.ts`. What is left here is the DOM.
-import { gameServerEndpoint } from '../config';
+import { buildEnv, gameServerEndpoint } from '../config';
 import { getLocale, saveLocale, setLocale, type Locale } from '../i18n';
 import { joinFailure } from '../net/join-failure';
 import { Session } from '../net/session';
@@ -158,7 +158,7 @@ function switchLanguage(locale: Locale): void {
 }
 
 /** The server to join. Resolved here, at load: a build without a valid endpoint never shows the title. */
-const endpoint = gameServerEndpoint(import.meta.env);
+const endpoint = gameServerEndpoint(buildEnv());
 
 /**
  * The call to action as the page loads it: nothing pressed, nothing announced. Kept as one value so

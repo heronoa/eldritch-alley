@@ -1,13 +1,53 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { getLocale, setLocale } from '../i18n/translate';
-import type { Event, RejectReason } from '../protocol';
-import { describeEvent, describeRejection } from './log';
+import type { Event, Position, Prop, RejectReason, UnitId } from '../protocol';
+import { describeEvent, describeRejection, type Battlefield } from './log';
 
 const NAMES: Record<string, string> = {
   'A-sniper': 'Sniper',
   'A-wizard': 'Wizard',
   'A-priest': 'Priest',
 };
+
+function coverAt(x: number, y: number): Prop {
+  return { position: { x, y }, kind: 'cover' };
+}
+
+/** The board and the positions of one moment, handed in the way the scene hands them to `describeEvent`. */
+function battlefieldWith(
+  props: readonly Prop[],
+  positions: Readonly<Record<UnitId, Position>>,
+): Battlefield {
+  return {
+    board: {
+      width: 8,
+      height: 8,
+      levels: new Array<number>(64).fill(0),
+      props,
+    },
+    positions,
+  };
+}
+
+/** The shot of the cases: the sniper at the priest, landing unless the case says otherwise. */
+function attacked(overrides: Partial<Extract<Event, { type: 'attacked' }>> = {}): Event {
+  return {
+    type: 'attacked',
+    actor: 'A-sniper',
+    target: 'A-priest',
+    hit: true,
+    damage: 4,
+    rngState: 1,
+    resource: 'ammo',
+    cover: false,
+    ...overrides,
+  };
+}
+
+/** The same shot, missing. */
+function missed(overrides: Partial<Extract<Event, { type: 'attacked' }>> = {}): Event {
+  return attacked({ hit: false, damage: 0, ...overrides });
+}
 
 describe('describeEvent', () => {
   // The sentences are the pt-BR ones, so the locale is pinned, as it is for the refusals below.
@@ -45,52 +85,53 @@ describe('describeEvent', () => {
     expect(describeEvent(event, NAMES)).toBe('Sniper acertou Priest por 4');
   });
 
-  it('describes a miss without a target', () => {
-    const event: Event = {
-      type: 'attacked',
-      actor: 'A-priest',
-      target: 'A-sniper',
-      hit: false,
-      damage: 0,
-      rngState: 1,
-      resource: null,
-      cover: false,
-    };
-
-    expect(describeEvent(event, NAMES)).toBe('Priest errou');
+  it('describes a miss with its target', () => {
+    expect(describeEvent(missed(), NAMES)).toBe('Sniper errou Priest');
   });
 
-  it('says when the shot went through cover, which is what the difficulty was', () => {
-    // The engine carries `cover` on the event (ADR 0012), so the log can say the shot beat the crate
-    // rather than leaving the missed chance unexplained.
-    const event: Event = {
-      type: 'attacked',
-      actor: 'A-sniper',
-      target: 'A-priest',
-      hit: true,
-      damage: 4,
-      rngState: 1,
-      resource: 'ammo',
-      cover: true,
-    };
-
-    expect(describeEvent(event, NAMES)).toBe('Sniper acertou Priest por 4, apesar da cobertura');
+  it('says when the target was in cover, so the missed chance is not left unexplained', () => {
+    // The engine carries `cover` on the event (ADR 0012), and the sentence says which end of the shot
+    // the crate was on: the target's, here, on the shot that landed and on the one that did not.
+    expect(describeEvent(attacked({ cover: true }), NAMES)).toBe(
+      'Sniper acertou Priest por 4 em cobertura',
+    );
+    expect(describeEvent(missed({ cover: true }), NAMES)).toBe('Sniper errou Priest em cobertura');
   });
 
-  it('leaves the miss alone when the target was behind cover', () => {
-    // One sentence for cover, on the shot that landed. A miss reads the same with or without it.
-    const event: Event = {
-      type: 'attacked',
-      actor: 'A-sniper',
-      target: 'A-priest',
-      hit: false,
-      damage: 0,
-      rngState: 1,
-      resource: 'ammo',
-      cover: true,
-    };
+  it('says when the shooter itself was in cover', () => {
+    // The engine answers for the target alone, because that is what the shot costs. The other end is
+    // read on the board the scene hands in, with the same rule (ADR 0012 § D4).
+    const battlefield = battlefieldWith([coverAt(1, 0)], { 'A-sniper': { x: 0, y: 0 }, 'A-priest': { x: 4, y: 0 } });
 
-    expect(describeEvent(event, NAMES)).toBe('Sniper errou');
+    expect(describeEvent(attacked({ actor: 'A-sniper' }), NAMES, battlefield)).toBe(
+      'Sniper, em cobertura, acertou Priest por 4',
+    );
+    expect(describeEvent(missed({ actor: 'A-sniper' }), NAMES, battlefield)).toBe(
+      'Sniper, em cobertura, errou Priest',
+    );
+  });
+
+  it('says both ends when both were in cover', () => {
+    const battlefield = battlefieldWith([coverAt(1, 0), coverAt(3, 0)], {
+      'A-sniper': { x: 0, y: 0 },
+      'A-priest': { x: 4, y: 0 },
+    });
+
+    expect(describeEvent(attacked({ cover: true }), NAMES, battlefield)).toBe(
+      'Sniper, em cobertura, acertou Priest por 4, que também estava em cobertura',
+    );
+    expect(describeEvent(missed({ cover: true }), NAMES, battlefield)).toBe(
+      'Sniper, em cobertura, errou Priest, que também estava em cobertura',
+    );
+  });
+
+  it('names no cover at all when it is handed no battlefield and the target had none', () => {
+    // The scene hands the board and the positions of the events it is playing; without them the
+    // sentence is the one the event alone can carry.
+    expect(describeEvent(attacked(), NAMES)).toBe('Sniper acertou Priest por 4');
+    expect(describeEvent(attacked(), NAMES, battlefieldWith([coverAt(1, 0)], {}))).toBe(
+      'Sniper acertou Priest por 4',
+    );
   });
 
   it('describes a defeat', () => {

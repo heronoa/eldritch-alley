@@ -503,16 +503,16 @@ export function cameraControlAt(point: Pixel): CameraControl | null {
 }
 
 /**
- * The panel the gear opens (EA-4): a title and two rows — the automatic end of turn, and the drag
- * sensitivity the owner asked to have in his hands. It opens under the camera panel, which is the one
- * place in the right column that overlaps nothing: the top of the column belongs to the camera, the
- * corner to the gear, and this popup to the space below them both.
+ * The panel the gear opens (EA-4): a title and three rows — the automatic end of turn, the drag
+ * sensitivity the owner asked to have in his hands, and the marks of the rules. It opens under the
+ * camera panel, which is the one place in the right column that overlaps nothing: the top of the
+ * column belongs to the camera, the corner to the gear, and this popup to the space below them both.
  */
 export const SETTINGS_PANEL_RECT: Rect = {
   x: RIGHT_COLUMN_X,
   y: CAMERA_RECT.y + CAMERA_RECT.height + PADDING,
   width: COLUMN_WIDTH,
-  height: TITLE_HEIGHT + 2 * PANEL_ROW_HEIGHT + PADDING,
+  height: TITLE_HEIGHT + 3 * PANEL_ROW_HEIGHT + PADDING,
 };
 
 /** The first row of that panel: the toggle of "Passar o turno automaticamente". */
@@ -566,4 +566,14 @@ export const SETTINGS_PAN_VALUE_RECT: Rect = {
 export const SETTINGS_PAN_PLUS_RECT: Rect = {
   ...SETTINGS_PAN_MINUS_RECT,
   x: SETTINGS_PAN_MINUS_RECT.x + SETTINGS_STEPPER_BUTTON + SETTINGS_STEPPER_VALUE_WIDTH,
+};
+
+/**
+ * The third row: the checkbox of "Realçar Coberturas", which draws or hides the diamonds that mark
+ * the cells carrying cover (ADR 0012). The whole row is the press, not the box alone — the label is
+ * what the player aims at — so the row is what the scene reads.
+ */
+export const SETTINGS_COVERS_ROW_RECT: Rect = {
+  ...SETTINGS_TOGGLE_RECT,
+  y: SETTINGS_PAN_ROW_RECT.y + PANEL_ROW_HEIGHT,
 };

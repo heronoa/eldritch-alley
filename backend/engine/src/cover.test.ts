@@ -72,9 +72,15 @@ describe('propAt', () => {
 });
 
 describe('coverFor', () => {
-  it('gives cover when a cover prop stands on the cell of the target', () => {
-    const board = makeBoard([coverAt(4, 4)]);
-    expect(coverFor(board, { x: 4, y: 4 }, { x: 6, y: 4 })).toBe(true);
+  it('gives no cover from the prop the target itself stands on', () => {
+    // The crate is under its feet, not between the two: standing on top of it is a place to be seen
+    // from, not a place to hide (ADR 0013). A crate beside it still covers it, which is the case below.
+    const under = makeBoard([coverAt(4, 4)]);
+    expect(coverFor(under, { x: 4, y: 4 }, { x: 6, y: 4 })).toBe(false);
+    expect(coverFor(under, { x: 4, y: 4 }, { x: 5, y: 4 })).toBe(false);
+
+    const beside = makeBoard([coverAt(4, 4), coverAt(5, 4)]);
+    expect(coverFor(beside, { x: 4, y: 4 }, { x: 6, y: 4 })).toBe(true);
   });
 
   it('gives cover from the side the attacker is on, whatever direction it comes from', () => {
@@ -129,7 +135,8 @@ describe('coverFor', () => {
   });
 
   it('gives no cover when the two share a cell, which cannot happen in a match', () => {
-    expect(coverFor(makeBoard([coverAt(4, 4)]), { x: 4, y: 4 }, { x: 4, y: 4 })).toBe(true);
+    // The cell the two stand on is not read at all, so the crate under them changes nothing (ADR 0013).
+    expect(coverFor(makeBoard([coverAt(4, 4)]), { x: 4, y: 4 }, { x: 4, y: 4 })).toBe(false);
     expect(coverFor(makeBoard(), { x: 4, y: 4 }, { x: 4, y: 4 })).toBe(false);
   });
 

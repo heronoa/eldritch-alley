@@ -34,6 +34,7 @@ import {
   PANEL_ROW_HEIGHT,
   RESULT_BUTTON_RECT,
   SETTINGS_BUTTON_RECT,
+  SETTINGS_COVERS_ROW_RECT,
   SETTINGS_PANEL_RECT,
   SETTINGS_PAN_MINUS_RECT,
   SETTINGS_PAN_PLUS_RECT,
@@ -424,6 +425,17 @@ describe('the top edge', () => {
     expect(SETTINGS_PAN_ROW_RECT.y).toBeGreaterThanOrEqual(bottom(SETTINGS_TOGGLE_RECT));
     expect(bottom(SETTINGS_PAN_ROW_RECT)).toBeLessThanOrEqual(bottom(SETTINGS_PANEL_RECT));
     expect(bottom(SETTINGS_PANEL_RECT)).toBeLessThanOrEqual(DASHBOARD_RECT.y);
+  });
+
+  // The marks of the rules became a setting (owner's request), and its row took the third line of the
+  // panel, which grew with it.
+  it('gives the settings a third row for the cover marks, and the panel room for all three', () => {
+    expect(SETTINGS_COVERS_ROW_RECT.x).toBeGreaterThanOrEqual(SETTINGS_PANEL_RECT.x);
+    expect(right(SETTINGS_COVERS_ROW_RECT)).toBeLessThanOrEqual(right(SETTINGS_PANEL_RECT));
+    expect(SETTINGS_COVERS_ROW_RECT.y).toBeGreaterThanOrEqual(bottom(SETTINGS_PAN_ROW_RECT));
+    expect(bottom(SETTINGS_COVERS_ROW_RECT)).toBeLessThanOrEqual(bottom(SETTINGS_PANEL_RECT));
+    expect(bottom(SETTINGS_PANEL_RECT)).toBeLessThanOrEqual(DASHBOARD_RECT.y);
+    expect(bottom(SETTINGS_PANEL_RECT)).toBeLessThanOrEqual(CANVAS_HEIGHT);
   });
 
   it('lays the stepper of the drag out as − value +, the three inside their row', () => {

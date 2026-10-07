@@ -65,6 +65,14 @@ export const CORPSE_COLOR = 0x4a4a4a;
 /** The outline of a fallen unit, so its silhouette reads on every height. */
 export const CORPSE_OUTLINE_COLOR = PAPER_COLOR;
 
+/**
+ * The badge a unit in cover wears over its head (EA-15): the paper of the identity, on the ink that
+ * carries every other line of the game. It is the first text drawn on the board itself, so it is
+ * measured against the tiles by the contrast test the paper marker already passes.
+ */
+export const COVER_BADGE_FILL = PAPER_COLOR;
+export const COVER_BADGE_STROKE = INK_COLOR;
+
 /** The pips of a basic attack: warm for the rounds of a magazine, cyan for mana (ADR 0011). */
 export const WARM_COLOR = 0xf0d9a0;
 export const MANA_COLOR = 0x3de9ff;

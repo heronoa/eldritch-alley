@@ -37,8 +37,15 @@ export const enUS: Record<MessageKey, string> = {
   // The battle log. One sentence per event, and the placeholders are filled by `interpolate`.
   'log.event.moved': '{actor} moved from {from} to {to}',
   'log.event.attacked': '{actor} hit {target} for {damage}',
-  'log.event.attackedCover': '{actor} hit {target} for {damage} through cover',
-  'log.event.missed': '{actor} missed',
+  // Which end of the shot the crate was on is the whole difference between the four pairs, and the
+  // shooter's own cover is read on the board (ADR 0012 § D4, ADR 0013).
+  'log.event.attackedCover': '{actor} hit {target} for {damage} in cover',
+  'log.event.missed': '{actor} missed {target}',
+  'log.event.missedCover': '{actor} missed {target} in cover',
+  'log.event.attackedFromCover': '{actor}, in cover, hit {target} for {damage}',
+  'log.event.missedFromCover': '{actor}, in cover, missed {target}',
+  'log.event.attackedBothCover': '{actor}, in cover, hit {target} for {damage}, who was in cover too',
+  'log.event.missedBothCover': '{actor}, in cover, missed {target}, who was in cover too',
   'log.event.reloaded': '{actor} reloaded',
   // The same action for a magic class (ADR 0011 §3): the engine calls it a reload either way, and the
   // player reads the word of their own class.
@@ -113,6 +120,18 @@ export const enUS: Record<MessageKey, string> = {
   'hud.settings.autoEndTurn': 'Pass the turn automatically',
   'hud.settings.panSensitivity': 'Map drag',
   'hud.settings.panSensitivity.value': '{percent}%',
+  'hud.settings.highlightCovers': 'Highlight Covers',
+  // The badge a unit in cover wears over its head. The sides are the board's own (m3-02, D1).
+  'hud.cover.sides': 'In cover for {sides}',
+  'hud.cover.and': ' and ',
+  'hud.cover.north': 'North',
+  'hud.cover.northeast': 'Northeast',
+  'hud.cover.east': 'East',
+  'hud.cover.southeast': 'Southeast',
+  'hud.cover.south': 'South',
+  'hud.cover.southwest': 'Southwest',
+  'hud.cover.west': 'West',
+  'hud.cover.northwest': 'Northwest',
   // The camera panel (EA-12): the view the camera looks from, the zoom step it is on, and the letter
   // each direction is written as.
   'hud.camera': 'Camera',
