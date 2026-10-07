@@ -38,6 +38,8 @@ function makeUnit(spec: UnitSpec): UnitState {
     equipment: { armor: null, helmet: null, mainHand: null, offHand: null, accessory1: null, accessory2: null },
     abilities: { activeSets: [null, null], reaction: null, movement: null, support: null },
     movementProfile: { maxStepUp: 1, maxStepDown: 1, climbCost: 1 },
+    // The pool a basic attack spends, filled the way `newMatch` fills it: a magazine implies a kind.
+    resourceKind: magazine === null ? null : 'ammo',
     defeated: false,
     ammo: spec.ammo ?? (magazine === null ? 0 : magazine),
     permanentlyDead: false,

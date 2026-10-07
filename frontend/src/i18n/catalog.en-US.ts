@@ -56,6 +56,9 @@ export const enUS: Record<MessageKey, string> = {
   'log.rejection.no-line-of-sight': 'No line of sight',
   'log.rejection.target-invalid': 'Invalid target',
   'log.rejection.no-magazine': 'No magazine',
+  // The pool of a basic attack is empty: a magazine to reload, or mana to meditate (ADR 0011).
+  'log.rejection.no-ammunition': 'No ammunition — reload',
+  'log.rejection.no-mana': 'No mana — meditate',
   'log.rejection.magazine-full': 'Magazine full',
   'log.rejection.game-over': 'Match over',
   // A command that names a round the match has left behind: the order arrived too late (EA-4).

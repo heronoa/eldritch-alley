@@ -1,6 +1,6 @@
 # 0011. Mana as the magic classes' resource in M2, and no basic attack without a resource
 
-**Status:** Proposed (2026-10-05). Amends ADR 0002. Accept or change before EA-14 starts.
+**Status:** Accepted (2026-10-06). Amends ADR 0002.
 
 ## Context
 
@@ -24,6 +24,6 @@ Playtest 1 (EA-14) shows that the Wizard and the Priest have no ranged attack, a
 
 - The engine's magazine mechanism is reused: magic classes get a magazine of capacity 3, and the reason of refusal depends on the resource kind.
 - Melee attacks of the Sniper (pistol) spend ammunition. The characters prototype already shows this.
-- The bot's damage estimate (`attackDamage` in `backend/game-server/src/bot.ts`) loses the melee branch. The bot's reload score applies to mana too (EA-10).
+- The bot's damage estimate loses the melee branch: an attack is worth the unit's own attack at every distance. The bot's reload score applies to mana too (EA-10).
 - DT-57 (mana is not in the engine) is closed for the M2 scope. Mana regeneration stays in M3.
 - Playtest balance is re-checked with EA-11 after this lands.

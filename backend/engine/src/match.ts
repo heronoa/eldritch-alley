@@ -174,6 +174,10 @@ function toUnitState(unit: Unit): UnitState {
     maxHealth: unit.health,
     defeated: false,
     ammo: unit.magazine ?? 0,
+    // The pool a basic attack spends (ADR 0011). A unit that carries a magazine and names no kind is
+    // an ammunition class, which is every class of the roster before the magic ones; a unit with no
+    // magazine has no pool at all.
+    resourceKind: unit.magazine === null ? null : (unit.resourceKind ?? 'ammo'),
     permanentlyDead: false,
     corpseExpiresAtRound: null,
   };

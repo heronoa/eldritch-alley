@@ -61,6 +61,9 @@ export const ptBR = {
   'log.rejection.no-line-of-sight': 'Sem linha de visão',
   'log.rejection.target-invalid': 'Alvo inválido',
   'log.rejection.no-magazine': 'Sem carregador',
+  // The pool of a basic attack is empty: a magazine to reload, or mana to meditate (ADR 0011).
+  'log.rejection.no-ammunition': 'Sem munição, recarregue',
+  'log.rejection.no-mana': 'Sem mana, medite',
   'log.rejection.magazine-full': 'Carregador cheio',
   'log.rejection.game-over': 'Partida encerrada',
   // A command that names a round the match has left behind: the order arrived too late (EA-4).

@@ -182,8 +182,8 @@ describe('BattleRoom', () => {
 
     // The board itself is no longer enough to draw a map: the client reads the terrain of the id it
     // is sent, so the id has to travel with the state that carries the seed it was drawn from.
-    expect(PROTOCOL_VERSION).toBe(5);
-    expect(message.version).toBe(5);
+    expect(PROTOCOL_VERSION).toBe(6);
+    expect(message.version).toBe(6);
     expect(message.mapId).toBe(MAPS[mapIndex(message.state.seed)].id);
 
     await human.leave(true);

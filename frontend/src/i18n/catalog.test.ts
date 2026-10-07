@@ -156,6 +156,8 @@ describe('the pt-BR the game shows', () => {
       'target-out-of-range',
       'target-invalid',
       'no-magazine',
+      'no-ammunition',
+      'no-mana',
       'magazine-full',
       'game-over',
       'stale-turn',
@@ -177,6 +179,13 @@ describe('the pt-BR the game shows', () => {
   it('carries the no-path refusal in both catalogs', () => {
     expect(message('pt-BR', 'log.rejection.no-path')).toBe('Sem caminho');
     expect(message('en-US', 'log.rejection.no-path')).toBe('No path');
+  });
+
+  it('carries the two empty-resource refusals in both catalogs', () => {
+    expect(message('pt-BR', 'log.rejection.no-ammunition')).toBe('Sem munição, recarregue');
+    expect(message('en-US', 'log.rejection.no-ammunition')).toBe('No ammunition — reload');
+    expect(message('pt-BR', 'log.rejection.no-mana')).toBe('Sem mana, medite');
+    expect(message('en-US', 'log.rejection.no-mana')).toBe('No mana — meditate');
   });
 
   it('carries the unit panel labels, keyed by the row they belong to', () => {

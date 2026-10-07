@@ -38,7 +38,7 @@ describe('describeEvent', () => {
       hit: true,
       damage: 4,
       rngState: 1,
-      ammoSpent: true,
+      resource: 'ammo',
     };
 
     expect(describeEvent(event, NAMES)).toBe('Sniper acertou Priest por 4');
@@ -52,7 +52,7 @@ describe('describeEvent', () => {
       hit: false,
       damage: 0,
       rngState: 1,
-      ammoSpent: false,
+      resource: null,
     };
 
     expect(describeEvent(event, NAMES)).toBe('Priest errou');
@@ -110,6 +110,8 @@ describe('describeRejection', () => {
     'no-line-of-sight': 'Sem linha de visão',
     'target-invalid': 'Alvo inválido',
     'no-magazine': 'Sem carregador',
+    'no-ammunition': 'Sem munição, recarregue',
+    'no-mana': 'Sem mana, medite',
     'magazine-full': 'Carregador cheio',
     'game-over': 'Partida encerrada',
     'stale-turn': 'Ordem atrasada',

@@ -72,19 +72,13 @@ function validatePendingMove(state: PublicState): RejectReason | null {
   return state.pendingMove === null ? 'no-pending-move' : null;
 }
 
-/** A unit with a magazine that is empty attacks in melee: adjacent only. */
-function isMelee(unit: UnitState): boolean {
-  return unit.magazine !== null && unit.ammo === 0;
-}
-
-/** A unit with a magazine that still has rounds spends one round on each attack. */
-function firesRound(unit: UnitState): boolean {
-  return unit.magazine !== null && unit.ammo > 0;
-}
-
-/** Melee damage: half the attack, rounded down, as a shift so no division is used. */
-function meleeDamage(attack: number): number {
-  return attack >> 1;
+/**
+ * Why a strike cannot be paid for, or null when it can (ADR 0011). The pool is the unit's own kind,
+ * so the answer names the resource the player has to refill: a magazine or a pool of mana.
+ */
+function resourceRefusal(unit: UnitState): RejectReason | null {
+  if (unit.magazine === null || unit.ammo > 0) return null;
+  return unit.resourceKind === 'mana' ? 'no-mana' : 'no-ammunition';
 }
 
 function validateReload(state: PublicState, action: ReloadAction): RejectReason | null {
@@ -127,8 +121,12 @@ function validateAttack(state: PublicState, action: AttackAction): RejectReason 
 
   if (!target || !isAlive(target)) return 'target-invalid';
   if (target.id === attacker.id || target.team === attacker.team) return 'target-invalid';
-  const reach = isMelee(attacker) ? 1 : attacker.range;
-  if (distance(attacker.position, target.position) > reach) return 'target-out-of-range';
+  // The pool is answered before the reach, so a strike nobody can pay for is refused the same way
+  // whatever the distance (ADR 0011). The reach is the unit's own `range`: an empty pool no longer
+  // turns the shot into a melee blow, and distance never changes the damage.
+  const unpaid = resourceRefusal(attacker);
+  if (unpaid !== null) return unpaid;
+  if (distance(attacker.position, target.position) > attacker.range) return 'target-out-of-range';
   if (!hasLineOfSight(state.board, attacker.position, target.position)) return 'no-line-of-sight';
   return null;
 }
@@ -138,10 +136,11 @@ function validateAttack(state: PublicState, action: AttackAction): RejectReason 
  * answers the question, so the client that ends one on a countdown (EA-4) asks exactly the rule the
  * server would apply, and the two sides cannot disagree (EA-1 D1).
  *
- * A turn is spent by walking somewhere, by shooting somebody the rules allow, or by reloading; a
- * unit with none of the three in front of it is done. A move that has not been confirmed yet is
- * something left to do on its own (EA-5): the unit may still confirm it, take it back or walk on.
- * Meditation joins this list later (EA-14): the rule lives here, so that change is local.
+ * A turn is spent by walking somewhere, by shooting somebody the rules allow, or by refilling the
+ * pool — a reload for a weapon class, a meditation for a magic one, which is the same action and the
+ * same rule (ADR 0011). A unit with none of the three in front of it is done. A move that has not
+ * been confirmed yet is something left to do on its own (EA-5): the unit may still confirm it, take
+ * it back or walk on.
  */
 export function canStillAct(state: PublicState): boolean {
   if (isGameOver(state)) return false;
@@ -229,7 +228,8 @@ export function buildEvents(state: MatchState, action: Action, rng: Rng): Event[
   const attacker = unitById(state, action.actor);
   const target = unitById(state, action.target);
   const hit = resolveHit(attacker, target, rng);
-  const damage = hit ? (isMelee(attacker) ? meleeDamage(attacker.attack) : attacker.attack) : 0;
+  // One damage for every distance: the strike frame spends the resource, it does not halve the blow.
+  const damage = hit ? attacker.attack : 0;
   const events: Event[] = [
     {
       type: 'attacked',
@@ -238,7 +238,8 @@ export function buildEvents(state: MatchState, action: Action, rng: Rng): Event[
       hit,
       damage,
       rngState: rng.state,
-      ammoSpent: firesRound(attacker),
+      // The pool the strike spends, so a replay takes the unit out of the same one the live match did.
+      resource: attacker.resourceKind,
     },
   ];
 

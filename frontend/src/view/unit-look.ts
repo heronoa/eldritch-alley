@@ -1,14 +1,18 @@
 // The pure choices behind drawing a unit: which sheet and frame, how full the bars are, and which
 // marker its team takes. The scene draws what this returns; nothing here knows about Phaser.
-import type { Team, UnitState } from '../protocol';
+import type { ResourceKind, Team, UnitState } from '../protocol';
 
 /** The two sheets, one per side. */
 export type SpriteSheet = 'ally' | 'enemy';
 
-/** A row of pips above a unit's head: `filled` of `total`. */
+/**
+ * A row of pips above a unit's head: `filled` of `total`. `resource` is which pool they count, so the
+ * drawer knows the colour to fill them with (ADR 0011).
+ */
 export interface Pips {
   total: number;
   filled: number;
+  resource: ResourceKind;
 }
 
 /** The ground marker of a team. Every unit gets the diamond; only the bot's side gets the corners. */
@@ -121,12 +125,23 @@ export function healthFraction(unit: { health: number; maxHealth: number }): num
 }
 
 /**
- * The ammunition pips of a unit, or null for a class the engine gives no magazine. Mana is not a
- * resource yet (ADR 0002), so a wizard or a priest shows no pips at all.
+ * The pips of a unit's basic-attack pool, or null for a class the engine gives no pool at all. A
+ * weapon class counts its rounds and a magic one its mana (ADR 0011); the count is the same rule, and
+ * only the colour the drawer picks differs.
  */
-export function pipsFor(unit: { magazine: number | null; ammo: number }): Pips | null {
+export function pipsFor(unit: {
+  magazine: number | null;
+  ammo: number;
+  resourceKind: ResourceKind | null;
+}): Pips | null {
   if (unit.magazine === null) return null;
-  return { total: unit.magazine, filled: Math.min(unit.magazine, Math.max(0, unit.ammo)) };
+  return {
+    total: unit.magazine,
+    filled: Math.min(unit.magazine, Math.max(0, unit.ammo)),
+    // A unit that carries a magazine and names no kind is a weapon class, which is the rule the
+    // engine fills the field in with: a pool that exists is always of one kind.
+    resource: unit.resourceKind ?? 'ammo',
+  };
 }
 
 /**

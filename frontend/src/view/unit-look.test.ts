@@ -63,17 +63,38 @@ describe('healthFraction', () => {
 });
 
 describe('pipsFor', () => {
-  it('is null for a class with no magazine', () => {
-    expect(pipsFor({ magazine: null, ammo: 0 })).toBeNull();
+  it('is null for a class with no magazine, whatever its resource', () => {
+    expect(pipsFor({ magazine: null, ammo: 0, resourceKind: 'ammo' })).toBeNull();
+    expect(pipsFor({ magazine: null, ammo: 0, resourceKind: 'mana' })).toBeNull();
   });
 
-  it('is the magazine with as many filled as there is ammunition', () => {
-    expect(pipsFor({ magazine: 3, ammo: 1 })).toEqual({ total: 3, filled: 1 });
+  it('is the magazine with as many filled as there is ammunition, warm', () => {
+    expect(pipsFor({ magazine: 3, ammo: 1, resourceKind: 'ammo' })).toEqual({
+      total: 3,
+      filled: 1,
+      resource: 'ammo',
+    });
+  });
+
+  it('counts mana for a magic class, so the pool reads as pips too', () => {
+    expect(pipsFor({ magazine: 3, ammo: 3, resourceKind: 'mana' })).toEqual({
+      total: 3,
+      filled: 3,
+      resource: 'mana',
+    });
   });
 
   it('clamps the filled count to the magazine', () => {
-    expect(pipsFor({ magazine: 3, ammo: 9 })).toEqual({ total: 3, filled: 3 });
-    expect(pipsFor({ magazine: 3, ammo: -1 })).toEqual({ total: 3, filled: 0 });
+    expect(pipsFor({ magazine: 3, ammo: 9, resourceKind: 'ammo' })).toEqual({
+      total: 3,
+      filled: 3,
+      resource: 'ammo',
+    });
+    expect(pipsFor({ magazine: 3, ammo: -1, resourceKind: 'mana' })).toEqual({
+      total: 3,
+      filled: 0,
+      resource: 'mana',
+    });
   });
 });
 

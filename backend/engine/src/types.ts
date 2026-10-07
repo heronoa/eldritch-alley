@@ -71,6 +71,11 @@ export interface Unit {
   range: number;
   /** Rounds in the magazine, or null for classes that use no ammunition. */
   magazine: number | null;
+  /**
+   * Which pool a basic attack spends: ammunition or mana. A setup that leaves it out gives the
+   * class ammunition, so a unit that carries no magazine at all has no kind (ADR 0011).
+   */
+  resourceKind?: ResourceKind | null;
   /** Movement budget for one turn. */
   movement: number;
   /**
@@ -86,6 +91,13 @@ export interface Unit {
 }
 
 /**
+ * The pool a basic attack spends (ADR 0002, ADR 0011). The mechanism is the one that was carried for
+ * ammunition alone: the class data names the kind, and every rule reads `magazine` and `ammo` the
+ * same way, so mana needed no second mechanism.
+ */
+export type ResourceKind = 'ammo' | 'mana';
+
+/**
  * A unit inside a match: setup data plus the state the match writes.
  * `defeated` is true from the death until the end of the match or the revival; while the body lasts
  * (`permanentlyDead` false) it occupies its tile and cannot be targeted.
@@ -93,6 +105,11 @@ export interface Unit {
 export interface UnitState extends Unit {
   /** What the unit may climb, filled by `newMatch`, so a unit in a match always carries one. */
   movementProfile: MovementProfile;
+  /**
+   * Which pool its basic attack spends, or null for a unit that carries none, filled by `newMatch`
+   * from the setup. A class with a magazine and no kind is an ammunition class.
+   */
+  resourceKind: ResourceKind | null;
   /** HP the unit entered the match with. The ceiling for `health`; no M2-a rule raises it. */
   maxHealth: number;
   defeated: boolean;
@@ -189,8 +206,12 @@ export type Event =
       hit: boolean;
       damage: number;
       rngState: number;
-      /** True when the attack used a round from the magazine. */
-      ammoSpent: boolean;
+      /**
+       * The pool the attack spent one unit of, or null for a unit that carries no pool at all. Every
+       * accepted attack spends its resource, whatever the distance (ADR 0011), so a replay spends
+       * exactly what the live match spent.
+       */
+      resource: ResourceKind | null;
     }
   | { type: 'reloaded'; actor: UnitId }
   /**
@@ -216,6 +237,9 @@ export type RejectReason =
   | 'no-line-of-sight'
   | 'target-invalid'
   | 'no-magazine'
+  /** A basic attack whose pool is empty: ammunition for a weapon class, mana for a magic one. */
+  | 'no-ammunition'
+  | 'no-mana'
   | 'magazine-full'
   | 'game-over'
   | 'stale-turn'

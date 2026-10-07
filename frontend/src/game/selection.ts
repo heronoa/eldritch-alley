@@ -49,9 +49,14 @@ function chebyshev(a: Cell, b: Cell): number {
   return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
 }
 
-/** Reach of the unit's attack: a spent magazine turns the shot into a melee blow. */
-function reachOf(unit: UnitState): number {
-  return unit.magazine !== null && unit.ammo === 0 ? 1 : unit.range;
+/**
+ * Why an attack nobody can pay for is refused, or null when the unit can pay (ADR 0011). The pool is
+ * the unit's own kind, so the sentence the player is given names the resource to refill: a magazine
+ * to reload, or mana to meditate.
+ */
+function resourceRefusal(unit: UnitState): RejectReason | null {
+  if (unit.magazine === null || unit.ammo > 0) return null;
+  return unit.resourceKind === 'mana' ? 'no-mana' : 'no-ammunition';
 }
 
 /**
@@ -82,10 +87,14 @@ export function resolveClick({ state, selectedId, cell, targetId = null, humanTe
   if (state.initiative[state.currentIndex] !== selected.id) return { kind: 'none' };
 
   if (occupant && !occupant.defeated && occupant.team !== humanTeam) {
-    // The two rules of the engine's own `validateAttack`, in its own order, so the reason the player
-    // is given here is the reason the server would answer with (EA-1 D1). The distance and the sight
-    // are read of the target's own cell: the press may well have covered another one (EA-8).
-    if (chebyshev(selected.position, occupant.position) > reachOf(selected)) {
+    // The rules of the engine's own `validateAttack`, in its own order, so the reason the player is
+    // given here is the reason the server would answer with (EA-1 D1). Distance never shortens the
+    // reach and never halves the damage: an attack is refused only for the rules below (ADR 0011).
+    // The distance and the sight are read of the target's own cell: the press may well have covered
+    // another one (EA-8).
+    const refusal = resourceRefusal(selected);
+    if (refusal !== null) return { kind: 'refused', reason: refusal };
+    if (chebyshev(selected.position, occupant.position) > selected.range) {
       return { kind: 'refused', reason: 'target-out-of-range' };
     }
     if (!hasLineOfSight(state.board, selected.position, occupant.position)) {

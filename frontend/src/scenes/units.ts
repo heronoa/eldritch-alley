@@ -21,6 +21,7 @@ import { TURN_ARROW, TURN_ARROW_POINT } from '../view/layout';
 import {
   CORPSE_COLOR,
   CORPSE_OUTLINE_COLOR,
+  MANA_COLOR,
   PANEL_STROKE,
   PAPER_COLOR,
   SELECTED_COLOR,
@@ -417,13 +418,15 @@ export class UnitSprite extends Phaser.GameObjects.Container {
     const width = this.pips.total * PIP.size + (this.pips.total - 1) * PIP.gap;
     const y = top - PIP.gapAboveBar - PIP.size;
 
+    // The pool is counted the same for both kinds; only the colour tells a magazine from mana.
+    const lit = this.pips.resource === 'mana' ? MANA_COLOR : WARM_COLOR;
     for (let i = 0; i < this.pips.total; i += 1) {
-      this.bars.fillStyle(i < filled ? WARM_COLOR : PANEL_STROKE, 1);
+      this.bars.fillStyle(i < filled ? lit : PANEL_STROKE, 1);
       this.bars.fillRect(-width / 2 + i * (PIP.size + PIP.gap), y, PIP.size, PIP.size);
     }
   }
 
-  /** How many pips the magazine shows right now: the animation wins while it is running. */
+  /** How many pips the pool shows right now: the animation wins while it is running. */
   private filledPips(now: number): number {
     if (this.pips === null) return 0;
     if (this.action?.kind === 'reload') {

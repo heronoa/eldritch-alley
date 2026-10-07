@@ -67,6 +67,8 @@ export interface Unit {
   range: number;
   /** Rounds in the magazine, or null for classes that use no ammunition. */
   magazine: number | null;
+  /** Which pool a basic attack spends, or null for a class that carries none (ADR 0011). */
+  resourceKind?: ResourceKind | null;
   /** Movement budget for one turn. */
   movement: number;
   /** What the unit may climb, or absent in a setup that leaves the default rule in place. */
@@ -79,12 +81,20 @@ export interface Unit {
 }
 
 /**
+ * The pool a basic attack spends (ADR 0002, ADR 0011): ammunition for a weapon class, mana for a
+ * magic one. It is what the pips above a figure count, so the count is the same rule for both.
+ */
+export type ResourceKind = 'ammo' | 'mana';
+
+/**
  * A unit inside a match. `defeated` is true from the death until the end of the match or the
  * revival; while the body lasts (`permanentlyDead` false) it occupies its tile.
  */
 export interface UnitState extends Unit {
   /** What the unit may climb: every unit of a match carries one, so the preview can walk it. */
   movementProfile: MovementProfile;
+  /** Which pool the unit's basic attack spends, or null for a unit that carries none. */
+  resourceKind: ResourceKind | null;
   /** HP the unit entered the match with. The ceiling for `health`. */
   maxHealth: number;
   defeated: boolean;
@@ -147,8 +157,8 @@ export type Event =
       hit: boolean;
       damage: number;
       rngState: number;
-      /** True when the attack used a round from the magazine. */
-      ammoSpent: boolean;
+      /** The pool the attack spent one unit of, or null for a unit that carries none (ADR 0011). */
+      resource: ResourceKind | null;
     }
   | { type: 'reloaded'; actor: UnitId }
   /** The pending move was taken back: the unit is where the run started again. */
@@ -171,6 +181,9 @@ export type RejectReason =
   | 'no-line-of-sight'
   | 'target-invalid'
   | 'no-magazine'
+  /** A basic attack whose pool is empty: the ammunition of a weapon class, the mana of a magic one. */
+  | 'no-ammunition'
+  | 'no-mana'
   | 'magazine-full'
   | 'game-over'
   | 'stale-turn'
@@ -191,8 +204,11 @@ export type RejectReason =
  * Version 5: a move stays pending until an action that is not another move commits it, so the state
  * carries `pendingMove`, the client may send `cancelMove` and `commitMove` (EA-5), the events
  * `move-cancelled` and `move-committed` close the run, and `no-pending-move` joins the refusals.
+ * Version 6: a basic attack spends its class's pool at every distance, so the state carries the
+ * unit's `resourceKind` and the `attacked` event carries `resource` where it carried `ammoSpent`,
+ * and `no-ammunition` and `no-mana` join the refusals (EA-14, ADR 0011).
  */
-export const PROTOCOL_VERSION = 5;
+export const PROTOCOL_VERSION = 6;
 
 /** The single room type of M2-a. One room is one match. */
 export const ROOM_NAME = 'battle';

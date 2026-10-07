@@ -60,6 +60,8 @@ export function describeRejection(reason: RejectReason): string {
     case 'no-line-of-sight':
     case 'target-invalid':
     case 'no-magazine':
+    case 'no-ammunition':
+    case 'no-mana':
     case 'magazine-full':
     case 'game-over':
     case 'stale-turn':
