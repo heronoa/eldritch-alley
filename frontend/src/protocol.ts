@@ -160,7 +160,12 @@ export type Event =
       /** The pool the attack spent one unit of, or null for a unit that carries none (ADR 0011). */
       resource: ResourceKind | null;
     }
-  | { type: 'reloaded'; actor: UnitId }
+  | {
+      type: 'reloaded';
+      actor: UnitId;
+      /** The pool the action refilled, or null for a unit that carries none (ADR 0011). */
+      resource: ResourceKind | null;
+    }
   /** The pending move was taken back: the unit is where the run started again. */
   | { type: 'move-cancelled'; actor: UnitId }
   /** The pending move was confirmed: the movement is final and the run is closed. */
@@ -206,7 +211,9 @@ export type RejectReason =
  * `move-cancelled` and `move-committed` close the run, and `no-pending-move` joins the refusals.
  * Version 6: a basic attack spends its class's pool at every distance, so the state carries the
  * unit's `resourceKind` and the `attacked` event carries `resource` where it carried `ammoSpent`,
- * and `no-ammunition` and `no-mana` join the refusals (EA-14, ADR 0011).
+ * and `no-ammunition` and `no-mana` join the refusals (EA-14, ADR 0011). The refill of the pool is
+ * one action for both kinds, so `reloaded` carries the pool it refilled as well: the log names the
+ * reload of a magazine apart from the meditation of a magic class.
  */
 export const PROTOCOL_VERSION = 6;
 

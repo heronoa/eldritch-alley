@@ -214,7 +214,9 @@ export function buildEvents(state: MatchState, action: Action, rng: Rng): Event[
   }
 
   if (action.type === 'reload') {
-    return [{ type: 'reloaded', actor: action.actor }];
+    // One action for both kinds, and the event carries the pool it refilled, so the log can say the
+    // reload of a magazine apart from the meditation of a magic class (ADR 0011).
+    return [{ type: 'reloaded', actor: action.actor, resource: unitById(state, action.actor).resourceKind }];
   }
 
   if (action.type === 'cancelMove') {

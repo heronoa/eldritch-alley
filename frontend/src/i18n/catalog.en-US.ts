@@ -39,6 +39,9 @@ export const enUS: Record<MessageKey, string> = {
   'log.event.attacked': '{actor} hit {target} for {damage}',
   'log.event.missed': '{actor} missed',
   'log.event.reloaded': '{actor} reloaded',
+  // The same action for a magic class (ADR 0011 §3): the engine calls it a reload either way, and the
+  // player reads the word of their own class.
+  'log.event.meditated': '{actor} meditated',
   'log.event.defeated': '{target} fell',
   'log.event.corpseRemoved': 'Body of {target} removed',
   'log.event.turnEnded': 'Turn of {next}',

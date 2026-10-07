@@ -104,7 +104,7 @@ describe('presentationOf', () => {
   });
 
   it('refills the magazine of the class that has one', () => {
-    const event: Event = { type: 'reloaded', actor: 'a' };
+    const event: Event = { type: 'reloaded', actor: 'a', resource: 'ammo' };
 
     expect(presentationOf(event, snapshot({ a: unit({ magazine: 3 }) }))).toEqual([
       { kind: 'reload', unitId: 'a', from: 0, to: 3 },
@@ -112,7 +112,7 @@ describe('presentationOf', () => {
   });
 
   it('plays nothing for a reload of a class with no magazine', () => {
-    const event: Event = { type: 'reloaded', actor: 'a' };
+    const event: Event = { type: 'reloaded', actor: 'a', resource: null };
 
     expect(presentationOf(event, snapshot({ a: unit({ magazine: null }) }))).toEqual([]);
   });

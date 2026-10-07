@@ -132,7 +132,7 @@ describe('magazine', () => {
     const empty = { ...state, units: state.units.map((unit) => (unit.id === 'sniper' ? { ...unit, ammo: 0 } : unit)) };
     const result = play(empty, { type: 'reload', actor: 'sniper' });
 
-    expect(result.events).toEqual([{ type: 'reloaded', actor: 'sniper' }]);
+    expect(result.events).toEqual([{ type: 'reloaded', actor: 'sniper', resource: 'ammo' }]);
     expect(unitAt(result.state, 'sniper').ammo).toBe(3);
     expect(result.state.hasActed).toBe(true);
     expect(result.state.movementLeft).toBe(empty.movementLeft);

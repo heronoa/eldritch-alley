@@ -44,6 +44,9 @@ export const ptBR = {
   'log.event.attacked': '{actor} acertou {target} por {damage}',
   'log.event.missed': '{actor} errou',
   'log.event.reloaded': '{actor} recarregou',
+  // The same action for a magic class (ADR 0011 §3): the engine calls it a reload either way, and the
+  // player reads the word of their own class.
+  'log.event.meditated': '{actor} meditou',
   'log.event.defeated': '{target} caiu',
   'log.event.corpseRemoved': 'Corpo de {target} removido',
   'log.event.turnEnded': 'Vez de {next}',

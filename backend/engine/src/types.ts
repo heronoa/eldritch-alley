@@ -213,7 +213,13 @@ export type Event =
        */
       resource: ResourceKind | null;
     }
-  | { type: 'reloaded'; actor: UnitId }
+  /**
+   * The refill of the unit's pool, which is one action of the engine for both kinds (ADR 0011): a
+   * reload for a weapon class, a meditation for a magic one. `resource` is the pool it refilled, so
+   * the sentence describing it names what the player saw, and a unit that carries no pool refills
+   * nothing and answers null.
+   */
+  | { type: 'reloaded'; actor: UnitId; resource: ResourceKind | null }
   /**
    * The pending move was taken back. No payload: the run it undoes is in the state it was applied to,
    * the way the walk of a `moved` event is not repeated here.

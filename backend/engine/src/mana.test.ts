@@ -161,7 +161,7 @@ describe('mana', () => {
     const state = withEmptyPool(newMatch(casterSetup()), 'wizard');
     const result = play(state, { type: 'reload', actor: 'wizard' });
 
-    expect(result.events).toEqual([{ type: 'reloaded', actor: 'wizard' }]);
+    expect(result.events).toEqual([{ type: 'reloaded', actor: 'wizard', resource: 'mana' }]);
     expect(unitAt(result.state, 'wizard').ammo).toBe(3);
     expect(result.state.hasActed).toBe(true);
     expect(result.state.movementLeft).toBe(state.movementLeft);

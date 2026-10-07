@@ -138,6 +138,9 @@ describe('the pt-BR the game shows', () => {
     expect(ptBR['log.event.attacked']).toBe('{actor} acertou {target} por {damage}');
     expect(ptBR['log.event.missed']).toBe('{actor} errou');
     expect(ptBR['log.event.reloaded']).toBe('{actor} recarregou');
+    // The refill of a magic class' pool, which the engine calls a reload all the same (ADR 0011 §3).
+    expect(ptBR['log.event.meditated']).toBe('{actor} meditou');
+    expect(enUS['log.event.meditated']).toBe('{actor} meditated');
     expect(ptBR['log.event.defeated']).toBe('{target} caiu');
     expect(ptBR['log.event.corpseRemoved']).toBe('Corpo de {target} removido');
     expect(ptBR['log.event.turnEnded']).toBe('Vez de {next}');
