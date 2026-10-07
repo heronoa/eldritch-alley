@@ -119,6 +119,14 @@ Planned features are not debt: they live in [backlog.md](./backlog.md).
 - **Trigger:** if a profile on iOS or Android shows dropped frames during a rotation.
 - **Evidence:** `frontend/src/scenes/map/RotationView.ts:82-114`.
 
+### DT-89 · `propAt` scans the prop list linearly on every cell read
+
+- **Category:** Performance
+- **Risk if untreated:** `hasLineOfSight` calls it per cell on the line and `coverFor` up to eight times per shot, so the cost of a shot grows with the number of props. Irrelevant on the current maps (≤27 props), and it stays silent if the map data densifies.
+- **Effort:** P
+- **Trigger:** a prop count sustained above ~100, or a profile showing `coverFor`/`hasLineOfSight` on a hot path.
+- **Evidence:** `backend/engine/src/board.ts:38-43`; found in the m3-01 cover review (commit `bbd8865`).
+
 ---
 
 ## Closed
