@@ -14,7 +14,16 @@ import {
 } from '../protocol';
 import type { Session } from '../net/session';
 import { setLocale } from '../i18n/translate';
-import { INSPECT_CLOSE_RECT, INSPECT_RECT, LOG_RECT, LOG_TOGGLE_RECT } from '../view/layout';
+import {
+  INSPECT_CLOSE_RECT,
+  INSPECT_RECT,
+  LOG_RECT,
+  LOG_TOGGLE_RECT,
+  SETTINGS_BUTTON_RECT,
+  SETTINGS_PANEL_RECT,
+  SETTINGS_PAN_MINUS_RECT,
+  SETTINGS_PAN_PLUS_RECT,
+} from '../view/layout';
 import { MatchScene } from './MatchScene';
 
 vi.mock('phaser', async () => ({ default: (await import('./testing/phaser-stub')).stub() }));
@@ -337,6 +346,93 @@ describe('the match scene', () => {
     // And the countdown keeps waiting for Confirmar, however little of the turn is left (Q1): a run
     // that is still open is not a turn that has nothing left to do.
     expect(lastView(render).autoEndTurn).toMatchObject({ phase: 'idle' });
+  });
+
+  it('steps the drag sensitivity from the settings panel, and stops at each end (owner)', () => {
+    const { scene, session, render } = startMatch();
+    session.emit.state(message(stateFor({ onTurn: 'A', spent: false })));
+
+    const scene_ = scene as unknown as { hudTakesPress(p: { x: number; y: number }): boolean };
+    const at = (rect: { x: number; y: number }) => ({ x: rect.x + 1, y: rect.y + 1 });
+
+    // The gear opens the panel, and the drag starts on the step the owner chose as the default.
+    expect(scene_.hudTakesPress(at(SETTINGS_BUTTON_RECT))).toBe(true);
+    expect(lastView(render).settingsOpen).toBe(true);
+    expect(lastView(render).panSensitivity).toMatchObject({
+      percent: 50,
+      canDecrease: true,
+      canIncrease: true,
+    });
+
+    // `+` climbs a step at a time and gives out at the top; a press past the top changes nothing.
+    expect(scene_.hudTakesPress(at(SETTINGS_PAN_PLUS_RECT))).toBe(true);
+    expect(lastView(render).panSensitivity).toMatchObject({ percent: 75 });
+    scene_.hudTakesPress(at(SETTINGS_PAN_PLUS_RECT));
+    expect(lastView(render).panSensitivity).toMatchObject({ percent: 100, canIncrease: false });
+    scene_.hudTakesPress(at(SETTINGS_PAN_PLUS_RECT));
+    expect(lastView(render).panSensitivity).toMatchObject({ percent: 100 });
+
+    // `−` comes back down and gives out at the bottom.
+    scene_.hudTakesPress(at(SETTINGS_PAN_MINUS_RECT));
+    expect(lastView(render).panSensitivity).toMatchObject({ percent: 75, canDecrease: true });
+    scene_.hudTakesPress(at(SETTINGS_PAN_MINUS_RECT));
+    scene_.hudTakesPress(at(SETTINGS_PAN_MINUS_RECT));
+    expect(lastView(render).panSensitivity).toMatchObject({ percent: 25, canDecrease: false });
+    scene_.hudTakesPress(at(SETTINGS_PAN_MINUS_RECT));
+    expect(lastView(render).panSensitivity).toMatchObject({ percent: 25 });
+
+    // The panel still swallows everything it covers: the title is the panel's own, and reaches no tile.
+    const title = { x: SETTINGS_PANEL_RECT.x + 8, y: SETTINGS_PANEL_RECT.y + 8 };
+    expect(scene_.hudTakesPress(title)).toBe(true);
+    expect(lastView(render).panSensitivity).toMatchObject({ percent: 25 });
+  });
+
+  it('drags the map by the sensitivity, and leaves the keyboard step as it was (owner)', () => {
+    const { scene, session } = startMatch();
+    session.emit.state(message(stateFor({ onTurn: 'A', spent: false })));
+
+    const scene_ = scene as unknown as {
+      camera: { zoom: number; centre: { x: number; y: number } };
+      panSensitivity: number;
+      handlePointerDown(p: unknown): void;
+      handlePointerMove(p: unknown): void;
+      handlePointerUp(p: unknown): void;
+      moveCameraBy(dx: number, dy: number): void;
+    };
+    const at = (x: number, y: number) => ({
+      id: 1,
+      x,
+      y,
+      worldX: 0,
+      worldY: 0,
+      rightButtonDown: () => false,
+      wasTouch: true,
+    });
+    // The camera starts on the middle of the canvas, and the gesture reports the whole travel from
+    // where the finger went down, so the centre moves by that travel times the setting.
+    const drag = (to: number) => {
+      scene_.camera = { zoom: 1, centre: { x: 640, y: 360 } };
+      scene_.handlePointerDown(at(640, 300));
+      scene_.handlePointerMove(at(to, 300));
+      scene_.handlePointerUp(at(to, 300));
+    };
+
+    scene_.panSensitivity = 50;
+    drag(740); // 100 px of finger, half of them taken by the default
+    expect(scene_.camera.centre.x).toBe(590);
+
+    scene_.panSensitivity = 25;
+    drag(740);
+    expect(scene_.camera.centre.x).toBe(615);
+
+    scene_.panSensitivity = 100; // the drag the game had before the setting existed
+    drag(740);
+    expect(scene_.camera.centre.x).toBe(540);
+
+    // The keys never pass through the setting: the step they take is the one they always took.
+    scene_.camera = { zoom: 1, centre: { x: 640, y: 360 } };
+    scene_.moveCameraBy(80, 0);
+    expect(scene_.camera.centre.x).toBe(720);
   });
 
   it('shows the result and the way out when the match ends', () => {

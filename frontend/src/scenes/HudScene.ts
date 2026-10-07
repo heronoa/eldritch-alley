@@ -7,6 +7,7 @@ import type { AutoEndPhase } from '../game/autoEndTurn';
 import { bannerFor } from '../game/banner';
 import { unitSheet } from '../game/inspect-window';
 import { unitPanel, type PanelRow } from '../game/panel';
+import { PAN_SENSITIVITY_DEFAULT } from '../game/panSensitivity';
 import { activeSlot, turnOrder, type TurnSlot } from '../game/turn-order';
 import { t } from '../i18n';
 import type { PublicState, Team } from '../protocol';
@@ -36,6 +37,10 @@ import {
   RESULT_BUTTON_RECT,
   SETTINGS_BUTTON_RECT,
   SETTINGS_PANEL_RECT,
+  SETTINGS_PAN_MINUS_RECT,
+  SETTINGS_PAN_PLUS_RECT,
+  SETTINGS_PAN_ROW_RECT,
+  SETTINGS_PAN_VALUE_RECT,
   SETTINGS_TOGGLE_RECT,
   STATUS_RECT,
   buttonRect,
@@ -87,6 +92,9 @@ const LOG_CHEVRON = { halfWidth: 7, height: 5 };
 const TOGGLE_BOX = 16;
 const TOGGLE_LABEL_GAP = 12;
 
+/** The face of the text of a settings row: the label of the toggle and the reading of the stepper. */
+const ROW_TEXT_STYLE = { fontFamily: FONT_BODY, fontSize: FONT_SIZE.log, color: TEXT_COLOR };
+
 /** The radius of the arrow bent round on a rotation button, and of the two circles of the centre mark. */
 const ROTATE_RADIUS = 8;
 const CENTRE_RIM_RADIUS = 9;
@@ -106,6 +114,12 @@ const CAMERA_LABELS: Record<CameraControl, string> = {
 };
 
 /**
+ * The two signs of the stepper of the drag (owner's request). Letters, for the same reason the signs of
+ * the camera's zoom are: both faces the HUD carries have them.
+ */
+const STEPPER_SIGNS = { decrease: '−', increase: '+' } as const;
+
+/**
  * The automatic end of turn (EA-4), as the match scene has it: the phase the countdown is in, and how
  * much of it is left. The HUD decides nothing about it — it is handed the phase and draws it.
  */
@@ -115,6 +129,19 @@ export interface AutoEndView {
   seconds: number;
   /** Whether the turn passes on its own, which is what the settings toggle shows. */
   enabled: boolean;
+}
+
+/**
+ * The drag sensitivity (owner's request), as the match scene has it: the percentage the stepper reads,
+ * and whether each end of it still does something. The HUD decides nothing — it draws what it is given.
+ */
+export interface PanSensitivityView {
+  /** How much of a finger's travel drags the map: 25, 50, 75 or 100. */
+  percent: number;
+  /** Whether the − still moves the value, which is false once the low end is reached. */
+  canDecrease: boolean;
+  /** Whether the + still moves the value, which is false once the high end is reached. */
+  canIncrease: boolean;
 }
 
 /** Everything the HUD shows at one moment, as the match scene knows it. */
@@ -139,6 +166,8 @@ export interface HudView {
   wayOutVisible: boolean;
   settingsOpen: boolean;
   autoEndTurn: AutoEndView;
+  /** How hard a drag moves the map, as the stepper of the settings prints it (owner's request). */
+  panSensitivity: PanSensitivityView;
   /** Where the map camera is, as the camera panel prints it (EA-12). */
   camera: CameraPanelView;
 }
@@ -166,6 +195,7 @@ const EMPTY_VIEW: HudView = {
   wayOutVisible: false,
   settingsOpen: false,
   autoEndTurn: { phase: 'idle', seconds: 0, enabled: true },
+  panSensitivity: { percent: PAN_SENSITIVITY_DEFAULT, canDecrease: true, canIncrease: true },
   camera: { view: 'north', zoom: MIN_ZOOM },
 };
 
@@ -559,8 +589,8 @@ export class HudScene extends Phaser.Scene {
 
   /**
    * The settings (EA-4, decision D3). The panel is built once and only shown or hidden, because it
-   * holds no state of its own; the single row inside it is rebuilt on every view, because the tick of
-   * the toggle is that state.
+   * holds no state of its own; the rows inside it are rebuilt on every view, because the tick of the
+   * toggle and the value of the stepper are that state.
    */
   private drawSettings(view: HudView): void {
     this.settingsButton.setSelected(view.settingsOpen);
@@ -585,11 +615,49 @@ export class HudScene extends Phaser.Scene {
         SETTINGS_TOGGLE_RECT.x + TOGGLE_BOX + TOGGLE_LABEL_GAP,
         SETTINGS_TOGGLE_RECT.y + SETTINGS_TOGGLE_RECT.height / 2,
         t('hud.settings.autoEndTurn'),
-        { fontFamily: FONT_BODY, fontSize: FONT_SIZE.log, color: TEXT_COLOR },
+        ROW_TEXT_STYLE,
       )
       .setOrigin(0, 0.5);
 
     this.settingsRows.add([box, label]);
+    this.drawPanRow(view);
+  }
+
+  /**
+   * The second row of the settings (owner's request): how hard a drag moves the map. Its label is drawn
+   * at the left of the row and its stepper against the right end, the two signs with the value between
+   * them. The pieces join the same container the toggle above does, so the rebuild of the panel is what
+   * takes them down again.
+   *
+   * The signs are buttons, like the ones of the camera panel: an end that has been reached greys out the
+   * way every other out-of-reach control of this HUD does, and the scene reads the very rectangles they
+   * are drawn on.
+   */
+  private drawPanRow(view: HudView): void {
+    const panLabel = this.add
+      .text(
+        SETTINGS_PAN_ROW_RECT.x,
+        SETTINGS_PAN_ROW_RECT.y + SETTINGS_PAN_ROW_RECT.height / 2,
+        t('hud.settings.panSensitivity'),
+        ROW_TEXT_STYLE,
+      )
+      .setOrigin(0, 0.5);
+
+    const value = this.add
+      .text(
+        SETTINGS_PAN_VALUE_RECT.x + SETTINGS_PAN_VALUE_RECT.width / 2,
+        SETTINGS_PAN_VALUE_RECT.y + SETTINGS_PAN_VALUE_RECT.height / 2,
+        t('hud.settings.panSensitivity.value', { percent: view.panSensitivity.percent }),
+        ROW_TEXT_STYLE,
+      )
+      .setOrigin(0.5);
+
+    const decrease = new Button(this, SETTINGS_PAN_MINUS_RECT, STEPPER_SIGNS.decrease);
+    decrease.setEnabled(view.panSensitivity.canDecrease);
+    const increase = new Button(this, SETTINGS_PAN_PLUS_RECT, STEPPER_SIGNS.increase);
+    increase.setEnabled(view.panSensitivity.canIncrease);
+
+    this.settingsRows.add([panLabel, value, decrease, increase]);
   }
 
   /**

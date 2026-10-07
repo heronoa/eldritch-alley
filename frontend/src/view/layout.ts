@@ -503,22 +503,67 @@ export function cameraControlAt(point: Pixel): CameraControl | null {
 }
 
 /**
- * The panel the gear opens (EA-4): a title and one row, which is all this feature has to offer. It
- * opens under the camera panel, which is the one place in the right column that overlaps nothing: the
- * top of the column belongs to the camera, the corner to the gear, and this popup to the space below
- * them both.
+ * The panel the gear opens (EA-4): a title and two rows — the automatic end of turn, and the drag
+ * sensitivity the owner asked to have in his hands. It opens under the camera panel, which is the one
+ * place in the right column that overlaps nothing: the top of the column belongs to the camera, the
+ * corner to the gear, and this popup to the space below them both.
  */
 export const SETTINGS_PANEL_RECT: Rect = {
   x: RIGHT_COLUMN_X,
   y: CAMERA_RECT.y + CAMERA_RECT.height + PADDING,
   width: COLUMN_WIDTH,
-  height: TITLE_HEIGHT + PANEL_ROW_HEIGHT + PADDING,
+  height: TITLE_HEIGHT + 2 * PANEL_ROW_HEIGHT + PADDING,
 };
 
-/** The one row of that panel: the toggle of "Passar o turno automaticamente". */
+/** The first row of that panel: the toggle of "Passar o turno automaticamente". */
 export const SETTINGS_TOGGLE_RECT: Rect = {
   x: SETTINGS_PANEL_RECT.x + PADDING,
   y: SETTINGS_PANEL_RECT.y + TITLE_HEIGHT,
   width: SETTINGS_PANEL_RECT.width - 2 * PADDING,
   height: PANEL_ROW_HEIGHT,
+};
+
+/**
+ * The second row: the drag sensitivity, a − and a + with the value read between them. The label is
+ * drawn at the left of the row and the stepper takes the rest, against its right end, which leaves the
+ * label the 164 px of the row the stepper does not use. At the size of the log that is a little over
+ * nineteen characters in monospace, and the label has to stay inside them: text is not clipped, so a
+ * longer one would run under the −.
+ */
+export const SETTINGS_PAN_ROW_RECT: Rect = {
+  ...SETTINGS_TOGGLE_RECT,
+  y: SETTINGS_TOGGLE_RECT.y + PANEL_ROW_HEIGHT,
+};
+
+/** How wide the two signs of that stepper are, and the box the reading between them sits in. */
+export const SETTINGS_STEPPER_BUTTON = 32;
+export const SETTINGS_STEPPER_VALUE_WIDTH = 40;
+
+/**
+ * The − of the stepper. The three pieces are laid out from its left edge inwards, so the width of the
+ * reading is fixed: the value going from 25 to 100 must never shift the signs under the player's hand.
+ */
+export const SETTINGS_PAN_MINUS_RECT: Rect = {
+  x:
+    SETTINGS_PAN_ROW_RECT.x +
+    SETTINGS_PAN_ROW_RECT.width -
+    SETTINGS_STEPPER_VALUE_WIDTH -
+    2 * SETTINGS_STEPPER_BUTTON,
+  y: SETTINGS_PAN_ROW_RECT.y + (SETTINGS_PAN_ROW_RECT.height - SETTINGS_STEPPER_BUTTON) / 2,
+  width: SETTINGS_STEPPER_BUTTON,
+  height: SETTINGS_STEPPER_BUTTON,
+};
+
+/** The reading between the two signs, which is where the value is drawn. */
+export const SETTINGS_PAN_VALUE_RECT: Rect = {
+  x: SETTINGS_PAN_MINUS_RECT.x + SETTINGS_STEPPER_BUTTON,
+  y: SETTINGS_PAN_ROW_RECT.y,
+  width: SETTINGS_STEPPER_VALUE_WIDTH,
+  height: SETTINGS_PAN_ROW_RECT.height,
+};
+
+/** The + of the stepper, against the right end of the row, where the − leads into it. */
+export const SETTINGS_PAN_PLUS_RECT: Rect = {
+  ...SETTINGS_PAN_MINUS_RECT,
+  x: SETTINGS_PAN_MINUS_RECT.x + SETTINGS_STEPPER_BUTTON + SETTINGS_STEPPER_VALUE_WIDTH,
 };

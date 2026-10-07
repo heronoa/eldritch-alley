@@ -35,6 +35,10 @@ import {
   RESULT_BUTTON_RECT,
   SETTINGS_BUTTON_RECT,
   SETTINGS_PANEL_RECT,
+  SETTINGS_PAN_MINUS_RECT,
+  SETTINGS_PAN_PLUS_RECT,
+  SETTINGS_PAN_ROW_RECT,
+  SETTINGS_PAN_VALUE_RECT,
   SETTINGS_TOGGLE_RECT,
   STATUS_RECT,
   CAMERA_CONTROLS,
@@ -408,6 +412,41 @@ describe('the top edge', () => {
     expect(SETTINGS_TOGGLE_RECT.y).toBeGreaterThanOrEqual(SETTINGS_PANEL_RECT.y);
     expect(bottom(SETTINGS_TOGGLE_RECT)).toBeLessThanOrEqual(bottom(SETTINGS_PANEL_RECT));
     expect(right(SETTINGS_PANEL_RECT)).toBeLessThanOrEqual(CANVAS_WIDTH);
+  });
+
+  // The drag sensitivity (owner's request) took the second row of that panel, so the popup is now two
+  // rows tall and the stepper inside the lower one has to fit it.
+  it('gives the settings a second row, and the panel room for both', () => {
+    // The test that fails if the height of the panel did not grow with the row: the row would hang out
+    // of the bottom of its own box, where nothing is drawn over it and no press is read.
+    expect(SETTINGS_PAN_ROW_RECT.x).toBeGreaterThanOrEqual(SETTINGS_PANEL_RECT.x);
+    expect(right(SETTINGS_PAN_ROW_RECT)).toBeLessThanOrEqual(right(SETTINGS_PANEL_RECT));
+    expect(SETTINGS_PAN_ROW_RECT.y).toBeGreaterThanOrEqual(bottom(SETTINGS_TOGGLE_RECT));
+    expect(bottom(SETTINGS_PAN_ROW_RECT)).toBeLessThanOrEqual(bottom(SETTINGS_PANEL_RECT));
+    expect(bottom(SETTINGS_PANEL_RECT)).toBeLessThanOrEqual(DASHBOARD_RECT.y);
+  });
+
+  it('lays the stepper of the drag out as − value +, the three inside their row', () => {
+    const pieces = [
+      ['minus', SETTINGS_PAN_MINUS_RECT],
+      ['value', SETTINGS_PAN_VALUE_RECT],
+      ['plus', SETTINGS_PAN_PLUS_RECT],
+    ] as const;
+
+    for (const [name, rect] of pieces) {
+      expect(rect.x, name).toBeGreaterThanOrEqual(SETTINGS_PAN_ROW_RECT.x);
+      expect(right(rect), name).toBeLessThanOrEqual(right(SETTINGS_PAN_ROW_RECT));
+      expect(rect.y, name).toBeGreaterThanOrEqual(SETTINGS_PAN_ROW_RECT.y);
+      expect(bottom(rect), name).toBeLessThanOrEqual(bottom(SETTINGS_PAN_ROW_RECT));
+    }
+
+    // They touch, in the order the scene reads them, so no press ever falls in a gap between them.
+    expect(right(SETTINGS_PAN_MINUS_RECT)).toBe(SETTINGS_PAN_VALUE_RECT.x);
+    expect(right(SETTINGS_PAN_VALUE_RECT)).toBe(SETTINGS_PAN_PLUS_RECT.x);
+
+    // The label is drawn at the left of the row and the stepper may not eat its room: at the log size
+    // the longest label the panel carries is fifteen characters, a bit over 130 px of monospace.
+    expect(SETTINGS_PAN_MINUS_RECT.x - SETTINGS_PAN_ROW_RECT.x).toBeGreaterThanOrEqual(140);
   });
 });
 

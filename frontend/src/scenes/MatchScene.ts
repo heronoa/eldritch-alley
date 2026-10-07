@@ -22,6 +22,15 @@ import {
   type AutoEndTurn,
   type AutoEndTurnEvent,
 } from '../game/autoEndTurn';
+import {
+  PAN_SENSITIVITY_DEFAULT,
+  PAN_SENSITIVITY_MAX,
+  PAN_SENSITIVITY_MIN,
+  panFactor,
+  readPanSensitivity,
+  savePanSensitivity,
+  stepPanSensitivity,
+} from '../game/panSensitivity';
 import { HIT_MARGIN_PX, unitAtPoint, type SpriteLayout } from '../game/hit';
 import { highlightedCells, highlightTone } from '../game/highlight';
 import { describeEvent, describeRejection, type UnitNames } from '../game/log';
@@ -65,6 +74,8 @@ import {
   RESULT_BUTTON_RECT,
   SETTINGS_BUTTON_RECT,
   SETTINGS_PANEL_RECT,
+  SETTINGS_PAN_MINUS_RECT,
+  SETTINGS_PAN_PLUS_RECT,
   SETTINGS_TOGGLE_RECT,
   CAMERA_RECT,
   cameraControlAt,
@@ -191,6 +202,8 @@ export class MatchScene extends Phaser.Scene {
   private autoEndTurnUnit: string | null = null;
   /** Whether the settings panel the gear opens is on the screen. */
   private settingsOpen = false;
+  /** How much of a finger's travel drags the map, as a percentage of it (owner's request). */
+  private panSensitivity: number = PAN_SENSITIVITY_DEFAULT;
   /** The clock of the last frame, so the machine is handed elapsed time and never reads the clock. */
   private lastFrameMs = 0;
 
@@ -240,6 +253,9 @@ export class MatchScene extends Phaser.Scene {
     this.autoEndTurn = initialAutoEndTurn(readAutoEndTurn());
     this.autoEndTurnUnit = null;
     this.settingsOpen = false;
+    // The same reason as the setting above: the drag the player last chose may have been chosen
+    // elsewhere, and every match opens on it.
+    this.panSensitivity = readPanSensitivity();
     this.lastFrameMs = 0;
     this.buttonModel = [];
     this.chipModel = [];
@@ -367,7 +383,13 @@ export class MatchScene extends Phaser.Scene {
     if (!this.gestures.waiting()) this.disarmLongPress();
 
     if (outcome.kind === 'pinch') this.pinchTo(outcome.pinch);
-    else if (outcome.kind === 'pan') this.moveCameraBy(outcome.by.x, outcome.by.y);
+    else if (outcome.kind === 'pan') {
+      // The one place the drag sensitivity is read: the travel is the whole of it from where the finger
+      // went down, so scaling it scales the gesture and never accumulates. The keys call the camera
+      // directly and keep the step they have always had (owner's decision).
+      const factor = panFactor(this.panSensitivity);
+      this.moveCameraBy(outcome.by.x * factor, outcome.by.y * factor);
+    }
   }
 
   /**
@@ -444,7 +466,9 @@ export class MatchScene extends Phaser.Scene {
 
     // The gear and the panel it opens are read the way the way out of a finished match is: they are
     // not in `hudRects`, which lists the pieces always on the screen. The panel swallows every click
-    // inside it, so nothing under it is pressed while it is open; the gear is what closes it.
+    // inside it, so nothing under it is pressed while it is open; the gear is what closes it. Its two
+    // rows are read inside that guard, so the title and the gaps between the controls are the panel's
+    // too, and only the controls themselves do anything.
     if (containsPoint(SETTINGS_BUTTON_RECT, point)) {
       this.settingsOpen = !this.settingsOpen;
       this.pushHud();
@@ -452,6 +476,8 @@ export class MatchScene extends Phaser.Scene {
     }
     if (this.settingsOpen && containsPoint(SETTINGS_PANEL_RECT, point)) {
       if (containsPoint(SETTINGS_TOGGLE_RECT, point)) this.setAutoEndTurn(!this.autoEndTurn.enabled);
+      else if (containsPoint(SETTINGS_PAN_MINUS_RECT, point)) this.pressPanStepper(-1);
+      else if (containsPoint(SETTINGS_PAN_PLUS_RECT, point)) this.pressPanStepper(1);
       return true;
     }
 
@@ -987,10 +1013,20 @@ export class MatchScene extends Phaser.Scene {
     this.pushHud();
   }
 
-  /** The one option of the settings panel, which turns the feature both on and off. */
+  /** The first option of the settings panel, which turns the feature both on and off. */
   private setAutoEndTurn(enabled: boolean): void {
     saveAutoEndTurn(enabled);
     this.applyAutoEndTurn({ type: 'settingChanged', enabled });
+    this.pushHud();
+  }
+
+  /**
+   * The second option: one press of the stepper. At either end the step lands where it already is, so
+   * a press there is harmless — the panel greys the sign out, and the value is saved and shown again.
+   */
+  private pressPanStepper(direction: 1 | -1): void {
+    this.panSensitivity = stepPanSensitivity(this.panSensitivity, direction);
+    savePanSensitivity(this.panSensitivity);
     this.pushHud();
   }
 
@@ -1097,6 +1133,13 @@ export class MatchScene extends Phaser.Scene {
       result: this.resultText,
       wayOutVisible: this.finished,
       settingsOpen: this.settingsOpen,
+      // Which ends of the stepper still do something is decided here, where the setting lives, and only
+      // drawn by the HUD — the same way the setting of the automatic end of turn is.
+      panSensitivity: {
+        percent: this.panSensitivity,
+        canDecrease: this.panSensitivity > PAN_SENSITIVITY_MIN,
+        canIncrease: this.panSensitivity < PAN_SENSITIVITY_MAX,
+      },
       camera: { view: viewDirection(this.viewSteps), zoom: snapZoom(this.camera.zoom) },
       autoEndTurn: {
         phase: this.autoEndTurn.phase,
