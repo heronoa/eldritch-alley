@@ -4,7 +4,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   PROTOCOL_VERSION,
-  type Board,
+  type BoardState,
   type PublicState,
   type RejectReason,
   type StateMessage,
@@ -38,7 +38,7 @@ vi.mock('./map/MapView', () => ({
   },
 }));
 
-const BOARD: Board = { width: 8, height: 8, levels: new Array<number>(64).fill(0) };
+const BOARD: BoardState = { width: 8, height: 8, levels: new Array<number>(64).fill(0), props: [] };
 
 function makeUnit(id: UnitId, team: Team, x: number, y: number): UnitState {
   return {

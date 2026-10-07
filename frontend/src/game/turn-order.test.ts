@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import type { Board, PublicState, Team, UnitId, UnitState } from '../protocol';
+import type { BoardState, PublicState, Team, UnitId, UnitState } from '../protocol';
 import { activeSlot, isHumanTurn, turnOrder } from './turn-order';
 
-const BOARD: Board = { width: 8, height: 8, levels: new Array<number>(64).fill(0) };
+const BOARD: BoardState = { width: 8, height: 8, levels: new Array<number>(64).fill(0), props: [] };
 
 interface UnitSpec {
   id: UnitId;

@@ -43,6 +43,7 @@ import { terrainOf, type Terrain } from '../maps/terrain';
 import { Session } from '../net/session';
 import {
   PROTOCOL_VERSION,
+  type BoardState,
   type ClientAction,
   type EndedMessage,
   type Event,
@@ -99,6 +100,7 @@ import {
 import { BODY_HEIGHT, SPRITE_SIZE } from '../view/unit-look';
 import { playEffect } from './effects';
 import { MapView } from './map/MapView';
+import { boardMarks } from './map/marks';
 import { RotationView } from './map/RotationView';
 import { drawnLevel, letterOf } from './map/cell';
 import { HudScene } from './HudScene';
@@ -719,7 +721,7 @@ export class MatchScene extends Phaser.Scene {
     // The state always comes after the events it caused, so what it says here is where the board
     // ends up — and every event that arrives next is read against it.
     this.snapshot = snapshotOf(message.state);
-    this.ensureMap(message.mapId);
+    this.ensureMap(message.mapId, message.state.board);
 
     // The acting unit is selected for the player, so the board and the panel are about the unit that
     // can actually act; the mode then falls back if the new turn has nothing left to do.
@@ -740,13 +742,15 @@ export class MatchScene extends Phaser.Scene {
   /**
    * Builds the map the state names, once. A room always plays on the same map, so a different id only
    * happens on a re-join; rebuilding is the cheap correct answer and it costs one comparison per state.
+   * The marks are read here and not by the caller, because a board's props do not change during a match:
+   * a state that finds the map already built has nothing to mark.
    */
-  private ensureMap(mapId: StateMessage['mapId']): void {
+  private ensureMap(mapId: StateMessage['mapId'], board: BoardState): void {
     if (this.map !== null && this.map.id === mapId) return;
 
     this.mapView?.destroy();
     this.map = terrainOf(mapId, this.viewSteps);
-    this.mapView = new MapView(this, this.map);
+    this.mapView = new MapView(this, this.map, boardMarks(board));
   }
 
   /**

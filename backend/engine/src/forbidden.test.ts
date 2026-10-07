@@ -9,6 +9,7 @@ const SRC_DIR = dirname(fileURLToPath(import.meta.url));
 const GUARDED_MODULES = [
   'actions.ts',
   'board.ts',
+  'cover.ts',
   'events.ts',
   'hash.ts',
   'index.ts',

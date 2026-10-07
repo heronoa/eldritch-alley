@@ -27,13 +27,14 @@ export function describeEvent(event: Event, names: UnitNames): string {
         to: positionText(event.to),
       });
     case 'attacked':
-      return event.hit
-        ? t('log.event.attacked', {
-            actor: nameOf(names, event.actor),
-            target: nameOf(names, event.target),
-            damage: event.damage,
-          })
-        : t('log.event.missed', { actor: nameOf(names, event.actor) });
+      if (!event.hit) return t('log.event.missed', { actor: nameOf(names, event.actor) });
+      // Cover is the reason the shot was hard, so it is named on the sentence of the shot that landed.
+      // A miss reads the same with or without it: the player already knows the shot did not land.
+      return t(event.cover ? 'log.event.attackedCover' : 'log.event.attacked', {
+        actor: nameOf(names, event.actor),
+        target: nameOf(names, event.target),
+        damage: event.damage,
+      });
     case 'reloaded':
       // One action, two names: a magazine is reloaded, a pool of mana is meditated (ADR 0011). The
       // engine calls both a reload, so the player is told which one they asked for.

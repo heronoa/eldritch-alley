@@ -2,14 +2,14 @@
 // The rows are the owner's own list — health, the resource the class carries, how far the unit can
 // walk in a turn, and how many reactions it has — and the sheet is a question, never a command.
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { Board, PublicState, Team, UnitId, UnitState } from '../protocol';
+import type { BoardState, PublicState, Team, UnitId, UnitState } from '../protocol';
 import { unitSheet } from './inspect-window';
 import { setLocale } from '../i18n/translate';
 
 // The window's copy is the Portuguese the game shipped with, so these cases read it on purpose.
 beforeEach(() => setLocale('pt-BR'));
 
-const BOARD: Board = { width: 8, height: 8, levels: new Array<number>(64).fill(0) };
+const BOARD: BoardState = { width: 8, height: 8, levels: new Array<number>(64).fill(0), props: [] };
 
 interface UnitSpec {
   id?: UnitId;

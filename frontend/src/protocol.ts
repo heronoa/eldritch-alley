@@ -22,6 +22,29 @@ export interface Board {
   width: number;
   height: number;
   levels: readonly number[];
+  /**
+   * What the map places on the board and the rules read (ADR 0012). Optional here because a setup may
+   * leave it out, exactly as the engine's own `Board` does; the board of a state always carries it, and
+   * that is what `BoardState` says.
+   */
+  props?: readonly Prop[];
+}
+
+/** The board of a state: the same grid, with the props the map placed always listed. */
+export interface BoardState extends Board {
+  props: readonly Prop[];
+}
+
+/**
+ * What a prop does to a shot. A `wall` blocks the line of sight; a `cover` prop is chest-high, so the
+ * shot passes over it and the chance to hit pays for it.
+ */
+export type PropKind = 'wall' | 'cover';
+
+/** One prop of the map, at the cell it stands on. At most one prop per cell. */
+export interface Prop {
+  position: Position;
+  kind: PropKind;
 }
 
 /** The six equipment slots. An empty slot is null. */
@@ -118,7 +141,7 @@ export interface PendingMove {
 /** The state a client may see: the whole match except the random source. */
 export interface PublicState {
   seed: number;
-  board: Board;
+  board: BoardState;
   units: UnitState[];
   /** Ids of the units still in play, in turn order. */
   initiative: UnitId[];
@@ -159,6 +182,8 @@ export type Event =
       rngState: number;
       /** The pool the attack spent one unit of, or null for a unit that carries none (ADR 0011). */
       resource: ResourceKind | null;
+      /** Whether a `cover` prop stood between the two when the roll was made (ADR 0012). */
+      cover: boolean;
     }
   | {
       type: 'reloaded';
@@ -215,7 +240,7 @@ export type RejectReason =
  * one action for both kinds, so `reloaded` carries the pool it refilled as well: the log names the
  * reload of a magazine apart from the meditation of a magic class.
  */
-export const PROTOCOL_VERSION = 6;
+export const PROTOCOL_VERSION = 7;
 
 /** The single room type of M2-a. One room is one match. */
 export const ROOM_NAME = 'battle';

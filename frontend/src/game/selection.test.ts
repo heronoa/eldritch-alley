@@ -1,18 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import type { Board, PublicState, Team, UnitState } from '../protocol';
+import type { BoardState, PublicState, Team, UnitState } from '../protocol';
 import { applyMode } from './actions';
 import { resolveClick, resolveInspect } from './selection';
 
-const BOARD: Board = { width: 8, height: 8, levels: new Array<number>(64).fill(0) };
+const BOARD: BoardState = { width: 8, height: 8, levels: new Array<number>(64).fill(0), props: [] };
 
 /** A flat board with the given cells raised, keyed by `x,y`. */
-function makeBoard(heights: Record<string, number>): Board {
+function makeBoard(heights: Record<string, number>): BoardState {
   const levels = new Array<number>(64).fill(0);
   for (const [key, level] of Object.entries(heights)) {
     const [x, y] = key.split(',').map(Number);
     levels[y * 8 + x] = level;
   }
-  return { width: 8, height: 8, levels };
+  return { width: 8, height: 8, levels, props: [] };
 }
 
 interface UnitSpec {
@@ -59,7 +59,7 @@ function makeUnit(spec: UnitSpec): UnitState {
 function makeState(
   units: readonly UnitState[],
   currentIndex = 0,
-  board: Board = BOARD,
+  board: BoardState = BOARD,
   movementLeft = 3,
 ): PublicState {
   return {

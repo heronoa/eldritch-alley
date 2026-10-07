@@ -1,6 +1,7 @@
 // Validation and event building for the actions of a turn. Nothing here changes the state: an
 // accepted action is turned into events, and events.ts applies them.
 import { distance, inBounds } from './board';
+import { COVER_HIT_PENALTY, coverFor } from './cover';
 import { currentUnitId, isAlive, unitById } from './initiative';
 import { findPath, movementProfile, reachableCells, stepAllowed } from './movement';
 import { nextInt } from './rng';
@@ -24,11 +25,21 @@ type AttackAction = Extract<Action, { type: 'attack' }>;
 type ReloadAction = Extract<Action, { type: 'reload' }>;
 
 /**
- * The single place a hit is decided. M1 reads the attacker's accuracy; Nerve, height and cover will
- * be folded in here later without changing the shape of the state.
+ * The chance this attacker has of hitting this target, out of 100. Cover takes its points away
+ * (ADR 0012); the direction and height bonuses of m3-02 are folded in here, which is why the single
+ * place a hit is decided reads the state and not the two units alone.
+ *
+ * Never below zero: a shooter whose accuracy is under the penalty still takes the shot, and always
+ * misses. The floor is a rule, not a clamp on a number the player can see, so it moves no other value.
  */
-export function resolveHit(attacker: Unit, target: Unit, rng: Rng): boolean {
-  return nextInt(rng, 1, 100) <= attacker.hitChance;
+export function hitChanceFor(state: PublicState, attacker: Unit, target: Unit): number {
+  const penalty = coverFor(state.board, target.position, attacker.position) ? COVER_HIT_PENALTY : 0;
+  return Math.max(0, attacker.hitChance - penalty);
+}
+
+/** The single place a hit is decided. One roll whatever the modifiers, so a replay draws the same. */
+export function resolveHit(state: PublicState, attacker: Unit, target: Unit, rng: Rng): boolean {
+  return nextInt(rng, 1, 100) <= hitChanceFor(state, attacker, target);
 }
 
 function teamHasUnits(state: PublicState, team: Team): boolean {
@@ -229,7 +240,9 @@ export function buildEvents(state: MatchState, action: Action, rng: Rng): Event[
 
   const attacker = unitById(state, action.actor);
   const target = unitById(state, action.target);
-  const hit = resolveHit(attacker, target, rng);
+  // Read before the roll, so the event and the roll are the same answer and the log can explain it.
+  const cover = coverFor(state.board, target.position, attacker.position);
+  const hit = resolveHit(state, attacker, target, rng);
   // One damage for every distance: the strike frame spends the resource, it does not halve the blow.
   const damage = hit ? attacker.attack : 0;
   const events: Event[] = [
@@ -242,6 +255,7 @@ export function buildEvents(state: MatchState, action: Action, rng: Rng): Event[
       rngState: rng.state,
       // The pool the strike spends, so a replay takes the unit out of the same one the live match did.
       resource: attacker.resourceKind,
+      cover,
     },
   ];
 

@@ -12,6 +12,10 @@ export { hasLineOfSight } from './sight';
 export { findPath, reachableCells } from './movement';
 // And the same for the area of a shot: the client paints the cells the engine says it covers (EA-5).
 export { attackArea } from './attack';
+// And the same for what the board carries: the client marks the cells the rules call cover or wall
+// from the state, so what the player aims at is what the server applies (ADR 0012).
+export { propAt, propsOf } from './board';
+export { COVER_HIT_PENALTY, coverFor } from './cover';
 // And the same for the whole turn: the client ends a turn nobody can use by itself (EA-4), and the
 // question has to be the engine's so the two sides answer it alike.
 export { canStillAct } from './actions';

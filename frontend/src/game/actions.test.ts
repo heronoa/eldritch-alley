@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Board, PublicState, Team, UnitId, UnitState } from '../protocol';
+import type { BoardState, PublicState, Team, UnitId, UnitState } from '../protocol';
 import type { Intent } from './selection';
 import {
   actionButtons,
@@ -14,7 +14,7 @@ import { setLocale } from '../i18n/translate';
 // The cases below assert the Portuguese copy the game shipped with, so they read it on purpose.
 setLocale('pt-BR');
 
-const BOARD: Board = { width: 8, height: 8, levels: new Array<number>(64).fill(0) };
+const BOARD: BoardState = { width: 8, height: 8, levels: new Array<number>(64).fill(0), props: [] };
 
 interface UnitSpec {
   id: UnitId;
@@ -126,7 +126,7 @@ describe('availableActions', () => {
     levels[1] = 5; // (1,0)
     levels[8] = 5; // (0,1)
     levels[9] = 5; // (1,1)
-    const state = makeState([SNIPER, ENEMY], 0, { board: { width: 8, height: 8, levels } });
+    const state = makeState([SNIPER, ENEMY], 0, { board: { width: 8, height: 8, levels, props: [] } });
 
     expect(state.movementLeft).toBe(3);
     expect(availableActions(state, 'A').canMove).toBe(false);

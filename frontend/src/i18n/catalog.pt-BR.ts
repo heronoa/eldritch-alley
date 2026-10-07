@@ -42,6 +42,9 @@ export const ptBR = {
   // The battle log. One sentence per event, and the placeholders are filled by `interpolate`.
   'log.event.moved': '{actor} moveu de {from} para {to}',
   'log.event.attacked': '{actor} acertou {target} por {damage}',
+  // The same hit, told with the crate the target was crouched behind: the engine's word is cover, the
+  // screen's is the fiction's (ADR 0012 § D3).
+  'log.event.attackedCover': '{actor} acertou {target} por {damage}, apesar da cobertura',
   'log.event.missed': '{actor} errou',
   'log.event.reloaded': '{actor} recarregou',
   // The same action for a magic class (ADR 0011 §3): the engine calls it a reload either way, and the

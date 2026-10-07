@@ -18,6 +18,31 @@ export interface Board {
   width: number;
   height: number;
   levels: readonly number[];
+  /**
+   * What the map places on the board and the rules read (ADR 0012). A setup that leaves it out plays
+   * on bare ground; `newMatch` writes the list the match plays with onto the board state.
+   */
+  props?: readonly Prop[];
+}
+
+/**
+ * What a prop does to a shot. A `wall` stands above the eye line and blocks it; a `cover` prop is
+ * chest-high, so the shot passes over it and the shooter's chance to hit is what it costs.
+ */
+export type PropKind = 'wall' | 'cover';
+
+/** One prop of the map, at the cell it stands on. At most one prop per cell. */
+export interface Prop {
+  position: Position;
+  kind: PropKind;
+}
+
+/**
+ * The board inside a match, the way `UnitState` is the unit inside a match: a setup may leave `props`
+ * out, a board that has been handed to `newMatch` always carries one.
+ */
+export interface BoardState extends Board {
+  props: readonly Prop[];
 }
 
 /** The six equipment slots. An empty slot is null. Nothing reads these in M1. */
@@ -145,7 +170,7 @@ export interface Rng {
 /** The whole match. `units` keeps setup order, because that order breaks speed ties. */
 export interface MatchState {
   seed: number;
-  board: Board;
+  board: BoardState;
   units: UnitState[];
   /** Ids of the units still in play, in turn order. */
   initiative: UnitId[];
@@ -212,6 +237,11 @@ export type Event =
        * exactly what the live match spent.
        */
       resource: ResourceKind | null;
+      /**
+       * Whether a `cover` prop stood between the two when the roll was made (ADR 0012). The shot costs
+       * the same either way; what changes is the chance, and this is what the screen explains.
+       */
+      cover: boolean;
     }
   /**
    * The refill of the unit's pool, which is one action of the engine for both kinds (ADR 0011): a

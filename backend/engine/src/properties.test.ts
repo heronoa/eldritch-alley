@@ -4,15 +4,23 @@ import { currentUnitId, unitById } from './initiative';
 import { applyAction, applyEvents, hashState, newMatch } from './match';
 import { moveCost } from './movement';
 import { createRng, nextInt } from './rng';
-import type { Action, Board, Event, MatchSetup, MatchState, Rng, Team, Unit } from './types';
+import type { Action, Board, Event, MatchSetup, MatchState, Prop, Rng, Team, Unit } from './types';
 
-function makeBoard(heights: Record<string, number> = {}): Board {
+function makeBoard(heights: Record<string, number> = {}, props: readonly Prop[] = []): Board {
   const levels = new Array<number>(64).fill(0);
   for (const [key, level] of Object.entries(heights)) {
     const [x, y] = key.split(',').map(Number);
     levels[y * 8 + x] = level;
   }
-  return { width: 8, height: 8, levels };
+  return { width: 8, height: 8, levels, props };
+}
+
+function coverAt(x: number, y: number): Prop {
+  return { position: { x, y }, kind: 'cover' };
+}
+
+function wallAt(x: number, y: number): Prop {
+  return { position: { x, y }, kind: 'wall' };
 }
 
 function makeUnit(overrides: Partial<Unit> & Pick<Unit, 'id' | 'team' | 'position'>): Unit {
@@ -95,8 +103,26 @@ function makePropertySetup(seed: number): MatchSetup {
   const team = (id: Team) => units.filter((unit) => unit.team === id);
   return {
     seed: seed >>> 0,
-    map: makeBoard({ '2,2': 1, '3,3': 2, '6,6': 1 }),
+    // The props are part of the board a match plays on, so every property below is asked of a board
+    // that carries them: a crate beside the units, a tower across the alley from them.
+    map: makeBoard({ '2,2': 1, '3,3': 2, '6,6': 1 }, [
+      coverAt(2, 3),
+      coverAt(3, 2),
+      wallAt(6, 2),
+    ]),
     teams: [team('A'), team('B')],
+  };
+}
+
+/** A two-unit match on flat ground carrying `props`, for the cases that read the board alone. */
+function makeSetupWithProps(props: readonly Prop[]): MatchSetup {
+  return {
+    seed: 1,
+    map: makeBoard({}, props),
+    teams: [
+      [makeUnit({ id: 'a1', team: 'A', position: { x: 0, y: 0 }, speed: 9 })],
+      [makeUnit({ id: 'b1', team: 'B', position: { x: 7, y: 7 }, speed: 5 })],
+    ],
   };
 }
 
@@ -216,6 +242,33 @@ describe('properties', () => {
     expect(hits).toBeGreaterThan(0);
     expect(attacks - hits).toBeGreaterThan(0);
   }, 30_000);
+
+  it('gives the same final state twice for the same seed and the same actions, props on the board', () => {
+    for (let seed = 0; seed < 20; seed++) {
+      const play = () => {
+        const rng = createRng((seed * 104729 + 7) >>> 0);
+        let state = newMatch(makePropertySetup(seed));
+
+        for (let step = 0; step < 40; step++) {
+          const result = applyAction(state, randomAction(state, rng));
+          if (result.ok) state = result.state;
+        }
+
+        return hashState(state);
+      };
+
+      expect(play(), `seed ${seed}`).toBe(play());
+    }
+  });
+
+  it('hashes the props of the board, so two boards that differ only in props differ', () => {
+    // A replay that rebuilt the same terrain but lost the crates would otherwise compare equal.
+    const bare = hashState(newMatch(makeSetupWithProps([coverAt(2, 3)])));
+    const covered = hashState(newMatch(makeSetupWithProps([coverAt(3, 3)])));
+
+    expect(bare).not.toBe(covered);
+    expect(bare).toBe(hashState(newMatch(makeSetupWithProps([coverAt(2, 3)]))));
+  });
 
   it('a rebuilt match rolls the same numbers as the live match after the replay', () => {
     const setup: MatchSetup = {

@@ -25,6 +25,7 @@ function attacked(overrides: Partial<Extract<Event, { type: 'attacked' }>> = {})
     damage: 4,
     rngState: 1,
     resource: 'ammo',
+    cover: false,
     ...overrides,
   };
 }

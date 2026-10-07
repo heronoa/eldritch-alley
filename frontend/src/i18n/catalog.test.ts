@@ -147,6 +147,16 @@ describe('the pt-BR the game shows', () => {
     expect(ptBR['log.event.unknown']).toBe('evento desconhecido');
   });
 
+  it('carries the cover sentence of an attack in both catalogs', () => {
+    // The engine's word for the effect is cover; the screen's word is the fiction's (ADR 0012 § D3).
+    expect(message('pt-BR', 'log.event.attackedCover')).toBe(
+      '{actor} acertou {target} por {damage}, apesar da cobertura',
+    );
+    expect(message('en-US', 'log.event.attackedCover')).toBe(
+      '{actor} hit {target} for {damage} through cover',
+    );
+  });
+
   it('answers every refusal code out of the catalog, keyed by the code itself', () => {
     // A code with no key of its own is a compile error: the key is built from the code.
     const reasons: readonly RejectReason[] = [

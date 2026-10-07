@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import type { Board, PublicState, Team, UnitId, UnitState } from '../protocol';
+import type { BoardState, PublicState, Team, UnitId, UnitState } from '../protocol';
 import { unitPanel, type PanelRow } from './panel';
 import { setLocale } from '../i18n/translate';
 
 // The cases below assert the Portuguese copy the game shipped with, so they read it on purpose.
 setLocale('pt-BR');
 
-const BOARD: Board = { width: 8, height: 8, levels: new Array<number>(64).fill(0) };
+const BOARD: BoardState = { width: 8, height: 8, levels: new Array<number>(64).fill(0), props: [] };
 
 interface UnitSpec {
   id: UnitId;

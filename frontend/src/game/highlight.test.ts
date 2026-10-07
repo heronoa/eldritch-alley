@@ -1,21 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import { attackArea, reachableCells } from '@eldritch-alley/engine';
 import { PROTOTYPE_MAPS, type PrototypeMap } from '../maps/prototype-maps';
-import type { Board, PublicState, Team, UnitId, UnitState } from '../protocol';
+import type { BoardState, PublicState, Team, UnitId, UnitState } from '../protocol';
 import type { ActionMode } from './actions';
 import { highlightedCells, highlightTone } from './highlight';
 import { resolveClick } from './selection';
 
-const BOARD: Board = { width: 8, height: 8, levels: new Array<number>(64).fill(0) };
+const BOARD: BoardState = { width: 8, height: 8, levels: new Array<number>(64).fill(0), props: [] };
 
 /** A flat board with the given cells raised, keyed by `x,y`. */
-function makeBoard(heights: Record<string, number>): Board {
+function makeBoard(heights: Record<string, number>): BoardState {
   const levels = new Array<number>(64).fill(0);
   for (const [key, level] of Object.entries(heights)) {
     const [x, y] = key.split(',').map(Number);
     levels[y * 8 + x] = level;
   }
-  return { width: 8, height: 8, levels };
+  return { width: 8, height: 8, levels, props: [] };
 }
 
 interface UnitSpec {
@@ -56,7 +56,7 @@ function makeUnit(spec: UnitSpec): UnitState {
 function makeState(
   units: readonly UnitState[],
   currentIndex = 0,
-  board: Board = BOARD,
+  board: BoardState = BOARD,
   movementLeft = 3,
   pendingMove: PublicState['pendingMove'] = null,
 ): PublicState {
@@ -80,11 +80,12 @@ function keys(cells: readonly { x: number; y: number }[]): string[] {
 }
 
 /** The board of a prototype map, built the way the server builds it: a gap in the ground is floor. */
-function boardOf(map: PrototypeMap): Board {
+function boardOf(map: PrototypeMap): BoardState {
   return {
     width: map.tiles[0].length,
     height: map.tiles.length,
     levels: map.heights.flatMap((row) => row.map((height) => (height === map.void ? 0 : height))),
+    props: [],
   };
 }
 
@@ -442,7 +443,7 @@ describe('the client and the engine agree on what a move reaches', () => {
     { at: { x: 5, y: 9 }, movement: 4 },
   ];
 
-  function street(): Board {
+  function street(): BoardState {
     return boardOf(PROTOTYPE_MAPS.find((map) => map.id === 'street')!);
   }
 

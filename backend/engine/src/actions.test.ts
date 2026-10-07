@@ -1,15 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { canStillAct, resolveHit } from './actions';
+import { COVER_HIT_PENALTY } from './cover';
 import { currentUnitId } from './initiative';
 import { applyAction, hashState, newMatch } from './match';
 import { moveCost } from './movement';
-import { createRng } from './rng';
+import { createRng, nextInt } from './rng';
 import type {
   ActionResult,
   Action,
   Board,
   MatchSetup,
   MatchState,
+  Prop,
   RejectReason,
   Team,
   Unit,
@@ -22,6 +24,14 @@ function makeBoard(heights: Record<string, number> = {}): Board {
     levels[y * 8 + x] = level;
   }
   return { width: 8, height: 8, levels };
+}
+
+function coverAt(x: number, y: number): Prop {
+  return { position: { x, y }, kind: 'cover' };
+}
+
+function wallAt(x: number, y: number): Prop {
+  return { position: { x, y }, kind: 'wall' };
 }
 
 function makeUnit(overrides: Partial<Unit> & Pick<Unit, 'id' | 'team' | 'position'>): Unit {
@@ -238,7 +248,7 @@ describe('actions: attack', () => {
     const result = accepted(applyAction(state, { type: 'attack', actor: 'a1', target: 'b1' }));
 
     expect(result.events).toEqual([
-      { type: 'attacked', actor: 'a1', target: 'b1', hit: true, damage: 3, rngState: expect.any(Number), resource: null },
+      { type: 'attacked', actor: 'a1', target: 'b1', hit: true, damage: 3, rngState: expect.any(Number), resource: null, cover: false },
     ]);
     expect(unitAt(result.state, 'b1').health).toBe(7);
     expect(result.state.hasActed).toBe(true);
@@ -249,7 +259,7 @@ describe('actions: attack', () => {
     const result = accepted(applyAction(state, { type: 'attack', actor: 'a1', target: 'b1' }));
 
     expect(result.events).toEqual([
-      { type: 'attacked', actor: 'a1', target: 'b1', hit: false, damage: 0, rngState: expect.any(Number), resource: null },
+      { type: 'attacked', actor: 'a1', target: 'b1', hit: false, damage: 0, rngState: expect.any(Number), resource: null, cover: false },
     ]);
     expect(unitAt(result.state, 'b1').health).toBe(10);
     expect(result.state.hasActed).toBe(true);
@@ -425,22 +435,131 @@ describe('actions: attack and line of sight', () => {
   });
 });
 
+describe('actions: attack and cover', () => {
+  /**
+   * The duel of the cover cases: `a1` on (4,3) shoots `b1` on (6,3), with the cell (5,3) between them
+   * free for a prop. The board is flat, so nothing but a prop can change the shot.
+   */
+  function coverSetup(
+    seed: number,
+    props: readonly Prop[],
+    overrides: Partial<Unit> = {},
+  ): MatchSetup {
+    const units = [
+      makeUnit({
+        id: 'a1',
+        team: 'A',
+        position: { x: 4, y: 3 },
+        speed: 10,
+        movement: 0,
+        attack: 3,
+        hitChance: 100,
+        range: 2,
+        ...overrides,
+      }),
+      makeUnit({ id: 'b1', team: 'B', position: { x: 6, y: 3 }, speed: 1, movement: 0 }),
+    ];
+    const team = (id: Team) => units.filter((unit) => unit.team === id);
+
+    return { seed, map: { ...makeBoard(), props }, teams: [team('A'), team('B')] };
+  }
+
+  /** The `attacked` event of the single shot this match is built to take. */
+  function shot(seed: number, props: readonly Prop[], overrides: Partial<Unit> = {}) {
+    const state = newMatch(coverSetup(seed, props, overrides));
+    const result = accepted(applyAction(state, { type: 'attack', actor: 'a1', target: 'b1' }));
+    const event = result.events[0];
+    if (event.type !== 'attacked') throw new Error(`expected an attack, got ${event.type}`);
+    return event;
+  }
+
+  /**
+   * Seeds whose first roll of a match lands above `chance`, so the roll alone would hit and only the
+   * cover penalty turns it into a miss. The shot is the first thing a match draws from its rng.
+   */
+  function seedsRollingAbove(chance: number): number[] {
+    const seeds: number[] = [];
+
+    for (let seed = 1; seed <= 400 && seeds.length < 5; seed += 1) {
+      if (nextInt(createRng(seed), 1, 100) > chance) seeds.push(seed);
+    }
+
+    return seeds;
+  }
+
+  it('turns a hit into a miss when a crate stands between the two, on the same seed', () => {
+    const seeds = seedsRollingAbove(100 - COVER_HIT_PENALTY);
+    expect(seeds).toHaveLength(5);
+
+    for (const seed of seeds) {
+      expect(shot(seed, []).hit, `seed ${seed} with a clear line`).toBe(true);
+      expect(shot(seed, [coverAt(5, 3)]).hit, `seed ${seed} behind a crate`).toBe(false);
+    }
+  });
+
+  it('never lets the chance to hit fall below zero, and spends the shot all the same', () => {
+    const state = newMatch(coverSetup(1, [coverAt(5, 3)], { hitChance: 10 }));
+    const result = accepted(applyAction(state, { type: 'attack', actor: 'a1', target: 'b1' }));
+
+    expect(result.events).toEqual([
+      {
+        type: 'attacked',
+        actor: 'a1',
+        target: 'b1',
+        hit: false,
+        damage: 0,
+        rngState: expect.any(Number),
+        resource: null,
+        cover: true,
+      },
+    ]);
+    expect(unitAt(result.state, 'b1').health).toBe(10);
+    expect(result.state.hasActed).toBe(true);
+  });
+
+  it('carries cover true exactly when the target stands behind a cover prop', () => {
+    // The crate on the shooter's side of the target: cover. The same crate on the other flank, a
+    // wall, and a crate across the map: none of them is cover.
+    expect(shot(1, [coverAt(5, 3)]).cover).toBe(true);
+    expect(shot(1, []).cover).toBe(false);
+    expect(shot(1, [coverAt(6, 4)]).cover).toBe(false);
+    expect(shot(1, [wallAt(5, 4)]).cover).toBe(false);
+    expect(shot(1, [coverAt(2, 3)]).cover).toBe(false);
+  });
+
+  it('draws the same numbers with cover and without it, so a replay of either matches', () => {
+    for (let seed = 1; seed <= 20; seed += 1) {
+      expect(shot(seed, [coverAt(5, 3)]).rngState, `seed ${seed}`).toBe(shot(seed, []).rngState);
+    }
+  });
+
+  it('refuses the shot when a wall prop stands on the line', () => {
+    const state = newMatch(coverSetup(1, [wallAt(5, 3)]));
+    const result = rejected(applyAction(state, { type: 'attack', actor: 'a1', target: 'b1' }));
+
+    expect(result.reason).toBe('no-line-of-sight');
+  });
+});
+
 describe('resolveHit', () => {
   const attacker = makeUnit({ id: 'a1', team: 'A', position: { x: 0, y: 0 }, hitChance: 100 });
   const target = makeUnit({ id: 'b1', team: 'B', position: { x: 0, y: 1 } });
+  // The roll reads the state for the board alone: these two stand on bare ground, so nothing modifies
+  // their chance and what is measured here is the roll itself.
+  const state = newMatch(twoUnitSetup({}, { position: { x: 0, y: 1 } }));
 
   it('turns a guaranteed chance into a hit and a zero chance into a miss on the same seed', () => {
     const hitRng = createRng(123);
     const missRng = createRng(123);
-    expect(resolveHit(attacker, target, hitRng)).toBe(true);
-    expect(resolveHit({ ...attacker, hitChance: 0 }, target, missRng)).toBe(false);
+    expect(resolveHit(state, attacker, target, hitRng)).toBe(true);
+    expect(resolveHit(state, { ...attacker, hitChance: 0 }, target, missRng)).toBe(false);
     expect(hitRng.state).toBe(missRng.state);
   });
 
   it('consults the roll for an accuracy in the middle of the range', () => {
     const outcomes = new Set<boolean>();
     for (let seed = 1; seed <= 200; seed++) {
-      outcomes.add(resolveHit({ ...attacker, hitChance: 50 }, target, createRng(seed)));
+      outcomes.add(resolveHit(state, { ...attacker, hitChance: 50 }, target, createRng(seed)));
     }
     expect([...outcomes].sort()).toEqual([false, true]);
   });

@@ -39,6 +39,7 @@ describe('describeEvent', () => {
       damage: 4,
       rngState: 1,
       resource: 'ammo',
+      cover: false,
     };
 
     expect(describeEvent(event, NAMES)).toBe('Sniper acertou Priest por 4');
@@ -53,9 +54,43 @@ describe('describeEvent', () => {
       damage: 0,
       rngState: 1,
       resource: null,
+      cover: false,
     };
 
     expect(describeEvent(event, NAMES)).toBe('Priest errou');
+  });
+
+  it('says when the shot went through cover, which is what the difficulty was', () => {
+    // The engine carries `cover` on the event (ADR 0012), so the log can say the shot beat the crate
+    // rather than leaving the missed chance unexplained.
+    const event: Event = {
+      type: 'attacked',
+      actor: 'A-sniper',
+      target: 'A-priest',
+      hit: true,
+      damage: 4,
+      rngState: 1,
+      resource: 'ammo',
+      cover: true,
+    };
+
+    expect(describeEvent(event, NAMES)).toBe('Sniper acertou Priest por 4, apesar da cobertura');
+  });
+
+  it('leaves the miss alone when the target was behind cover', () => {
+    // One sentence for cover, on the shot that landed. A miss reads the same with or without it.
+    const event: Event = {
+      type: 'attacked',
+      actor: 'A-sniper',
+      target: 'A-priest',
+      hit: false,
+      damage: 0,
+      rngState: 1,
+      resource: 'ammo',
+      cover: true,
+    };
+
+    expect(describeEvent(event, NAMES)).toBe('Sniper errou');
   });
 
   it('describes a defeat', () => {

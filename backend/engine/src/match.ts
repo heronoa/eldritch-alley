@@ -11,6 +11,7 @@ import type {
   Action,
   ActionResult,
   Board,
+  BoardState,
   Equipment,
   Event,
   MatchSetup,
@@ -48,6 +49,23 @@ function validateBoard(board: Board): void {
   }
   board.levels.forEach((level, index) => {
     requireIntegerInRange(level, `map.levels[${index}]`, 0, 255);
+  });
+
+  // A prop is read by the rules as the cell it stands on, so the board must be able to answer "what
+  // stands here" without a second guess: one prop per cell, inside the board, of a known kind.
+  const occupied = new Set<number>();
+  (board.props ?? []).forEach((prop, index) => {
+    requireIntegerInRange(prop.position.x, `map.props[${index}].position.x`, 0, board.width - 1);
+    requireIntegerInRange(prop.position.y, `map.props[${index}].position.y`, 0, board.height - 1);
+    if (prop.kind !== 'wall' && prop.kind !== 'cover') {
+      throw new RangeError(`map.props[${index}].kind must be wall or cover`);
+    }
+
+    const cell = prop.position.y * board.width + prop.position.x;
+    if (occupied.has(cell)) {
+      throw new RangeError(`map.props[${index}] stands on a cell another prop already occupies`);
+    }
+    occupied.add(cell);
   });
 }
 
@@ -186,10 +204,16 @@ function toUnitState(unit: Unit): UnitState {
 export function newMatch(setup: MatchSetup): MatchState {
   validateSetup(setup);
 
-  const board: Board = {
+  const board: BoardState = {
     width: setup.map.width,
     height: setup.map.height,
     levels: [...setup.map.levels],
+    // A setup may leave the props out, the way it may leave a unit's movement profile out; a board
+    // inside a match always carries them, so no rule has to ask whether they are there.
+    props: (setup.map.props ?? []).map((prop) => ({
+      position: { x: prop.position.x, y: prop.position.y },
+      kind: prop.kind,
+    })),
   };
   const units = [...setup.teams[0], ...setup.teams[1]].map(toUnitState);
   const initiative = buildInitiativeQueue(units);

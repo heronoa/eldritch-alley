@@ -37,6 +37,7 @@ export const enUS: Record<MessageKey, string> = {
   // The battle log. One sentence per event, and the placeholders are filled by `interpolate`.
   'log.event.moved': '{actor} moved from {from} to {to}',
   'log.event.attacked': '{actor} hit {target} for {damage}',
+  'log.event.attackedCover': '{actor} hit {target} for {damage} through cover',
   'log.event.missed': '{actor} missed',
   'log.event.reloaded': '{actor} reloaded',
   // The same action for a magic class (ADR 0011 §3): the engine calls it a reload either way, and the

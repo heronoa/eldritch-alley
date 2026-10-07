@@ -20,7 +20,7 @@ import type { MapId } from './map';
  * unit's `resourceKind` and the `attacked` event carries `resource` where it carried `ammoSpent`,
  * and `no-ammunition` and `no-mana` join the refusals (EA-14, ADR 0011).
  */
-export const PROTOCOL_VERSION = 6;
+export const PROTOCOL_VERSION = 7;
 
 /** The single room type of M2-a. One room is one match. */
 export const ROOM_NAME = 'battle';

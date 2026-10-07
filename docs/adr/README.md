@@ -13,3 +13,6 @@ Short records of decisions that shape the game and the codebase. Each ADR has a 
 | [0007](0007-reaction-abilities.md) | Reaction abilities and reaction slots | Accepted |
 | [0008](0008-colyseus-0.18.md) | Colyseus 0.18 for the match server | Accepted |
 | [0009](0009-client-localization.md) | Client-side localization without a library | Accepted |
+| [0010](0010-movement-by-destination-and-turn-scoped-commands.md) | Movement by destination and turn-scoped commands | Accepted |
+| [0011](0011-mana-as-magic-class-resource.md) | Mana as the magic classes' resource | Accepted |
+| [0012](0012-cover-and-typed-props.md) | Cover and typed props on the board | Accepted |
