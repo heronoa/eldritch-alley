@@ -4,7 +4,7 @@
 // server refuses (EA-1 D1). The import goes through the engine's package entry, so the client sees
 // only what `index.ts` exports; the engine ships no Node, so the bundle is safe.
 import { findPath, hasLineOfSight } from '@eldritch-alley/engine';
-import type { ClientAction, PublicState, Team, UnitState } from '../protocol';
+import type { ClientAction, PublicState, RejectReason, Team, UnitId, UnitState } from '../protocol';
 import type { Cell } from '../view/grid';
 import type { ActionMode } from './actions';
 
@@ -16,6 +16,12 @@ export type Intent =
    * action at all, so it is neither a selection nor a preview of anything. It changes nothing.
    */
   | { kind: 'inspect'; unitId: string }
+  /**
+   * A target the engine would turn down (EA-8). It carries no action, so nothing can be sent from it:
+   * it exists so the player is told why the enemy they pressed is not a target instead of nothing
+   * happening, and the reason is the engine's own code, so the sentence is the one a refusal gets.
+   */
+  | { kind: 'refused'; reason: RejectReason }
   | { kind: 'send'; action: ClientAction };
 
 export interface ClickInput {
@@ -23,6 +29,12 @@ export interface ClickInput {
   /** The unit the player has selected, or null when nothing is selected. */
   selectedId: string | null;
   cell: Cell;
+  /**
+   * The unit whose figure the press landed on, when it landed on one (EA-8), or null for a press on
+   * the floor. The figure stands over the cells behind it, so this is what the player aimed at where
+   * the cell under the finger is what the press covered.
+   */
+  targetId?: UnitId | null;
   humanTeam: Team;
 }
 
@@ -42,9 +54,20 @@ function reachOf(unit: UnitState): number {
   return unit.magazine !== null && unit.ammo === 0 ? 1 : unit.range;
 }
 
+/**
+ * The unit a press named, when it landed on a figure rather than on a cell (EA-8). A unit the state
+ * has removed for good is not drawn, so a press cannot name it: the cell under the point answers.
+ */
+function namedUnit(state: PublicState, targetId: UnitId | null | undefined): UnitState | undefined {
+  if (targetId === null || targetId === undefined) return undefined;
+  return state.units.find((unit) => unit.id === targetId && !unit.permanentlyDead);
+}
+
 /** What a click on `cell` means, given what is selected and whose turn it is. */
-export function resolveClick({ state, selectedId, cell, humanTeam }: ClickInput): Intent {
-  const occupant = occupantOf(state, cell);
+export function resolveClick({ state, selectedId, cell, targetId = null, humanTeam }: ClickInput): Intent {
+  // The figure the press landed on decides first: only a press that covered no figure is read against
+  // the cell under it, which is what keeps a walk onto a free cell working (EA-8).
+  const occupant = namedUnit(state, targetId) ?? occupantOf(state, cell);
 
   if (occupant && !occupant.defeated && occupant.team === humanTeam) {
     return { kind: 'select', unitId: occupant.id };
@@ -59,8 +82,15 @@ export function resolveClick({ state, selectedId, cell, humanTeam }: ClickInput)
   if (state.initiative[state.currentIndex] !== selected.id) return { kind: 'none' };
 
   if (occupant && !occupant.defeated && occupant.team !== humanTeam) {
-    if (chebyshev(selected.position, cell) > reachOf(selected)) return { kind: 'none' };
-    if (!hasLineOfSight(state.board, selected.position, cell)) return { kind: 'none' };
+    // The two rules of the engine's own `validateAttack`, in its own order, so the reason the player
+    // is given here is the reason the server would answer with (EA-1 D1). The distance and the sight
+    // are read of the target's own cell: the press may well have covered another one (EA-8).
+    if (chebyshev(selected.position, occupant.position) > reachOf(selected)) {
+      return { kind: 'refused', reason: 'target-out-of-range' };
+    }
+    if (!hasLineOfSight(state.board, selected.position, occupant.position)) {
+      return { kind: 'refused', reason: 'no-line-of-sight' };
+    }
     return { kind: 'send', action: { type: 'attack', target: occupant.id } };
   }
 
@@ -96,6 +126,9 @@ export function resolveInspect(state: PublicState, cell: Cell): Intent {
 export function allowsIntent(mode: ActionMode, intent: Intent): boolean {
   // Selecting and inspecting are how the player looks at the board, whatever the mode is.
   if (intent.kind === 'select' || intent.kind === 'inspect') return true;
+  // A refusal is not an action: it is what the player is told about a press that aimed at nothing the
+  // turn can use, and a mode that narrowed the press away is exactly the case that needs the sentence.
+  if (intent.kind === 'refused') return true;
   if (intent.kind === 'send') return intent.action.type === mode;
   return false;
 }

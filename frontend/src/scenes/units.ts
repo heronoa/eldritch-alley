@@ -28,20 +28,24 @@ import {
   WARM_COLOR,
 } from '../view/theme';
 import {
+  BODY_HEIGHT,
+  BODY_SCALE,
   classRow,
   frameIndex,
   healthFraction,
   markerStyle,
   pipsFor,
+  rowIdleFrame,
   spriteSheetOf,
   turnLook,
   type Pips,
 } from '../view/unit-look';
 
-/** Columns of the sheet, in the order the characters README lists them. */
+/**
+ * Columns of the sheet, in the order the characters README lists them. The two idle poses are not
+ * here: which one is drawn is `rowIdleFrame`'s answer, shared with the turn (slice A).
+ */
 const COLUMN = {
-  idle1: 0,
-  idle2: 1,
   walk1: 2,
   walk2: 3,
   melee1: 4,
@@ -65,15 +69,6 @@ const DIAMOND = [
   { x: 0, y: 1 },
   { x: -1, y: 0 },
 ];
-
-/**
- * Geometry of a drawn unit, in pixels. The body is a 16x24 frame drawn at twice its size, which is
- * the size the prototype's own figures take at its scale: the tile of the map is 64 by 32.
- */
-const BODY_SCALE = 2;
-
-/** How tall the figure stands above its feet, which is what the bars and the shot leave from. */
-export const BODY_HEIGHT = 24 * BODY_SCALE;
 
 /** The ground marker lies flat on the tile, so its two axes follow the two axes of the top face. */
 const MARKER_HALF_WIDTH = TILE_W * 0.22;
@@ -141,7 +136,13 @@ export class UnitSprite extends Phaser.GameObjects.Container {
   private action: Action | null = null;
   private moving: { start: number } | null = null;
 
-  constructor(scene: Phaser.Scene, unit: UnitState, marks: UnitMarks, placement: Placement) {
+  constructor(
+    scene: Phaser.Scene,
+    unit: UnitState,
+    marks: UnitMarks,
+    placement: Placement,
+    facesRight: boolean,
+  ) {
     super(scene, 0, 0);
     this.bornAt = scene.time.now;
 
@@ -155,11 +156,15 @@ export class UnitSprite extends Phaser.GameObjects.Container {
     this.add([this.marker, this.corpse, this.figure, this.bars, this.arrow, this.ring]);
 
     scene.add.existing(this);
-    this.sync(unit, marks, placement);
+    this.sync(unit, marks, placement, facesRight);
   }
 
-  /** Redraws what the state says about the unit. A unit mid-move is left where its tween has it. */
-  sync(unit: UnitState, marks: UnitMarks, placement: Placement): void {
+  /**
+   * Redraws what the state says about the unit. A unit mid-move is left where its tween has it.
+   * `facesRight` is which way round its figure is drawn, which the view works out: a view turned a
+   * quarter puts the squad that was on the left on the right (EA-12).
+   */
+  sync(unit: UnitState, marks: UnitMarks, placement: Placement, facesRight: boolean): void {
     const look = turnLook(marks.active);
 
     this.team = unit.team;
@@ -173,8 +178,8 @@ export class UnitSprite extends Phaser.GameObjects.Container {
     this.pips = pipsFor(unit);
 
     this.figure.setTexture(`unit-${spriteSheetOf(unit.team)}`);
-    // Each team faces the other from the start, so a unit is never seen from behind by its side.
-    this.figure.setFlipX(unit.team === 'B');
+    // A sprite is drawn facing one way, so the side that faces the other is the one that is mirrored.
+    this.figure.setFlipX(!facesRight);
 
     if (this.moving === null) this.snapTo(placement);
 
@@ -301,11 +306,15 @@ export class UnitSprite extends Phaser.GameObjects.Container {
       if (frame !== 0) return frameIndex(this.row, frame === 1 ? COLUMN.resource1 : COLUMN.resource2);
     }
 
-    return frameIndex(this.row, this.idleColumn(now));
+    return this.idleFrame(now);
   }
 
-  private idleColumn(now: number): number {
-    return idleFrame(now - this.bornAt) === 1 ? COLUMN.idle1 : COLUMN.idle2;
+  /**
+   * The resting pose, chosen by the same function the flat figure of a turn is drawn from (slice A of
+   * the smoke test 2 feedback), so the unit the turn shows is the unit standing on the board.
+   */
+  private idleFrame(now: number): number {
+    return rowIdleFrame(this.row, idleFrame(now - this.bornAt) - 1);
   }
 
   /** A hit is a white silhouette and a one-pixel shake, so it reads over any tile. */

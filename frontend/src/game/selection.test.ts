@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Board, PublicState, Team, UnitState } from '../protocol';
+import { applyMode } from './actions';
 import { resolveClick, resolveInspect } from './selection';
 
 const BOARD: Board = { width: 8, height: 8, levels: new Array<number>(64).fill(0) };
@@ -101,14 +102,16 @@ describe('resolveClick', () => {
     expect(intent).toEqual({ kind: 'send', action: { type: 'attack', target: 'B-priest' } });
   });
 
-  it('returns none for an enemy behind a building, inside the range', () => {
+  it('refuses an enemy behind a building with the reason of the engine', () => {
     const sniper = makeUnit({ id: 'A-sniper', team: 'A', at: { x: 0, y: 0 }, range: 3 });
     const enemy = makeUnit({ id: 'B-priest', team: 'B', at: { x: 2, y: 0 }, range: 1 });
     const state = makeState([sniper, enemy], 0, makeBoard({ '1,0': 5 }));
 
     const intent = resolveClick({ state, selectedId: 'A-sniper', cell: { x: 2, y: 0 }, humanTeam: 'A' });
 
-    expect(intent).toEqual({ kind: 'none' });
+    // Nothing is sent: the click is turned down, and the reason is what the player is told (EA-8).
+    expect(intent).toEqual({ kind: 'refused', reason: 'no-line-of-sight' });
+    expect(intent).not.toHaveProperty('action');
   });
 
   it('sends an attack across the rooftop gap', () => {
@@ -121,14 +124,15 @@ describe('resolveClick', () => {
     expect(intent).toEqual({ kind: 'send', action: { type: 'attack', target: 'B-priest' } });
   });
 
-  it('returns none for an enemy outside the selected range', () => {
+  it('refuses an enemy outside the selected range with the reason of the engine', () => {
     const sniper = makeUnit({ id: 'A-sniper', team: 'A', at: { x: 0, y: 0 }, range: 3 });
     const enemy = makeUnit({ id: 'B-priest', team: 'B', at: { x: 4, y: 0 }, range: 1 });
     const state = makeState([sniper, enemy]);
 
     const intent = resolveClick({ state, selectedId: 'A-sniper', cell: { x: 4, y: 0 }, humanTeam: 'A' });
 
-    expect(intent).toEqual({ kind: 'none' });
+    expect(intent).toEqual({ kind: 'refused', reason: 'target-out-of-range' });
+    expect(intent).not.toHaveProperty('action');
   });
 
   it('treats the attack of an empty magazine as melee', () => {
@@ -138,7 +142,8 @@ describe('resolveClick', () => {
     const state = makeState([sniper, adjacent, twoAway]);
 
     expect(resolveClick({ state, selectedId: 'A-sniper', cell: { x: 2, y: 0 }, humanTeam: 'A' })).toEqual({
-      kind: 'none',
+      kind: 'refused',
+      reason: 'target-out-of-range',
     });
     expect(resolveClick({ state, selectedId: 'A-sniper', cell: { x: 1, y: 0 }, humanTeam: 'A' })).toEqual({
       kind: 'send',
@@ -225,6 +230,104 @@ describe('resolveClick', () => {
     expect(resolveClick({ state, selectedId: 'A-sniper', cell: { x: 1, y: 0 }, humanTeam: 'A' })).toEqual({
       kind: 'none',
     });
+  });
+});
+
+/**
+ * EA-8: the press lands on the sprite of a unit, which stands over the cell above the one its feet
+ * rest on. The target is the unit the player sees, not the cell the finger happens to cover, and the
+ * rules applied to it are the ones the cell path already applies — team, defeat, reach and sight.
+ */
+describe('resolveClick on a unit', () => {
+  /** The sniper on its own turn, and the enemy three cells away: in reach, and in sight. */
+  const SNIPER = makeUnit({ id: 'A-sniper', team: 'A', at: { x: 0, y: 3 }, range: 3 });
+  const ENEMY = makeUnit({ id: 'B-priest', team: 'B', at: { x: 3, y: 3 }, range: 1 });
+  /** The cell the body of the enemy covers, which is not the one it stands on. */
+  const OVER_THE_BODY = { x: 3, y: 2 };
+
+  it('sends the attack of the armed mode when the press lands on the enemy sprite', () => {
+    const state = makeState([SNIPER, ENEMY]);
+
+    const intent = resolveClick({
+      state,
+      selectedId: 'A-sniper',
+      cell: OVER_THE_BODY,
+      targetId: 'B-priest',
+      humanTeam: 'A',
+    });
+
+    expect(applyMode('attack', intent)).toEqual({ kind: 'send', action: { type: 'attack', target: 'B-priest' } });
+  });
+
+  it('refuses a target out of reach, and sends nothing', () => {
+    const far = makeUnit({ id: 'B-wizard', team: 'B', at: { x: 7, y: 3 }, range: 1 });
+    const state = makeState([SNIPER, far]);
+
+    const intent = applyMode('attack', resolveClick({
+      state,
+      selectedId: 'A-sniper',
+      cell: { x: 7, y: 2 },
+      targetId: 'B-wizard',
+      humanTeam: 'A',
+    }));
+
+    expect(intent).toEqual({ kind: 'refused', reason: 'target-out-of-range' });
+    expect(intent).not.toHaveProperty('action');
+  });
+
+  it('refuses a target behind a building, and sends nothing', () => {
+    const state = makeState([SNIPER, ENEMY], 0, makeBoard({ '1,3': 6, '2,3': 6 }));
+
+    const intent = applyMode('attack', resolveClick({
+      state,
+      selectedId: 'A-sniper',
+      cell: OVER_THE_BODY,
+      targetId: 'B-priest',
+      humanTeam: 'A',
+    }));
+
+    expect(intent).toEqual({ kind: 'refused', reason: 'no-line-of-sight' });
+    expect(intent).not.toHaveProperty('action');
+  });
+
+  it('selects the ally whose sprite was pressed', () => {
+    const wizard = makeUnit({ id: 'A-wizard', team: 'A', at: { x: 2, y: 3 }, range: 1 });
+    const state = makeState([SNIPER, wizard]);
+
+    const intent = resolveClick({
+      state,
+      selectedId: 'A-sniper',
+      cell: { x: 2, y: 2 },
+      targetId: 'A-wizard',
+      humanTeam: 'A',
+    });
+
+    expect(intent).toEqual({ kind: 'select', unitId: 'A-wizard' });
+  });
+
+  it('resolves a press on a portrait of the turn queue as a press on the same unit', () => {
+    const state = makeState([SNIPER, ENEMY]);
+
+    // The carousel draws one slot per unit of the queue, in turn order (`turnOrder`), and the scene
+    // reads a press on a slot as the unit it shows: the two presses name the same unit and are given
+    // the same cell, so a portrait and a sprite of one unit can never answer differently (EA-8).
+    const portrait = resolveClick({
+      state,
+      selectedId: 'A-sniper',
+      cell: ENEMY.position,
+      targetId: 'B-priest',
+      humanTeam: 'A',
+    });
+    const sprite = resolveClick({
+      state,
+      selectedId: 'A-sniper',
+      cell: OVER_THE_BODY,
+      targetId: 'B-priest',
+      humanTeam: 'A',
+    });
+
+    expect(portrait).toEqual({ kind: 'send', action: { type: 'attack', target: 'B-priest' } });
+    expect(sprite).toEqual(portrait);
   });
 });
 

@@ -11,14 +11,15 @@
 // Every drawer reads its own arguments and nothing else: the same prop at the same moment is the same
 // picture twice running, which is what lets a cell be repainted without the map changing under it.
 import type { Pixel } from '../../view/grid';
-import type { PropSpec } from '../../maps/prototype-maps';
+import { viewTurns } from '../../view/rotation';
+import type { DrawnProp } from '../../maps/terrain';
 import { MAP_COLORS, shadeHex } from '../../maps/prototype-palette';
 import { TH, TW, isoBox, line, poly, px } from './cell';
 
 /** Draws one prop with its centre at a point of the canvas. */
 export type PropDrawer = (
   ctx: CanvasRenderingContext2D,
-  prop: PropSpec,
+  prop: DrawnProp,
   at: Pixel,
   time: number,
 ) => void;
@@ -74,14 +75,63 @@ const lamp: PropDrawer = (ctx, _prop, at, time) => {
   px(ctx, cx + 2, cy - 21, 2, 1, WARM);
 };
 
+/**
+ * How a point of a car's own frame — `along` its length and `across` it — lands in the two axes of the
+ * board, seen from the view it is drawn in. One step of the view takes the car's length onto the other
+ * axis, so the four frames are the same car seen from its four sides.
+ */
+const CAR_FRAME: readonly ((along: number, across: number) => [number, number])[] = [
+  (along, across) => [along, across],
+  (along, across) => [-across, along],
+  (along, across) => [-along, -across],
+  (along, across) => [across, -along],
+];
+
+/**
+ * Where the middle of a car's cabin and its headlight sit in the car's own frame, in cells. They are the
+ * prototype's offsets, which it states in the pixels of one view; written here in the frame, the view
+ * turns them with everything else.
+ */
+const CAR_CABIN = { along: -11 / 32, across: -9 / 32 };
+const CAR_LIGHT = { along: 13 / 32, across: -5 / 32 };
+
+/**
+ * A car's own frame, read in the canvas pixels of the view it is drawn in. A car lies along the street
+ * it is parked on, so which way it points is the view's business: stating its parts in its own frame
+ * costs one multiplication and keeps the bonnet at the front of every car of every view.
+ */
+function carFrame(cx: number, cy: number, view: number) {
+  const place = CAR_FRAME[viewTurns(view)];
+
+  return {
+    /** Where a point of the car lands on the canvas. */
+    at: (along: number, across: number): Pixel => {
+      const [u, v] = place(along, across);
+      return { x: cx + ((u - v) * TW) / 2, y: cy + ((u + v) * TH) / 2 };
+    },
+    /** The two half sizes of a box of the car, in the two axes `isoBox` draws it along. */
+    sides: (along: number, across: number): [number, number] => {
+      const [u, v] = place(along, across);
+      return [Math.abs(u), Math.abs(v)];
+    },
+  };
+}
+
 const car: PropDrawer = (ctx, prop, at) => {
   const { x: cx, y: cy } = at;
   // Every car of the three maps carries its own colour; the fallback is the tone of the dark cars.
   const body = prop.c ?? '#3d4152';
+  const frame = carFrame(cx, cy, prop.view ?? 0);
 
-  isoBox(ctx, cx, cy, 0.42, 0.2, 5, body, shadeHex(body, -0.3), shadeHex(body, -0.45));
-  isoBox(ctx, cx - 1, cy - 5, 0.22, 0.17, 4, '#141826', shadeHex(body, -0.2), shadeHex(body, -0.35));
-  px(ctx, cx + 9, cy + 2, 2, 1, 'rgba(240,217,160,.8)');
+  const shell = frame.sides(0.42, 0.2);
+  isoBox(ctx, cx, cy, shell[0], shell[1], 5, body, shadeHex(body, -0.3), shadeHex(body, -0.45));
+
+  const cabin = frame.at(CAR_CABIN.along, CAR_CABIN.across);
+  const roof = frame.sides(0.22, 0.17);
+  isoBox(ctx, cabin.x, cabin.y, roof[0], roof[1], 4, '#141826', shadeHex(body, -0.2), shadeHex(body, -0.35));
+
+  const light = frame.at(CAR_LIGHT.along, CAR_LIGHT.across);
+  px(ctx, light.x, light.y, 2, 1, 'rgba(240,217,160,.8)');
 };
 
 const dumpster: PropDrawer = (ctx, _prop, at) => {
@@ -408,7 +458,7 @@ export const ANIMATED_PROPS: ReadonlySet<string> = new Set([
 /** Draws one prop. A type with no drawer is a bug in the maps, so it is refused by name. */
 export function drawProp(
   ctx: CanvasRenderingContext2D,
-  prop: PropSpec,
+  prop: DrawnProp,
   at: Pixel,
   time: number,
 ): void {
@@ -434,8 +484,8 @@ const FLOOR_PROPS: readonly string[] = ['puddle', 'manhole', 'flyers', 'chalk', 
  * other in `FLOOR_PROPS`, then the rest as `data.js` lists them. `sort` leaves items of equal rank
  * where they were, which is what keeps the standing props in their own order.
  */
-export function propsInPaintOrder(props: readonly PropSpec[]): PropSpec[] {
-  const rank = (prop: PropSpec) => {
+export function propsInPaintOrder(props: readonly DrawnProp[]): DrawnProp[] {
+  const rank = (prop: DrawnProp) => {
     const index = FLOOR_PROPS.indexOf(prop.t);
     return index === -1 ? FLOOR_PROPS.length : index;
   };

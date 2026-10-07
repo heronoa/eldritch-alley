@@ -93,20 +93,34 @@ export const ptBR = {
   // refused protocol version raises, and the two states of a dropped connection.
   'hud.legend':
     'Azul-tinta: você · Vermelho: bot · Papel: selecionado\nRealce azul: movimento · Realce vermelho: ataque',
-  'hud.panel.unit': 'Unidade',
   'hud.panel.log': 'Registro',
+  'inspect.title': 'Ficha da unidade',
   'hud.back': 'Voltar ao início',
   // The banner a turn change raises, one line per side. It names the side that just took the turn
   // rather than the unit, which the carousel already tells apart.
   'hud.banner.yourTurn': 'Sua vez',
   'hud.banner.enemyTurn': 'Vez do inimigo',
-  // The automatic end of turn (EA-4): the countdown, the way out of it, the hint the button shows
-  // when the feature is off, and the one option of the settings panel the gear opens.
+  // The automatic end of turn (EA-4): the countdown, the way out of it, and the hint the button shows
+  // when the feature is off.
   'hud.autoEndTurn.countdown': 'Turno encerrado em {seconds} s',
   'hud.autoEndTurn.link': 'Não passar automaticamente',
   'hud.autoEndTurn.hint': 'Nada mais a fazer: termine o turno',
+  // The settings panel the gear opens: the toggle of the automatic end of turn, and the stepper of the
+  // drag sensitivity (owner's request) with the value it reads between its two signs. The label of the
+  // second row is drawn beside that stepper, so it stays short: a longer one runs under the −.
   'hud.settings': 'Ajustes',
   'hud.settings.autoEndTurn': 'Passar o turno automaticamente',
+  'hud.settings.panSensitivity': 'Arrasto do mapa',
+  'hud.settings.panSensitivity.value': '{percent}%',
+  // The camera panel (EA-12): the view the camera looks from, the zoom step it is on, and the letter
+  // each direction is written as — Norte, Leste, Sul, Oeste, as the prototype prints them.
+  'hud.camera': 'Câmera',
+  'hud.camera.view': 'VISTA {direction}',
+  'hud.camera.zoom': '{step}x',
+  'hud.camera.north': 'N',
+  'hud.camera.east': 'L',
+  'hud.camera.south': 'S',
+  'hud.camera.west': 'O',
   'match.versionMismatch': 'Versão incompatível',
   'match.victory': 'Vitória',
   'match.defeat': 'Derrota',

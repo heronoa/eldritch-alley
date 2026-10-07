@@ -18,8 +18,9 @@ import { NO_FLOOR } from '../../view/grid';
 import { LAYER } from '../../view/depth';
 import { PIXEL, cellToScreen } from '../../view/iso';
 import { CANVAS_HEIGHT, CANVAS_WIDTH } from '../../view/layout';
+import { COVERED_ALPHA } from '../../view/cutaway';
 import { drawBackdrop } from './backdrop';
-import { cellBox, depthOf, drawCell, drawCellAnimation, movesOverTime, px } from './cell';
+import { cellBox, context2d, depthOf, drawCell, drawCellAnimation, drawnLevel, movesOverTime, px } from './cell';
 import { drawProp, isAnimatedProp, propsInPaintOrder } from './props';
 
 /** How far a wire hangs over the street, and a clothesline over the gap, in the prototype's pixels. */
@@ -57,14 +58,6 @@ interface MovingCell {
 /** Counts the maps drawn in this run, so two of them never ask Phaser for the same texture key. */
 let views = 0;
 
-/** The 2d context of a canvas that was just made, or a failure worth reading. */
-function context2d(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
-  const ctx = canvas.getContext('2d');
-  if (ctx === null) throw new Error('no 2d context for the map canvas');
-
-  return ctx;
-}
-
 export class MapView {
   private readonly scene: Phaser.Scene;
   private readonly terrain: Terrain;
@@ -72,6 +65,10 @@ export class MapView {
   private readonly moving: MovingCell[] = [];
   /** The clotheslines, painted every frame: they sway. Null on a map without one. */
   private readonly lines: Layer | null;
+  /** One cell's canvases by the cell they draw, so a cell can be drawn translucent on its own. */
+  private readonly cellLayers = new Map<string, Layer[]>();
+  /** The cells drawn translucent now, so the next call can put them back to solid. */
+  private covered: Cell[] = [];
 
   constructor(scene: Phaser.Scene, terrain: Terrain) {
     this.scene = scene;
@@ -94,9 +91,10 @@ export class MapView {
     for (let y = 0; y < terrain.size.height; y += 1) {
       for (let x = 0; x < terrain.size.width; x += 1) {
         const cell = { x, y };
-        const level = terrain.levelAt(cell);
         // A gap has no floor, so there is nothing to draw: no diamond seven steps down, no car light
-        // crossing it. Decision 7 of the feature.
+        // crossing it. Decision 7 of the feature. A building the view cuts down is drawn lower than it
+        // stands, which is why the level read here is the drawn one (EA-12, slice 4).
+        const level = drawnLevel(terrain, cell);
         if (level === NO_FLOOR) continue;
 
         this.addCell(`${prefix}-${x}-${y}`, cell, level);
@@ -104,6 +102,17 @@ export class MapView {
     }
 
     this.update(0);
+  }
+
+  /**
+   * Draws the given cells translucent and every other cell solid, so a building the player cannot see
+   * through shows what it hides (EA-12, slice 4). The cells are the ones the scene worked out with the
+   * rules of `view/cutaway.ts`; the view does not decide them.
+   */
+  setCovered(cells: readonly Cell[]): void {
+    for (const cell of this.covered) this.setCellAlpha(cell, 1);
+    this.covered = [...cells];
+    for (const cell of this.covered) this.setCellAlpha(cell, COVERED_ALPHA);
   }
 
   /** Repaints what moves: the cells with an animated prop, the water, and the clotheslines. */
@@ -128,6 +137,13 @@ export class MapView {
 
     this.layers.length = 0;
     this.moving.length = 0;
+    this.cellLayers.clear();
+    this.covered = [];
+  }
+
+  /** Sets how opaque the canvases of one cell are drawn. A cell with no canvas is nothing to do. */
+  private setCellAlpha(cell: Cell, alpha: number): void {
+    for (const layer of this.cellLayers.get(`${cell.x},${cell.y}`) ?? []) layer.image.setAlpha(alpha);
   }
 
   /** One cell: its still canvas, and its moving one when it has anything that moves. */
@@ -140,20 +156,25 @@ export class MapView {
 
     // A cell's props are drawn in the prototype's own order, so a prop that shares a cell with another
     // lands over or under it exactly as it does there.
-    const props = propsInPaintOrder(propsAt(terrain.map, cell));
+    const props = propsInPaintOrder(propsAt(terrain, cell));
     const still = props.filter((prop) => !isAnimatedProp(prop.t));
     const moving = props.filter((prop) => isAnimatedProp(prop.t));
     const tileMoves = movesOverTime(terrain, cell);
 
-    this.layer(`${key}-still`, box.width, box.height, depth, at, anchor, (ctx) => {
-      drawCell({ ctx, terrain, cell, at: anchor, time: 0 });
-      for (const prop of still) drawProp(ctx, prop, anchor, 0);
-    });
+    const canvases: Layer[] = [
+      this.layer(`${key}-still`, box.width, box.height, depth, at, anchor, (ctx) => {
+        drawCell({ ctx, terrain, cell, at: anchor, time: 0 });
+        for (const prop of still) drawProp(ctx, prop, anchor, 0);
+      }),
+    ];
 
-    if (moving.length === 0 && !tileMoves) return;
+    if (moving.length > 0 || tileMoves) {
+      const layer = this.layer(`${key}-moving`, box.width, box.height, depth, at, anchor, () => {});
+      this.moving.push({ layer, cell, at: anchor, props: moving, tileMoves });
+      canvases.push(layer);
+    }
 
-    const layer = this.layer(`${key}-moving`, box.width, box.height, depth, at, anchor, () => {});
-    this.moving.push({ layer, cell, at: anchor, props: moving, tileMoves });
+    this.cellLayers.set(`${cell.x},${cell.y}`, canvases);
   }
 
   /**

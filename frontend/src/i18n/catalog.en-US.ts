@@ -87,19 +87,32 @@ export const enUS: Record<MessageKey, string> = {
   // The rest of the HUD, and the lines the match shows over it.
   'hud.legend':
     'Ink blue: you · Red: bot · Paper: selected\nBlue highlight: movement · Red highlight: attack',
-  'hud.panel.unit': 'Unit',
   'hud.panel.log': 'Log',
+  'inspect.title': 'Unit sheet',
   'hud.back': 'Back to start',
   // The banner a turn change raises, one line per side.
   'hud.banner.yourTurn': 'Your turn',
   'hud.banner.enemyTurn': 'Enemy turn',
-  // The automatic end of turn (EA-4): the countdown, the way out of it, the hint the button shows
-  // when the feature is off, and the one option of the settings panel the gear opens.
+  // The automatic end of turn (EA-4): the countdown, the way out of it, and the hint the button shows
+  // when the feature is off.
   'hud.autoEndTurn.countdown': 'Turn ends in {seconds}s',
   'hud.autoEndTurn.link': "Don't pass automatically",
   'hud.autoEndTurn.hint': 'Nothing left to do: end the turn',
+  // The settings panel the gear opens: the toggle of the automatic end of turn, and the stepper of the
+  // drag sensitivity (owner's request) with the value it reads between its two signs.
   'hud.settings': 'Settings',
   'hud.settings.autoEndTurn': 'Pass the turn automatically',
+  'hud.settings.panSensitivity': 'Map drag',
+  'hud.settings.panSensitivity.value': '{percent}%',
+  // The camera panel (EA-12): the view the camera looks from, the zoom step it is on, and the letter
+  // each direction is written as.
+  'hud.camera': 'Camera',
+  'hud.camera.view': 'VIEW {direction}',
+  'hud.camera.zoom': '{step}x',
+  'hud.camera.north': 'N',
+  'hud.camera.east': 'E',
+  'hud.camera.south': 'S',
+  'hud.camera.west': 'W',
   'match.versionMismatch': 'Incompatible version',
   'match.victory': 'Victory',
   'match.defeat': 'Defeat',
