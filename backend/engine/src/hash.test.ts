@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { canonicalize, fnv1a } from './hash';
 import { hashState, newMatch } from './match';
-import type { Board, MatchSetup, MatchState, Team, Unit } from './types';
+import type { Board, Facing, MatchSetup, MatchState, Team, Unit } from './types';
+
+function unitAt(state: MatchState, id: string) {
+  const unit = state.units.find((candidate) => candidate.id === id);
+  if (!unit) throw new Error(`no unit with id ${id}`);
+  return unit;
+}
 
 function makeBoard(heights: Record<string, number> = {}): Board {
   const levels = new Array<number>(64).fill(0);
@@ -112,6 +118,21 @@ describe('hashState', () => {
     };
 
     expect(hashState(reverseKeys(state) as MatchState)).toBe(hashState(state));
+  });
+
+  it('changes when only a facing changes', () => {
+    const state = newMatch(makeSetup());
+    // The unit turns right about on its own cell: nothing else about the state moves.
+    const OPPOSITE: Record<Facing, Facing> = { N: 'S', S: 'N', E: 'W', W: 'E' };
+    const turned: MatchState = {
+      ...state,
+      units: state.units.map((unit) =>
+        unit.id === 'b1' ? { ...unit, facing: OPPOSITE[unit.facing] } : unit,
+      ),
+    };
+
+    expect(unitAt(state, 'b1').facing).not.toBe(unitAt(turned, 'b1').facing);
+    expect(hashState(turned)).not.toBe(hashState(state));
   });
 
   it('changes when the unit order changes, because that order breaks speed ties', () => {

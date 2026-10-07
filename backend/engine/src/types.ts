@@ -13,6 +13,19 @@ export interface Position {
   y: number;
 }
 
+/**
+ * Which way a unit looks, in the board's own frame: east is +x and north is −y, so `'N'` is towards
+ * row 0 (ADR 0014). Every unit inside a match carries one; it changes as the unit walks, as it shoots
+ * and when the player turns it.
+ */
+export type Facing = 'N' | 'S' | 'E' | 'W';
+
+/**
+ * Where an attacker stood around its target, read against the target's own facing (ADR 0014): ahead
+ * of it, beside it, or behind it. The attacker's facing is never part of the answer.
+ */
+export type Direction = 'front' | 'flank' | 'rear';
+
 /** The 8x8 battlefield: `levels` is row-major, so the level of (x, y) is `levels[y * width + x]`. */
 export interface Board {
   width: number;
@@ -135,6 +148,11 @@ export interface UnitState extends Unit {
    * from the setup. A class with a magazine and no kind is an ammunition class.
    */
   resourceKind: ResourceKind | null;
+  /**
+   * Which way the unit looks. `newMatch` opens it towards the unit's own side of the map, and a walk,
+   * a shot and the `face` action move it from there (ADR 0014).
+   */
+  facing: Facing;
   /** HP the unit entered the match with. The ceiling for `health`; no M2-a rule raises it. */
   maxHealth: number;
   defeated: boolean;
@@ -199,6 +217,11 @@ export type Action =
   | { type: 'attack'; actor: UnitId; target: UnitId }
   | { type: 'reload'; actor: UnitId }
   /**
+   * Turns the unit on the cell it stands on. It spends no movement and no action and does not end the
+   * turn, so a unit that has spent everything can still turn before it passes (ADR 0014).
+   */
+  | { type: 'face'; actor: UnitId; facing: Facing }
+  /**
    * Passes the turn. It names the round it applies to, so a message that arrives late — the client
    * sends this one on its own (EA-4) — is refused instead of ending somebody else's turn (ADR 0010).
    */
@@ -242,7 +265,22 @@ export type Event =
        * the same either way; what changes is the chance, and this is what the screen explains.
        */
       cover: boolean;
+      /**
+       * Where the attacker stood around the target, read against the target's facing (ADR 0014). The
+       * chance and the damage were both read from it, so the screen names it and a replay keeps it.
+       */
+      direction: Direction;
+      /**
+       * The levels the attacker stood above the target, which is the difference the reach and the roll
+       * were read from (ADR 0015): positive from above, negative from below, zero on the same level.
+       */
+      stood: number;
     }
+  /**
+   * The unit was turned by the player. A walk and a shot turn the unit too, but they carry the answer
+   * in their own event; this is the turn that would otherwise leave no trace (ADR 0014).
+   */
+  | { type: 'faced'; actor: UnitId; facing: Facing }
   /**
    * The refill of the unit's pool, which is one action of the engine for both kinds (ADR 0011): a
    * reload for a weapon class, a meditation for a magic one. `resource` is the pool it refilled, so

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { DIRECTION_BONUS } from './facing';
 import { currentUnitId } from './initiative';
 import { applyAction, applyEvents, newMatch } from './match';
 import type { Action, ActionResult, Board, MatchSetup, MatchState, Unit } from './types';
@@ -90,8 +91,15 @@ describe('magazine', () => {
     const state = newMatch(sniperSetup());
     const result = play(state, { type: 'attack', actor: 'sniper', target: 'target' });
 
+    // The sniper stands beside its target rather than in front of it, so the strike carries the bonus
+    // of a flank shot on top of the weapon's own (ADR 0014).
     expect(result.events).toEqual([
-      expect.objectContaining({ type: 'attacked', hit: true, damage: 4, resource: 'ammo' }),
+      expect.objectContaining({
+        type: 'attacked',
+        hit: true,
+        damage: 4 + DIRECTION_BONUS.flank.damage,
+        resource: 'ammo',
+      }),
     ]);
     expect(unitAt(result.state, 'sniper').ammo).toBe(2);
   });
@@ -121,7 +129,11 @@ describe('magazine', () => {
       const result = play(state, { type: 'attack', actor: 'sniper', target: 'target' });
 
       expect(result.events[0]).toEqual(
-        expect.objectContaining({ type: 'attacked', damage: attack, resource: 'ammo' }),
+        expect.objectContaining({
+          type: 'attacked',
+          damage: attack + DIRECTION_BONUS.flank.damage,
+          resource: 'ammo',
+        }),
       );
       expect(unitAt(result.state, 'sniper').ammo).toBe(2);
     }

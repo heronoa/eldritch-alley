@@ -17,3 +17,7 @@ Short records of decisions that shape the game and the codebase. Each ADR has a 
 | [0011](0011-mana-as-magic-class-resource.md) | Mana as the magic classes' resource | Accepted |
 | [0012](0012-cover-and-typed-props.md) | Cover and typed props on the board | Accepted |
 | [0013](0013-no-cover-under-the-feet.md) | A prop under the feet gives no cover | Accepted |
+| [0014](0014-facing-and-direction-bonus.md) | Facing and the direction bonus | Accepted |
+| [0015](0015-height-advantage.md) | Height advantage | Accepted |
+| [0016](0016-abilities-as-data.md) | Abilities as data | Proposed |
+| [0017](0017-mana-regeneration.md) | Mana regenerates one point at the start of the turn | Proposed |

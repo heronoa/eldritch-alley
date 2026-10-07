@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { canStillAct, resolveHit } from './actions';
 import { COVER_HIT_PENALTY } from './cover';
+import { DIRECTION_BONUS } from './facing';
+import { heightBonus } from './height';
 import { currentUnitId } from './initiative';
 import { applyAction, hashState, newMatch } from './match';
 import { moveCost } from './movement';
@@ -11,6 +13,7 @@ import type {
   Board,
   MatchSetup,
   MatchState,
+  Position,
   Prop,
   RejectReason,
   Team,
@@ -121,6 +124,54 @@ function backToA(state: MatchState): MatchState {
     applyAction(first.state, { type: 'endTurn', actor: 'b1', round: first.state.round }),
   ).state;
 }
+
+/**
+ * The duel the direction and height cases are read from. `a1` shoots `b1` from one cell away, with a
+ * fixed attack and a fixed accuracy, so nothing but the direction and the relief moves the shot.
+ * `b1` stands on (3,3), the left half of the board, so it opens facing east (decision D1) unless the
+ * case moves it.
+ */
+function duel(
+  attackerAt: Position,
+  overrides: Partial<Unit> = {},
+  targetAt: Position = { x: 3, y: 3 },
+  heights: Record<string, number> = {},
+): MatchSetup {
+  const units = [
+    makeUnit({
+      id: 'a1',
+      team: 'A',
+      position: attackerAt,
+      speed: 10,
+      movement: 0,
+      attack: 3,
+      hitChance: 100,
+      range: 2,
+      ...overrides,
+    }),
+    makeUnit({ id: 'b1', team: 'B', position: targetAt, speed: 1, movement: 0, health: 30 }),
+  ];
+  const team = (id: Team) => units.filter((unit) => unit.team === id);
+
+  return { seed: 1, map: makeBoard(heights), teams: [team('A'), team('B')] };
+}
+
+/** The `attacked` event of the single shot a duel is built to take. */
+function duelShot(setup: MatchSetup) {
+  const result = accepted(
+    applyAction(newMatch(setup), { type: 'attack', actor: 'a1', target: 'b1' }),
+  );
+  const event = result.events[0];
+  if (event.type !== 'attacked') throw new Error(`expected an attack, got ${event.type}`);
+  return event;
+}
+
+/** East of the duel's target, which looks east: a shot at its face. */
+const FRONT: Position = { x: 4, y: 3 };
+/** West of it: a shot at its back. */
+const REAR: Position = { x: 2, y: 3 };
+/** Over its shoulder, neither ahead nor behind: a flank shot. */
+const FLANK: Position = { x: 3, y: 2 };
 
 describe('move cost', () => {
   it('charges 1 per cell on flat ground', () => {
@@ -247,10 +298,22 @@ describe('actions: attack', () => {
     const state = newMatch(twoUnitSetup({}, { position: { x: 0, y: 1 } }));
     const result = accepted(applyAction(state, { type: 'attack', actor: 'a1', target: 'b1' }));
 
+    // `a1` stands north of `b1`, which looks east: a flank shot, and the bonus of the table with it.
     expect(result.events).toEqual([
-      { type: 'attacked', actor: 'a1', target: 'b1', hit: true, damage: 3, rngState: expect.any(Number), resource: null, cover: false },
+      {
+        type: 'attacked',
+        actor: 'a1',
+        target: 'b1',
+        hit: true,
+        damage: 3 + DIRECTION_BONUS.flank.damage,
+        rngState: expect.any(Number),
+        resource: null,
+        cover: false,
+        direction: 'flank',
+        stood: 0,
+      },
     ]);
-    expect(unitAt(result.state, 'b1').health).toBe(7);
+    expect(unitAt(result.state, 'b1').health).toBe(10 - 3 - DIRECTION_BONUS.flank.damage);
     expect(result.state.hasActed).toBe(true);
   });
 
@@ -259,7 +322,18 @@ describe('actions: attack', () => {
     const result = accepted(applyAction(state, { type: 'attack', actor: 'a1', target: 'b1' }));
 
     expect(result.events).toEqual([
-      { type: 'attacked', actor: 'a1', target: 'b1', hit: false, damage: 0, rngState: expect.any(Number), resource: null, cover: false },
+      {
+        type: 'attacked',
+        actor: 'a1',
+        target: 'b1',
+        hit: false,
+        damage: 0,
+        rngState: expect.any(Number),
+        resource: null,
+        cover: false,
+        direction: 'flank',
+        stood: 0,
+      },
     ]);
     expect(unitAt(result.state, 'b1').health).toBe(10);
     expect(result.state.hasActed).toBe(true);
@@ -272,7 +346,10 @@ describe('actions: attack', () => {
     const result = accepted(applyAction(state, { type: 'attack', actor: 'a1', target: 'b1' }));
 
     const after = unitAt(result.state, 'b1');
-    expect(after.health).toBe(before.health - 4);
+    // The damage is what the strike dealt, direction included: what this case is about is that the
+    // ceiling of the target does not move with it.
+    const damage = 4 + DIRECTION_BONUS.flank.damage;
+    expect(after.health).toBe(before.health - damage);
     expect(after.maxHealth).toBe(before.maxHealth);
     expect(after.maxHealth).toBe(10);
   });
@@ -511,6 +588,9 @@ describe('actions: attack and cover', () => {
         rngState: expect.any(Number),
         resource: null,
         cover: true,
+        // The shooter stands west of a target looking west: dead ahead, so no bonus from the direction.
+        direction: 'front',
+        stood: 0,
       },
     ]);
     expect(unitAt(result.state, 'b1').health).toBe(10);
@@ -1045,4 +1125,212 @@ describe('rejections', () => {
       expect(hashState(start)).toBe(hashBefore);
     });
   }
+});
+
+describe('actions: face', () => {
+  it('turns the unit without spending movement or the action, and without ending the turn', () => {
+    const state = newMatch(twoUnitSetup());
+    expect(unitAt(state, 'a1').facing).toBe('E');
+
+    const turned = accepted(applyAction(state, { type: 'face', actor: 'a1', facing: 'S' }));
+
+    expect(unitAt(turned.state, 'a1').facing).toBe('S');
+    expect(turned.state.movementLeft).toBe(state.movementLeft);
+    expect(turned.state.hasActed).toBe(state.hasActed);
+    // Still the turn of the unit that turned: nothing was passed.
+    expect(currentUnitId(turned.state)).toBe('a1');
+    expect(turned.state.round).toBe(state.round);
+  });
+
+  it('records the turn as an event of its own, so a replay turns the unit too', () => {
+    const state = newMatch(twoUnitSetup());
+    const result = accepted(applyAction(state, { type: 'face', actor: 'a1', facing: 'N' }));
+
+    expect(result.events).toEqual([{ type: 'faced', actor: 'a1', facing: 'N' }]);
+  });
+
+  it('is accepted after the unit has spent its action and its movement', () => {
+    const state = newMatch(twoUnitSetup({}, { position: { x: 0, y: 1 } }));
+    const spent = accepted(applyAction(state, { type: 'attack', actor: 'a1', target: 'b1' })).state;
+    expect(spent.hasActed).toBe(true);
+    expect(spent.movementLeft).toBe(4);
+
+    const turned = accepted(applyAction(spent, { type: 'face', actor: 'a1', facing: 'W' }));
+
+    expect(unitAt(turned.state, 'a1').facing).toBe('W');
+    expect(turned.state.hasActed).toBe(true);
+  });
+
+  it('is refused for a unit that is not on turn', () => {
+    const state = newMatch(twoUnitSetup());
+    const result = rejected(applyAction(state, { type: 'face', actor: 'b1', facing: 'N' }));
+
+    expect(result.reason).toBe('not-your-turn');
+  });
+
+  it('is refused in a match that is over', () => {
+    const state = newMatch(twoUnitSetup({ attack: 5 }, { position: { x: 0, y: 1 }, health: 1 }));
+    const over = accepted(applyAction(state, { type: 'attack', actor: 'a1', target: 'b1' })).state;
+
+    const result = rejected(applyAction(over, { type: 'face', actor: 'a1', facing: 'N' }));
+
+    expect(result.reason).toBe('game-over');
+  });
+});
+
+describe('actions: move and facing', () => {
+  it('leaves the unit facing the way its step went', () => {
+    const state = newMatch(twoUnitSetup());
+
+    const moved = accepted(applyAction(state, { type: 'move', actor: 'a1', to: { x: 0, y: 3 } }));
+
+    expect(unitAt(moved.state, 'a1').facing).toBe('S');
+  });
+
+  it('breaks a diagonal step to the horizontal, through a walk of the match', () => {
+    const state = newMatch(twoUnitSetup());
+
+    const moved = accepted(applyAction(state, { type: 'move', actor: 'a1', to: { x: 1, y: 1 } }));
+
+    expect(unitAt(moved.state, 'a1').facing).toBe('E');
+  });
+});
+
+describe('actions: attack and facing', () => {
+  /**
+   * Seeds whose first roll of a match falls above the front chance and inside the rear one, so the
+   * same roll is a miss at the face of the target and a hit at its back.
+   */
+  function seedsBetween(low: number, high: number): number[] {
+    const seeds: number[] = [];
+
+    for (let seed = 1; seed <= 2000 && seeds.length < 5; seed += 1) {
+      const roll = nextInt(createRng(seed), 1, 100);
+      if (roll > low && roll <= high) seeds.push(seed);
+    }
+
+    return seeds;
+  }
+
+  it('classifies the shot from where the attacker stands around the target', () => {
+    expect(duelShot(duel(FRONT)).direction).toBe('front');
+    expect(duelShot(duel(REAR)).direction).toBe('rear');
+    expect(duelShot(duel(FLANK)).direction).toBe('flank');
+  });
+
+  it('reads the facing of the target, not the side of the board the attacker came from', () => {
+    // The same relative geometry twice: the target on the left half looks east, the one on the right
+    // half looks west, so a shot from the east is a shot at the face of one and at the back of the
+    // other. What decides is where the target looks.
+    expect(duelShot(duel({ x: 4, y: 3 })).direction).toBe('front');
+    expect(duelShot(duel({ x: 5, y: 3 }, {}, { x: 4, y: 3 })).direction).toBe('rear');
+  });
+
+  it('hits from the rear on a roll the same shot from the front misses, on the same seed', () => {
+    const front = 50;
+    const seeds = seedsBetween(front, front + DIRECTION_BONUS.rear.hit);
+    expect(seeds).toHaveLength(5);
+
+    for (const seed of seeds) {
+      const aimed = { hitChance: front };
+      const frontShot = duelShot({ ...duel(FRONT, aimed), seed });
+      const rearShot = duelShot({ ...duel(REAR, aimed), seed });
+
+      expect(frontShot.hit, `seed ${seed} from the front`).toBe(false);
+      expect(rearShot.hit, `seed ${seed} from the rear`).toBe(true);
+    }
+  });
+
+  it('adds the direction bonus of the table to the damage, and nothing at all from the front', () => {
+    expect(duelShot(duel(FRONT)).damage).toBe(3);
+    expect(duelShot(duel(FLANK)).damage).toBe(3 + DIRECTION_BONUS.flank.damage);
+    expect(duelShot(duel(REAR)).damage).toBe(3 + DIRECTION_BONUS.rear.damage);
+  });
+
+  it('turns the attacker to the target, whatever side of the map it opened on', () => {
+    const state = newMatch(duel(FLANK));
+    expect(unitAt(state, 'a1').facing).toBe('E');
+
+    const result = accepted(applyAction(state, { type: 'attack', actor: 'a1', target: 'b1' }));
+
+    // The target stands south of it, so the shot leaves it looking south.
+    expect(unitAt(result.state, 'a1').facing).toBe('S');
+  });
+});
+
+describe('actions: attack and height advantage', () => {
+  /**
+   * Three cells across a flat row, so the distance is 3 and the reach a unit of range 2 has on its own
+   * is 2. The relief is the only thing that can close the gap.
+   */
+  const SNIPER_AT: Position = { x: 0, y: 0 };
+  const TARGET_AT: Position = { x: 3, y: 0 };
+  const ROOF = { '0,0': 2 };
+
+  it('reaches from above a cell the same unit cannot reach from the same level', () => {
+    const above = newMatch(duel(SNIPER_AT, { range: 2 }, TARGET_AT, ROOF));
+    const level = newMatch(duel(SNIPER_AT, { range: 2 }, TARGET_AT));
+
+    expect(2 + heightBonus(2).range).toBe(3);
+    expect(accepted(applyAction(above, { type: 'attack', actor: 'a1', target: 'b1' })).events[0].type).toBe(
+      'attacked',
+    );
+    expect(rejected(applyAction(level, { type: 'attack', actor: 'a1', target: 'b1' })).reason).toBe(
+      'target-out-of-range',
+    );
+  });
+
+  it('takes the reach of a shot from below away from the table, and refuses what is left out', () => {
+    // The same row the other way round: the target two levels up, and the reach shortened by the table.
+    const up = newMatch(duel(SNIPER_AT, { range: 2 }, TARGET_AT, { '3,0': 2 }));
+
+    expect(2 + heightBonus(-2).range).toBe(1);
+    expect(rejected(applyAction(up, { type: 'attack', actor: 'a1', target: 'b1' })).reason).toBe(
+      'target-out-of-range',
+    );
+  });
+
+  it('never changes the damage, whatever the difference in levels', () => {
+    // A reach that carries the three cells at either end of the relief, so the only thing that moves
+    // between the three shots is the height.
+    const reach = { range: 4 };
+    const level = duelShot(duel(SNIPER_AT, reach, TARGET_AT));
+    const above = duelShot(duel(SNIPER_AT, reach, TARGET_AT, ROOF));
+    const below = duelShot(duel(SNIPER_AT, reach, TARGET_AT, { '3,0': 2 }));
+
+    expect(above.hit).toBe(true);
+    expect(below.hit).toBe(true);
+    expect(above.damage).toBe(level.damage);
+    expect(below.damage).toBe(level.damage);
+  });
+
+  it('carries the direction and the height difference the roll used', () => {
+    const reach = { range: 4 };
+    const level = duelShot(duel(SNIPER_AT, reach, TARGET_AT));
+    const above = duelShot(duel(SNIPER_AT, reach, TARGET_AT, ROOF));
+    const below = duelShot(duel(SNIPER_AT, reach, TARGET_AT, { '3,0': 2 }));
+
+    expect(level.stood).toBe(0);
+    expect(above.stood).toBe(2);
+    expect(below.stood).toBe(-2);
+    // The height is not the direction: the two answers are read apart.
+    expect(above.direction).toBe(level.direction);
+    expect(below.direction).toBe(level.direction);
+  });
+});
+
+describe('facing in the fingerprint of a match', () => {
+  it('gives the same seed and the same actions the same hash, facings included', () => {
+    const play = () => {
+      let state = newMatch(twoUnitSetup());
+      state = accepted(applyAction(state, { type: 'face', actor: 'a1', facing: 'N' })).state;
+      state = accepted(applyAction(state, { type: 'move', actor: 'a1', to: { x: 0, y: 2 } })).state;
+      return accepted(applyAction(state, { type: 'commitMove', actor: 'a1' })).state;
+    };
+
+    // The turn and the walk both leave their mark, so the hash is not comparing two states that never
+    // moved: the unit turned south with its step.
+    expect(unitAt(play(), 'a1').facing).toBe('S');
+    expect(hashState(play())).toBe(hashState(play()));
+  });
 });

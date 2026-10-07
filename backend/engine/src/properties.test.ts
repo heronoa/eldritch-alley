@@ -4,7 +4,18 @@ import { currentUnitId, unitById } from './initiative';
 import { applyAction, applyEvents, hashState, newMatch } from './match';
 import { moveCost } from './movement';
 import { createRng, nextInt } from './rng';
-import type { Action, Board, Event, MatchSetup, MatchState, Prop, Rng, Team, Unit } from './types';
+import type {
+  Action,
+  Board,
+  Event,
+  Facing,
+  MatchSetup,
+  MatchState,
+  Prop,
+  Rng,
+  Team,
+  Unit,
+} from './types';
 
 function makeBoard(heights: Record<string, number> = {}, props: readonly Prop[] = []): Board {
   const levels = new Array<number>(64).fill(0);
@@ -126,6 +137,8 @@ function makeSetupWithProps(props: readonly Prop[]): MatchSetup {
   };
 }
 
+const FACINGS: Facing[] = ['N', 'S', 'E', 'W'];
+
 const DIRECTIONS = [
   [1, 0],
   [-1, 0],
@@ -150,7 +163,11 @@ function randomAction(state: MatchState, rng: Rng): Action {
 
   const current = unitById(state, actor);
   const enemies = state.units.filter((unit) => unit.team !== current.team && !unit.defeated);
-  const candidates: Action[] = [{ type: 'endTurn', actor, round: state.round }];
+  const candidates: Action[] = [
+    { type: 'endTurn', actor, round: state.round },
+    // A free action, so it is a candidate on every turn and the replay has to rebuild it too.
+    { type: 'face', actor, facing: FACINGS[nextInt(rng, 0, FACINGS.length - 1)] },
+  ];
 
   for (const [dx, dy] of DIRECTIONS) {
     const to = { x: current.position.x + dx, y: current.position.y + dy };
@@ -259,6 +276,43 @@ describe('properties', () => {
 
       expect(play(), `seed ${seed}`).toBe(play());
     }
+  });
+
+  it('rebuilds the facings from the events alone, the explicit turn included', () => {
+    const setup: MatchSetup = {
+      seed: 7,
+      map: makeBoard(),
+      teams: [
+        [makeUnit({ id: 'a1', team: 'A', position: { x: 0, y: 0 }, speed: 9, range: 2 })],
+        [makeUnit({ id: 'b1', team: 'B', position: { x: 2, y: 0 }, speed: 5, range: 2, health: 30 })],
+      ],
+    };
+    const play = (state: MatchState, action: Action) => {
+      const result = applyAction(state, action);
+      if (!result.ok) throw new Error(result.reason);
+      return result;
+    };
+
+    let live = newMatch(setup);
+    const events: Event[] = [];
+    for (const action of [
+      // A turn nobody would guess from the walk that follows it: the unit turns north and then walks
+      // south, so only the event of the turn itself carries the answer.
+      { type: 'face', actor: 'a1', facing: 'N' },
+      { type: 'move', actor: 'a1', to: { x: 0, y: 2 } },
+      { type: 'commitMove', actor: 'a1' },
+      { type: 'endTurn', actor: 'a1', round: 1 },
+      { type: 'face', actor: 'b1', facing: 'N' },
+      { type: 'attack', actor: 'b1', target: 'a1' },
+    ] as Action[]) {
+      const result = play(live, action);
+      live = result.state;
+      events.push(...result.events);
+    }
+
+    // The walk left `a1` looking south and the shot left `b1` looking west, over the face it set.
+    expect(live.units.map((unit) => unit.facing)).toEqual(['S', 'W']);
+    expect(applyEvents(setup, events)).toEqual(live);
   });
 
   it('hashes the props of the board, so two boards that differ only in props differ', () => {

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { DIRECTION_BONUS } from './facing';
 import { applyAction, applyEvents, hashState, newMatch } from './match';
 import type {
   Action,
@@ -116,8 +117,15 @@ describe('mana', () => {
     const state = newMatch(casterSetup({}, { position: { x: 0, y: 1 } }));
     const result = play(state, STRIKE);
 
+    // The caster stands beside its target rather than in front of it, so the strike carries the bonus
+    // of a flank shot on top of the weapon's own (ADR 0014).
     expect(result.events).toEqual([
-      expect.objectContaining({ type: 'attacked', hit: true, damage: 3, resource: 'mana' }),
+      expect.objectContaining({
+        type: 'attacked',
+        hit: true,
+        damage: 3 + DIRECTION_BONUS.flank.damage,
+        resource: 'mana',
+      }),
     ]);
     expect(unitAt(result.state, 'wizard').ammo).toBe(2);
   });
@@ -136,9 +144,14 @@ describe('mana', () => {
     const near = play(newMatch(casterSetup({ attack: 5 }, { position: { x: 0, y: 1 } })), STRIKE);
     const far = play(newMatch(casterSetup({ attack: 5 })), STRIKE);
 
-    // Half of 5 would be 2, which is what the melee fallback used to deal at an adjacent target.
-    expect(near.events[0]).toEqual(expect.objectContaining({ damage: 5 }));
-    expect(far.events[0]).toEqual(expect.objectContaining({ damage: 5 }));
+    // Half of 5 would be 2, which is what the melee fallback used to deal at an adjacent target. Both
+    // shots come from the flank, so both carry the same bonus of the direction table (ADR 0014).
+    expect(near.events[0]).toEqual(
+      expect.objectContaining({ damage: 5 + DIRECTION_BONUS.flank.damage }),
+    );
+    expect(far.events[0]).toEqual(
+      expect.objectContaining({ damage: 5 + DIRECTION_BONUS.flank.damage }),
+    );
   });
 
   it('refuses a strike with no mana, whatever the distance', () => {

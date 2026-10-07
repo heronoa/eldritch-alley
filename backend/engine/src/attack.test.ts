@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { validateAction } from './actions';
 import { attackArea } from './attack';
 import { newMatch } from './match';
+import { heightBonus } from './height';
 import type { Board, MatchSetup, MatchState, Position, Team, Unit, UnitState } from './types';
 
 function makeBoard(heights: Record<string, number> = {}): Board {
@@ -119,5 +121,77 @@ describe('attackArea', () => {
     const fallen: UnitState = { ...unitAt(state, 'a1'), defeated: true };
 
     expect(attackArea(state, fallen.position, fallen)).toEqual([]);
+  });
+});
+
+describe('attackArea and the reach of a shot', () => {
+  /** The platform the sniper stands on, and the reach every case here starts from. */
+  const PLATFORM: Position = { x: 3, y: 3 };
+  const RANGE = 3;
+
+  /** The board the reach is read on: the platform raised, everything else on the ground, no props. */
+  function plateau(levels: number): Record<string, number> {
+    return levels === 0 ? {} : { [`${PLATFORM.x},${PLATFORM.y}`]: levels };
+  }
+
+  function matchOn(heights: Record<string, number>, enemyAt: Position = { x: 7, y: 7 }): MatchState {
+    return newMatch(
+      makeSetup(
+        [
+          makeUnit({ id: 'a1', team: 'A', position: PLATFORM, speed: 10, range: RANGE, magazine: 3 }),
+          makeUnit({ id: 'b1', team: 'B', position: enemyAt, speed: 1 }),
+        ],
+        heights,
+      ),
+    );
+  }
+
+  /** The area the engine paints from the platform. */
+  function painted(heights: Record<string, number>): string[] {
+    const state = matchOn(heights);
+    const sniper = unitAt(state, 'a1');
+
+    return keys(attackArea(state, sniper.position, sniper));
+  }
+
+  /**
+   * The cells the server accepts, read one cell at a time: the enemy is put on each cell of the board
+   * in turn and the refusal itself is asked. It is the long way round on purpose — it is the answer
+   * the player gets on the click, and the one the highlight has to agree with.
+   */
+  function accepted(heights: Record<string, number>): string[] {
+    const cells: string[] = [];
+
+    for (let y = 0; y < 8; y += 1) {
+      for (let x = 0; x < 8; x += 1) {
+        // The cell the sniper stands on is not a target at all, and two units cannot share it.
+        if (x === PLATFORM.x && y === PLATFORM.y) continue;
+
+        const state = matchOn(heights, { x, y });
+        if (validateAction(state, { type: 'attack', actor: 'a1', target: 'b1' }) === null) {
+          cells.push(`${x},${y}`);
+        }
+      }
+    }
+
+    return cells.sort();
+  }
+
+  it('paints exactly the cells the server accepts, at every height difference', () => {
+    for (const levels of [0, 1, 2, 3]) {
+      const heights = plateau(levels);
+
+      expect(painted(heights), `${levels} levels up`).toEqual(accepted(heights));
+    }
+  });
+
+  it('widens the painted area by the reach of the table, two levels up', () => {
+    expect(heightBonus(2).range).toBeGreaterThan(0);
+
+    const level = painted(plateau(0));
+    const above = painted(plateau(2));
+
+    expect(above.length).toBeGreaterThan(level.length);
+    expect(above).toEqual(expect.arrayContaining(level));
   });
 });

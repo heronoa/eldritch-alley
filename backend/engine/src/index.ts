@@ -16,6 +16,11 @@ export { attackArea } from './attack';
 // from the state, so what the player aims at is what the server applies (ADR 0012).
 export { propAt, propsOf } from './board';
 export { COVER_HIT_PENALTY, coverFor } from './cover';
+// And the same for how far a shot reaches and where it lands from: the reach is a property of the
+// pair and the relief of the board (ADR 0015), and the direction is read against the target's own
+// facing (ADR 0014). The client asks the engine rather than reading the tables on its own.
+export { attackDirection } from './facing';
+export { effectiveRange } from './height';
 // And the same for the whole turn: the client ends a turn nobody can use by itself (EA-4), and the
 // question has to be the engine's so the two sides answer it alike.
 export { canStillAct } from './actions';

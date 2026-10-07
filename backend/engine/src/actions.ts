@@ -2,12 +2,15 @@
 // accepted action is turned into events, and events.ts applies them.
 import { distance, inBounds } from './board';
 import { COVER_HIT_PENALTY, coverFor } from './cover';
+import { DIRECTION_BONUS, attackDirection } from './facing';
+import { effectiveRange, heightBonus, heightDifference } from './height';
 import { currentUnitId, isAlive, unitById } from './initiative';
 import { findPath, movementProfile, reachableCells, stepAllowed } from './movement';
 import { nextInt } from './rng';
 import { hasLineOfSight } from './sight';
 import type {
   Action,
+  Direction,
   Event,
   MatchState,
   Position,
@@ -24,21 +27,55 @@ type MoveAction = Extract<Action, { type: 'move' }>;
 type AttackAction = Extract<Action, { type: 'attack' }>;
 type ReloadAction = Extract<Action, { type: 'reload' }>;
 
+/** Everything the board says about one shot, read once for the roll and for the event alike. */
+interface Shot {
+  /** Whether a cover prop stands between the two (ADR 0012). */
+  cover: boolean;
+  /** Where the attacker stands around the target, against the target's own facing (ADR 0014). */
+  direction: Direction;
+  /** The levels the attacker stands above the target: positive from above, negative from below. */
+  stood: number;
+}
+
 /**
- * The chance this attacker has of hitting this target, out of 100. Cover takes its points away
- * (ADR 0012); the direction and height bonuses of m3-02 are folded in here, which is why the single
- * place a hit is decided reads the state and not the two units alone.
- *
- * Never below zero: a shooter whose accuracy is under the penalty still takes the shot, and always
- * misses. The floor is a rule, not a clamp on a number the player can see, so it moves no other value.
+ * The board's half of a shot, read in one place. The chance below and the `attacked` event both build
+ * on it, so the number that was rolled and the number the log explains can never be two answers.
  */
-export function hitChanceFor(state: PublicState, attacker: Unit, target: Unit): number {
-  const penalty = coverFor(state.board, target.position, attacker.position) ? COVER_HIT_PENALTY : 0;
-  return Math.max(0, attacker.hitChance - penalty);
+function shotBetween(state: PublicState, attacker: UnitState, target: UnitState): Shot {
+  return {
+    cover: coverFor(state.board, target.position, attacker.position),
+    direction: attackDirection(target, attacker),
+    stood: heightDifference(state.board, attacker.position, target.position),
+  };
+}
+
+/**
+ * The chance this attacker has of hitting this target, out of 100. Every modifier of a shot meets
+ * here: the accuracy of the weapon, the cover between the two (ADR 0012), where the attacker stands
+ * around the target (ADR 0014) and how far above it it stands (ADR 0015). It is one expression, so
+ * the client's preview and the server's roll cannot read two different sets of rules.
+ *
+ * Never below zero: a shooter whose accuracy is under the penalties still takes the shot, and always
+ * misses. A chance above 100 is the same certainty as 100. The floor and the ceiling are rules about
+ * the roll, not clamps on a number the player can see, so they move no other value.
+ */
+export function hitChanceFor(state: PublicState, attacker: UnitState, target: UnitState): number {
+  const shot = shotBetween(state, attacker, target);
+  const cover = shot.cover ? COVER_HIT_PENALTY : 0;
+  const direction = DIRECTION_BONUS[shot.direction].hit;
+  const height = heightBonus(shot.stood).hit;
+  const chance = attacker.hitChance - cover + direction + height;
+
+  return Math.max(0, Math.min(100, chance));
 }
 
 /** The single place a hit is decided. One roll whatever the modifiers, so a replay draws the same. */
-export function resolveHit(state: PublicState, attacker: Unit, target: Unit, rng: Rng): boolean {
+export function resolveHit(
+  state: PublicState,
+  attacker: UnitState,
+  target: UnitState,
+  rng: Rng,
+): boolean {
   return nextInt(rng, 1, 100) <= hitChanceFor(state, attacker, target);
 }
 
@@ -137,7 +174,10 @@ function validateAttack(state: PublicState, action: AttackAction): RejectReason 
   // turns the shot into a melee blow, and distance never changes the damage.
   const unpaid = resourceRefusal(attacker);
   if (unpaid !== null) return unpaid;
-  if (distance(attacker.position, target.position) > attacker.range) return 'target-out-of-range';
+  // The reach is the unit's own `range` read through the relief (ADR 0015), so a target two levels
+  // below is inside it. The painted area reads the same function, cell by cell.
+  const reach = effectiveRange(state.board, attacker, target.position);
+  if (distance(attacker.position, target.position) > reach) return 'target-out-of-range';
   if (!hasLineOfSight(state.board, attacker.position, target.position)) return 'no-line-of-sight';
   return null;
 }
@@ -238,13 +278,20 @@ export function buildEvents(state: MatchState, action: Action, rng: Rng): Event[
     return [{ type: 'move-committed', actor: action.actor }];
   }
 
+  if (action.type === 'face') {
+    // Nothing but the turn itself: no resource is spent and nothing else in the state moves.
+    return [{ type: 'faced', actor: action.actor, facing: action.facing }];
+  }
+
   const attacker = unitById(state, action.actor);
   const target = unitById(state, action.target);
   // Read before the roll, so the event and the roll are the same answer and the log can explain it.
-  const cover = coverFor(state.board, target.position, attacker.position);
+  const shot = shotBetween(state, attacker, target);
   const hit = resolveHit(state, attacker, target, rng);
   // One damage for every distance: the strike frame spends the resource, it does not halve the blow.
-  const damage = hit ? attacker.attack : 0;
+  // Where the attacker stood around the target is the only thing that adds to it (ADR 0014); the
+  // relief buys reach and accuracy, never damage (ADR 0015).
+  const damage = hit ? attacker.attack + DIRECTION_BONUS[shot.direction].damage : 0;
   const events: Event[] = [
     {
       type: 'attacked',
@@ -255,7 +302,9 @@ export function buildEvents(state: MatchState, action: Action, rng: Rng): Event[
       rngState: rng.state,
       // The pool the strike spends, so a replay takes the unit out of the same one the live match did.
       resource: attacker.resourceKind,
-      cover,
+      cover: shot.cover,
+      direction: shot.direction,
+      stood: shot.stood,
     },
   ];
 

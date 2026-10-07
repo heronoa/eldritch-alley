@@ -14,8 +14,10 @@ import type {
   BoardState,
   Equipment,
   Event,
+  Facing,
   MatchSetup,
   MatchState,
+  Position,
   MovementProfile,
   PublicState,
   Rng,
@@ -175,7 +177,16 @@ function validateSetup(setup: MatchSetup): void {
   }
 }
 
-function toUnitState(unit: Unit): UnitState {
+/**
+ * A unit opens facing its own side of the map (ADR 0014, decision D1): the left half looks east,
+ * towards the middle, and the right half looks west. It is a pure function of the spawn, so a replay
+ * rebuilds it from the seed without carrying it in the setup.
+ */
+function openingFacing(board: Board, spawn: Position): Facing {
+  return spawn.x * 2 < board.width ? 'E' : 'W';
+}
+
+function toUnitState(unit: Unit, board: Board): UnitState {
   const activeSets: [string | null, string | null] = [
     unit.abilities.activeSets[0],
     unit.abilities.activeSets[1],
@@ -183,6 +194,7 @@ function toUnitState(unit: Unit): UnitState {
   return {
     ...unit,
     position: { x: unit.position.x, y: unit.position.y },
+    facing: openingFacing(board, unit.position),
     // The setup may author the profile; a unit that carries none plays by the default rule, which is
     // the rule the game had before the profile existed.
     movementProfile: { ...(unit.movementProfile ?? DEFAULT_MOVEMENT_PROFILE) },
@@ -215,7 +227,8 @@ export function newMatch(setup: MatchSetup): MatchState {
       kind: prop.kind,
     })),
   };
-  const units = [...setup.teams[0], ...setup.teams[1]].map(toUnitState);
+  // The opening facing is read from the setup board, which is the one the spawns were authored on.
+  const units = [...setup.teams[0], ...setup.teams[1]].map((unit) => toUnitState(unit, board));
   const initiative = buildInitiativeQueue(units);
   const first = units.find((unit) => unit.id === initiative[0]);
 

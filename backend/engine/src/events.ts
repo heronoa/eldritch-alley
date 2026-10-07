@@ -2,6 +2,7 @@
 // sequence of events always rebuilds the same state (ADR 0005).
 import { corpseRounds } from './corpse';
 import { distance, inBounds } from './board';
+import { facingOf } from './facing';
 import { advanceIndex, removeFromInitiative, unitById } from './initiative';
 import { movementProfile, stepAllowed, stepCost } from './movement';
 import type { Board, Event, MatchState, MovementProfile, Position } from './types';
@@ -77,6 +78,9 @@ export function applyEvent(state: MatchState, event: Event): MatchState {
       let cost = 0;
       for (const step of steps) {
         cost += stepCost(profile, next.board, previous, step);
+        // The unit looks the way its last step went (ADR 0014), so a walk that turns a corner leaves
+        // it facing the corner and not the walk as a whole. The last pass is the one that stays.
+        actor.facing = facingOf(previous, step);
         previous = step;
       }
 
@@ -106,12 +110,22 @@ export function applyEvent(state: MatchState, event: Event): MatchState {
     }
 
     case 'attacked': {
+      const attacker = unitById(next, event.actor);
       const target = unitById(next, event.target);
       target.health = Math.max(0, target.health - event.damage);
-      if (event.resource !== null) unitById(next, event.actor).ammo -= 1;
+      if (event.resource !== null) attacker.ammo -= 1;
+      // The shot leaves the shooter looking at what it aimed at (ADR 0014), which is where the next
+      // shot of the match is read from.
+      attacker.facing = facingOf(attacker.position, target.position);
       next.hasActed = true;
       // Take the random source as the live roll left it, so the next roll matches the live match.
       next.rng = { state: event.rngState };
+      break;
+    }
+
+    case 'faced': {
+      // The turn the player asked for, which a walk and a shot would have written in their own event.
+      unitById(next, event.actor).facing = event.facing;
       break;
     }
 

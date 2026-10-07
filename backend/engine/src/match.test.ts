@@ -154,6 +154,32 @@ describe('newMatch', () => {
     expect(() => newMatch(setup)).not.toThrow();
     expect(newMatch(setup).board.props).toEqual([wallAt(0, 0)]);
   });
+
+  it('opens every unit facing its own side of the map (decision D1)', () => {
+    const state = newMatch(
+      makeSetup({}, [
+        makeUnit({ id: 'a1', team: 'A', position: { x: 0, y: 0 }, speed: 9 }),
+        makeUnit({ id: 'a2', team: 'A', position: { x: 3, y: 5 }, speed: 7 }),
+        makeUnit({ id: 'b1', team: 'B', position: { x: 4, y: 0 }, speed: 5 }),
+        makeUnit({ id: 'b2', team: 'B', position: { x: 7, y: 5 }, speed: 3 }),
+      ]),
+    );
+
+    // The left half of the board looks east, towards the middle, and the right half looks west.
+    expect(state.units.map((unit) => unit.facing)).toEqual(['E', 'E', 'W', 'W']);
+  });
+
+  it('reads the opening facing from the spawn alone, so the seed does not move it', () => {
+    const units = [
+      makeUnit({ id: 'a1', team: 'A', position: { x: 1, y: 4 }, speed: 9 }),
+      makeUnit({ id: 'b1', team: 'B', position: { x: 6, y: 4 }, speed: 5 }),
+    ];
+    const openings = (seed: number) =>
+      newMatch(makeSetup({ seed }, units)).units.map((unit) => unit.facing);
+
+    expect(openings(1)).toEqual(['E', 'W']);
+    expect(openings(999)).toEqual(openings(1));
+  });
 });
 
 describe('newMatch validation', () => {
