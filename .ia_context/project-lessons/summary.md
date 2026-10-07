@@ -27,6 +27,18 @@ debugging notes. One file per feature in [`lessons/`](./lessons/).
 | [debt-quick-wins.lesson.md](./lessons/debt-quick-wins.lesson.md) | `#testing` `#process` `#protocol` | Before picking quick fixes from a debt list, or trusting a green run whose suites may not all have run. |
 | [map-zoom.lesson.md](./lessons/map-zoom.lesson.md) | `#architecture` `#testing` `#process` | Before zooming a Phaser board that has an overlay, or deciding which coordinate space an input uses. |
 | [debt-and-reaction-rules.lesson.md](./lessons/debt-and-reaction-rules.lesson.md) | `#architecture` `#process` `#types` | Before writing a plan of game rules, or changing an approved layer for a later rule. |
+| [ea-1-line-of-sight.lesson.md](./lessons/ea-1-line-of-sight.lesson.md) | `#architecture` `#determinism` `#testing` | Before a rule has to exist on both the server and the client, or before writing sight, range or area over a board with height. |
+| [ea-2-ea-7-movement-path.lesson.md](./lessons/ea-2-ea-7-movement-path.lesson.md) | `#protocol` `#determinism` `#architecture` | Before changing what an event carries, superseding a plan item, or deciding who computes a path the server must accept. |
+| [ea-3-turn-indicator.lesson.md](./lessons/ea-3-turn-indicator.lesson.md) | `#architecture` `#testing` `#process` | Before a visual change whose rule the server already decides, or any work that must not disturb a deterministic hash. |
+| [ea-4-auto-end-turn.lesson.md](./lessons/ea-4-auto-end-turn.lesson.md) | `#protocol` `#testing` `#process` | Before automating an action the player used to take, or adding a client setting that changes what the server is asked to do. |
+| [ea-5-range-display.lesson.md](./lessons/ea-5-range-display.lesson.md) | `#architecture` `#determinism` `#process` | Before drawing a highlight the player will read as a promise, or closing a feature whose acceptance rests on a manual check. |
+| [ea-6-enemy-ranges.lesson.md](./lessons/ea-6-enemy-ranges.lesson.md) | `#architecture` `#process` `#testing` | Before showing the player information the fog of war would hide, or deciding what a highlight means when two units overlap. |
+| [ea-8-sprite-target.lesson.md](./lessons/ea-8-sprite-target.lesson.md) | `#architecture` `#testing` `#process` | Before a drawing change whose geometry a hit test depends on, or when a debt is split across two features. |
+| [ea-12-camera.lesson.md](./lessons/ea-12-camera.lesson.md) | `#architecture` `#testing` `#process` | Before a view transform over an interactive surface, or any visual feature larger than one review. |
+| [ea-14-ranged-and-mana.lesson.md](./lessons/ea-14-ranged-and-mana.lesson.md) | `#architecture` `#types` `#protocol` | Before adding a second resource, a new field to a widely-built type, or a refusal that has to order several reasons. |
+| [debt-dt73-validate-moved-path.lesson.md](./lessons/debt-dt73-validate-moved-path.lesson.md) | `#determinism` `#testing` `#types` | Before applying an event the engine did not compute, or validating the output of another function. |
+| [debt-lot-1-cleanup.lesson.md](./lessons/debt-lot-1-cleanup.lesson.md) | `#process` `#testing` `#architecture` | Before a low-risk cleanup lot, editing an accepted ADR, or closing a debt whose fix already shipped. |
+| [smoke-test-2-feedback.lesson.md](./lessons/smoke-test-2-feedback.lesson.md) | `#architecture` `#process` `#testing` | Before laying out HUD panels over a board, moving input rules out of a scene, or turning a smoke test's feedback into slices. |
 
 ## Tag glossary
 
