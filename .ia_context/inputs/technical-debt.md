@@ -91,18 +91,6 @@ Planned features are not debt: they live in [backlog.md](./backlog.md).
 - **Trigger:** EA-14 (resource refusals).
 - **Evidence:** `backend/engine/src/attack.ts:16-34` uses `unit.range` whatever the ammunition; `frontend/src/game/selection.ts:46-48` uses melee reach (1) when `ammo === 0`.
 
-### DT-81 · BUG (serious): no Confirm/Cancel chips after spending the whole movement
-
-- **Category:** Aderência (bug, found in the smoke test)
-- **Severity:** serious. After a move that spends all the movement points, the two chips do not appear, so the move cannot be cancelled and looks committed. A partial move shows them.
-- **Verified so far:** the engine and the client's state are correct for a full spend. A temporary test (removed afterwards) moved a unit with 3 points over 3 cells: `movementLeft` 0, `pendingMove` `{from:(0,0), cost:3}`, `moveChips` returns 2 chips, `canStillAct` true, so the countdown does not start. The chips are dropped after that point, in the scene or the HUD.
-- **Not yet explained:** the code does not show the cause by reading. Two things differ on a full spend: the Move button turns off and `settleMode` moves the mode to `inspect` (`MatchScene.ts:492-493`), and the events arrive before the state that carries them (`MatchScene.ts:548-553`, `:744-746`).
-- **What settles it:** in the browser, after a full-budget move, log `state.pendingMove` and `chipModel.length` inside `pushHud` and `HudScene.render`, then compare with a partial move.
-- **Narrowed on 2026-10-06** (smoke test 2 feedback, slice F): the scene's half of the path is now pinned by a test — `keeps the two chips of a pending move that spent the whole budget (DT-81)` in `frontend/src/scenes/MatchScene.test.ts` hands the HUD a full-spend state with the mode on `move`, and asserts that the mode falls back to `inspect` while `moveChips` still carries the two chips. The chips therefore reach `HudScene.render` in the scene's own view. What is left to explain is the HUD's drawing (`drawMoveChips`) or what the server sends, and neither can be settled without the browser run above.
-- **Effort:** P to M
-- **Trigger:** now. It blocks EA-5 acceptance.
-- **Evidence:** `frontend/src/game/actions.ts:145-155` (`moveChips`); `frontend/src/scenes/HudScene.ts:323-326` (`drawMoveChips`); `frontend/src/scenes/MatchScene.ts:492-493`, `:744-746`; `frontend/src/scenes/MatchScene.test.ts` (`keeps the two chips of a pending move that spent the whole budget`).
-
 ### DT-85 · The EA-8 hit test and refusal intent are in the EA-12 branch
 
 - **Category:** Aderência
