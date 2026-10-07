@@ -35,7 +35,11 @@ export function describeEvent(event: Event, names: UnitNames): string {
           })
         : t('log.event.missed', { actor: nameOf(names, event.actor) });
     case 'reloaded':
-      return t('log.event.reloaded', { actor: nameOf(names, event.actor) });
+      // One action, two names: a magazine is reloaded, a pool of mana is meditated (ADR 0011). The
+      // engine calls both a reload, so the player is told which one they asked for.
+      return t(event.resource === 'mana' ? 'log.event.meditated' : 'log.event.reloaded', {
+        actor: nameOf(names, event.actor),
+      });
     case 'unit-defeated':
       return t('log.event.defeated', { target: nameOf(names, event.target) });
     case 'corpse-removed':
@@ -60,6 +64,8 @@ export function describeRejection(reason: RejectReason): string {
     case 'no-line-of-sight':
     case 'target-invalid':
     case 'no-magazine':
+    case 'no-ammunition':
+    case 'no-mana':
     case 'magazine-full':
     case 'game-over':
     case 'stale-turn':

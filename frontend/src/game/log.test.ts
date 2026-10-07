@@ -38,7 +38,7 @@ describe('describeEvent', () => {
       hit: true,
       damage: 4,
       rngState: 1,
-      ammoSpent: true,
+      resource: 'ammo',
     };
 
     expect(describeEvent(event, NAMES)).toBe('Sniper acertou Priest por 4');
@@ -52,7 +52,7 @@ describe('describeEvent', () => {
       hit: false,
       damage: 0,
       rngState: 1,
-      ammoSpent: false,
+      resource: null,
     };
 
     expect(describeEvent(event, NAMES)).toBe('Priest errou');
@@ -70,8 +70,21 @@ describe('describeEvent', () => {
     expect(describeEvent(event, NAMES)).toBe('Corpo de Priest removido');
   });
 
-  it('describes a reload', () => {
-    const event: Event = { type: 'reloaded', actor: 'A-sniper' };
+  it('describes a reload of a magazine', () => {
+    const event: Event = { type: 'reloaded', actor: 'A-sniper', resource: 'ammo' };
+
+    expect(describeEvent(event, NAMES)).toBe('Sniper recarregou');
+  });
+
+  it('describes the refill of a magic class as a meditation, not as a reload', () => {
+    // One action in the engine, two words on the screen (ADR 0011): the pool says which one.
+    const event: Event = { type: 'reloaded', actor: 'A-wizard', resource: 'mana' };
+
+    expect(describeEvent(event, NAMES)).toBe('Wizard meditou');
+  });
+
+  it('describes the refill of a unit with no pool with the engine own word, a reload', () => {
+    const event: Event = { type: 'reloaded', actor: 'A-sniper', resource: null };
 
     expect(describeEvent(event, NAMES)).toBe('Sniper recarregou');
   });
@@ -110,6 +123,8 @@ describe('describeRejection', () => {
     'no-line-of-sight': 'Sem linha de visão',
     'target-invalid': 'Alvo inválido',
     'no-magazine': 'Sem carregador',
+    'no-ammunition': 'Sem munição, recarregue',
+    'no-mana': 'Sem energia, medite',
     'magazine-full': 'Carregador cheio',
     'game-over': 'Partida encerrada',
     'stale-turn': 'Ordem atrasada',

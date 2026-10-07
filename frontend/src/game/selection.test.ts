@@ -22,6 +22,7 @@ interface UnitSpec {
   range?: number;
   magazine?: number | null;
   ammo?: number;
+  resourceKind?: 'ammo' | 'mana';
   defeated?: boolean;
   permanentlyDead?: boolean;
 }
@@ -46,6 +47,8 @@ function makeUnit(spec: UnitSpec): UnitState {
     equipment: { armor: null, helmet: null, mainHand: null, offHand: null, accessory1: null, accessory2: null },
     abilities: { activeSets: [null, null], reaction: null, movement: null, support: null },
     movementProfile: { maxStepUp: 1, maxStepDown: 1, climbCost: 1 },
+    // Filled the way `newMatch` fills it: a pool that exists is always of one kind.
+    resourceKind: magazine === null ? null : (spec.resourceKind ?? 'ammo'),
     defeated: spec.defeated ?? false,
     ammo: spec.ammo ?? (magazine === null ? 0 : magazine),
     permanentlyDead: spec.permanentlyDead ?? false,
@@ -135,17 +138,42 @@ describe('resolveClick', () => {
     expect(intent).not.toHaveProperty('action');
   });
 
-  it('treats the attack of an empty magazine as melee', () => {
+  it('refuses an attack nobody can pay for, at any distance, with the reason of the engine', () => {
+    // The empty pool is answered before the reach is read, as `validateAttack` answers it (ADR 0011),
+    // and the reach is the unit's `range`: an empty magazine no longer turns the shot into melee.
     const sniper = makeUnit({ id: 'A-sniper', team: 'A', at: { x: 0, y: 0 }, range: 3, magazine: 3, ammo: 0 });
     const adjacent = makeUnit({ id: 'B-priest', team: 'B', at: { x: 1, y: 0 }, range: 1 });
     const twoAway = makeUnit({ id: 'B-wizard', team: 'B', at: { x: 2, y: 0 }, range: 1 });
-    const state = makeState([sniper, adjacent, twoAway]);
+    const beyondReach = makeUnit({ id: 'B-sniper', team: 'B', at: { x: 4, y: 0 }, range: 1 });
+    const state = makeState([sniper, adjacent, twoAway, beyondReach]);
 
-    expect(resolveClick({ state, selectedId: 'A-sniper', cell: { x: 2, y: 0 }, humanTeam: 'A' })).toEqual({
-      kind: 'refused',
-      reason: 'target-out-of-range',
+    for (const cell of [{ x: 1, y: 0 }, { x: 2, y: 0 }, { x: 4, y: 0 }]) {
+      const intent = resolveClick({ state, selectedId: 'A-sniper', cell, humanTeam: 'A' });
+
+      expect(intent).toEqual({ kind: 'refused', reason: 'no-ammunition' });
+      expect(intent).not.toHaveProperty('action');
+    }
+  });
+
+  it('names the empty pool of a magic class no-mana, and sends the spell with mana left', () => {
+    const wizard = makeUnit({
+      id: 'A-wizard',
+      team: 'A',
+      at: { x: 0, y: 0 },
+      range: 3,
+      magazine: 3,
+      ammo: 0,
+      resourceKind: 'mana',
     });
-    expect(resolveClick({ state, selectedId: 'A-sniper', cell: { x: 1, y: 0 }, humanTeam: 'A' })).toEqual({
+    const enemy = makeUnit({ id: 'B-priest', team: 'B', at: { x: 3, y: 0 }, range: 1 });
+    const empty = makeState([wizard, enemy]);
+    const full = makeState([{ ...wizard, ammo: 3 }, enemy]);
+
+    expect(resolveClick({ state: empty, selectedId: 'A-wizard', cell: { x: 3, y: 0 }, humanTeam: 'A' })).toEqual({
+      kind: 'refused',
+      reason: 'no-mana',
+    });
+    expect(resolveClick({ state: full, selectedId: 'A-wizard', cell: { x: 3, y: 0 }, humanTeam: 'A' })).toEqual({
       kind: 'send',
       action: { type: 'attack', target: 'B-priest' },
     });

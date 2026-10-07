@@ -108,7 +108,7 @@ export function applyEvent(state: MatchState, event: Event): MatchState {
     case 'attacked': {
       const target = unitById(next, event.target);
       target.health = Math.max(0, target.health - event.damage);
-      if (event.ammoSpent) unitById(next, event.actor).ammo -= 1;
+      if (event.resource !== null) unitById(next, event.actor).ammo -= 1;
       next.hasActed = true;
       // Take the random source as the live roll left it, so the next roll matches the live match.
       next.rng = { state: event.rngState };

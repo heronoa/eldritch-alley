@@ -238,7 +238,7 @@ describe('actions: attack', () => {
     const result = accepted(applyAction(state, { type: 'attack', actor: 'a1', target: 'b1' }));
 
     expect(result.events).toEqual([
-      { type: 'attacked', actor: 'a1', target: 'b1', hit: true, damage: 3, rngState: expect.any(Number), ammoSpent: false },
+      { type: 'attacked', actor: 'a1', target: 'b1', hit: true, damage: 3, rngState: expect.any(Number), resource: null },
     ]);
     expect(unitAt(result.state, 'b1').health).toBe(7);
     expect(result.state.hasActed).toBe(true);
@@ -249,7 +249,7 @@ describe('actions: attack', () => {
     const result = accepted(applyAction(state, { type: 'attack', actor: 'a1', target: 'b1' }));
 
     expect(result.events).toEqual([
-      { type: 'attacked', actor: 'a1', target: 'b1', hit: false, damage: 0, rngState: expect.any(Number), ammoSpent: false },
+      { type: 'attacked', actor: 'a1', target: 'b1', hit: false, damage: 0, rngState: expect.any(Number), resource: null },
     ]);
     expect(unitAt(result.state, 'b1').health).toBe(10);
     expect(result.state.hasActed).toBe(true);
@@ -361,7 +361,7 @@ describe('actions: attack and line of sight', () => {
     const result = accepted(applyAction(state, { type: 'attack', actor: 'a1', target: 'b1' }));
 
     expect(result.events).toEqual([
-      expect.objectContaining({ type: 'attacked', actor: 'a1', target: 'b1', ammoSpent: true }),
+      expect.objectContaining({ type: 'attacked', actor: 'a1', target: 'b1', resource: 'ammo' }),
     ]);
   });
 
@@ -374,13 +374,13 @@ describe('actions: attack and line of sight', () => {
     const result = accepted(applyAction(state, { type: 'attack', actor: 'a1', target: 'b1' }));
 
     expect(result.events).toEqual([
-      expect.objectContaining({ type: 'attacked', actor: 'a1', target: 'b1', ammoSpent: true }),
+      expect.objectContaining({ type: 'attacked', actor: 'a1', target: 'b1', resource: 'ammo' }),
     ]);
   });
 
-  it('refuses the same shot from an empty magazine, as melee reach 1', () => {
-    // The reach check comes before sight, and a spent magazine turns the sniper into melee. EA-14
-    // replaces this answer with `no-ammunition`; this test changes with it.
+  it('refuses the same shot from an empty magazine, before the sight is read', () => {
+    // The reach check no longer turns a spent magazine into a melee blow: the resource is answered
+    // first, and the answer is the same whatever the line of sight says (EA-14, ADR 0011).
     const state = newMatch(throughABuilding());
     const empty = {
       ...state,
@@ -388,12 +388,41 @@ describe('actions: attack and line of sight', () => {
     };
 
     expect(rejected(applyAction(empty, { type: 'attack', actor: 'a1', target: 'b1' })).reason).toBe(
-      'target-out-of-range',
+      'no-ammunition',
     );
   });
 
-  it.todo('a wizard at range 2 shoots across the rooftop gap (EA-14)');
-  it.todo('a priest at range 2 shoots across the rooftop gap (EA-14)');
+  it('a wizard at range 2 shoots across the rooftop gap (EA-14)', () => {
+    const state = newMatch(
+      twoUnitSetup(
+        { range: 3, magazine: 3, resourceKind: 'mana' },
+        { position: { x: 2, y: 0 } },
+        { '0,0': 6, '2,0': 6 },
+      ),
+    );
+    const result = accepted(applyAction(state, { type: 'attack', actor: 'a1', target: 'b1' }));
+
+    expect(result.events).toEqual([
+      expect.objectContaining({ type: 'attacked', actor: 'a1', target: 'b1', resource: 'mana' }),
+    ]);
+    expect(unitAt(result.state, 'a1').ammo).toBe(2);
+  });
+
+  it('a priest at range 2 shoots across the rooftop gap (EA-14)', () => {
+    const state = newMatch(
+      twoUnitSetup(
+        { range: 2, magazine: 3, resourceKind: 'mana' },
+        { position: { x: 2, y: 0 } },
+        { '0,0': 6, '2,0': 6 },
+      ),
+    );
+    const result = accepted(applyAction(state, { type: 'attack', actor: 'a1', target: 'b1' }));
+
+    expect(result.events).toEqual([
+      expect.objectContaining({ type: 'attacked', actor: 'a1', target: 'b1', resource: 'mana' }),
+    ]);
+    expect(unitAt(result.state, 'a1').ammo).toBe(2);
+  });
 });
 
 describe('resolveHit', () => {
@@ -774,6 +803,12 @@ describe('rejections', () => {
       ),
     ).state;
 
+  /** The unit on turn with its pool emptied without spending it: what a strike cannot pay for. */
+  const emptyResource = (state: MatchState): MatchState => ({
+    ...state,
+    units: state.units.map((unit) => (unit.id === 'a1' ? { ...unit, ammo: 0 } : unit)),
+  });
+
   const cases: RejectionCase[] = [
     {
       reason: 'not-your-turn',
@@ -805,6 +840,18 @@ describe('rejections', () => {
       setup: twoUnitSetup({}, { position: { x: 0, y: 1 } }),
       action: { type: 'attack', actor: 'a1', target: 'b1' },
       prepare: attackOnce,
+    },
+    {
+      reason: 'no-ammunition',
+      setup: twoUnitSetup({ magazine: 3 }, { position: { x: 0, y: 1 } }),
+      action: { type: 'attack', actor: 'a1', target: 'b1' },
+      prepare: emptyResource,
+    },
+    {
+      reason: 'no-mana',
+      setup: twoUnitSetup({ magazine: 3, resourceKind: 'mana' }, { position: { x: 0, y: 1 } }),
+      action: { type: 'attack', actor: 'a1', target: 'b1' },
+      prepare: emptyResource,
     },
     {
       reason: 'target-out-of-range',

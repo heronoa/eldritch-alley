@@ -1,7 +1,7 @@
 // The bot: a utility heuristic that plays one turn at a time through the engine's public contract.
 // It only asks the engine which actions are legal; it never reads the match rng, so the same state
 // always produces the same action, and a match stays reproducible.
-import { applyAction, type Action, type MatchState, type Position, type Team, type UnitState } from '@eldritch-alley/engine';
+import { applyAction, type Action, type MatchState, type Position, type Team } from '@eldritch-alley/engine';
 
 const NEIGHBOUR_OFFSETS: readonly Position[] = [
   { x: -1, y: -1 },
@@ -28,15 +28,9 @@ const SCORE = {
   closerMove: 10,
   higherLevel: 5,
   retreat: 20,
-  emptyMagazineReload: 15,
+  emptyPoolReload: 15,
   endTurn: 0,
 } as const;
-
-/** The damage an attack by this unit deals on a hit: a spent magazine turns it into a melee hit. */
-function attackDamage(attacker: UnitState): number {
-  const melee = attacker.magazine !== null && attacker.ammo === 0;
-  return melee ? attacker.attack >> 1 : attacker.attack;
-}
 
 function chebyshev(a: Position, b: Position): number {
   return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
@@ -96,14 +90,17 @@ export function chooseBotAction(state: MatchState, team: Team): Action {
     const attack: Action = { type: 'attack', actor: actor.id, target: target.id };
     if (!applyAction(state, attack).ok) continue;
 
-    const damage = attackDamage(actor);
+    // Damage is the unit's own attack at every distance (ADR 0011).
+    const damage = actor.attack;
     const kills = damage >= target.health;
     candidates.push({ action: attack, score: actor.hitChance * damage + (kills ? SCORE.kill : 0) });
   }
 
+  // An empty pool is worth refilling whoever carries it: a magazine is reloaded, mana is meditated
+  // (ADR 0011). The full bot, which weighs the refill against a spell, is EA-10.
   if (actor.magazine !== null && actor.ammo === 0) {
     const reload: Action = { type: 'reload', actor: actor.id };
-    if (applyAction(state, reload).ok) candidates.push({ action: reload, score: SCORE.emptyMagazineReload });
+    if (applyAction(state, reload).ok) candidates.push({ action: reload, score: SCORE.emptyPoolReload });
   }
 
   // A turn always has endTurn among its candidates, so falling back to it only covers a finished match.

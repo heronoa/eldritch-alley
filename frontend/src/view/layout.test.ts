@@ -11,7 +11,7 @@ import {
   CANVAS_WIDTH,
   CAROUSEL_RECT,
   CAROUSEL_SLOT,
-  DASHBOARD_AMMO_RECT,
+  DASHBOARD_RESOURCE_RECT,
   DASHBOARD_CELL,
   DASHBOARD_HEALTH_RECT,
   DASHBOARD_RECT,
@@ -243,7 +243,7 @@ describe('layout', () => {
 // so the board keeps the middle of the screen. Every part of that band has to be inside the canvas,
 // inside the band, and clear of every other part.
 describe('the dashboard', () => {
-  const PARTS = [DASHBOARD_HEALTH_RECT, ACTION_BAR_RECT, DASHBOARD_AMMO_RECT, DASHBOARD_TURN_RECT];
+  const PARTS = [DASHBOARD_HEALTH_RECT, ACTION_BAR_RECT, DASHBOARD_RESOURCE_RECT, DASHBOARD_TURN_RECT];
 
   it('runs along the bottom edge of the canvas', () => {
     expect(DASHBOARD_RECT.x).toBe(PADDING);
@@ -271,7 +271,7 @@ describe('the dashboard', () => {
   it('keeps the action bar centred on the canvas, between the two cells', () => {
     expect(ACTION_BAR_RECT.x + ACTION_BAR_RECT.width / 2).toBe(CANVAS_WIDTH / 2);
     expect(right(DASHBOARD_HEALTH_RECT)).toBeLessThan(ACTION_BAR_RECT.x);
-    expect(DASHBOARD_AMMO_RECT.x).toBeGreaterThan(right(ACTION_BAR_RECT));
+    expect(DASHBOARD_RESOURCE_RECT.x).toBeGreaterThan(right(ACTION_BAR_RECT));
   });
 
   it('fits the label and the bar of a cell side by side', () => {

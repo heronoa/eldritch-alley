@@ -407,7 +407,7 @@ describe('Session against a room', () => {
     const handed: { mapId: string }[] = [];
     session.onState((message) => handed.push(message));
 
-    expect(PROTOCOL_VERSION).toBe(5);
+    expect(PROTOCOL_VERSION).toBe(6);
     expect(handed).toEqual([{ version: PROTOCOL_VERSION, mapId: 'roof', state: null }]);
   });
 });

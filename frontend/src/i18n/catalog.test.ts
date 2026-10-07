@@ -138,6 +138,9 @@ describe('the pt-BR the game shows', () => {
     expect(ptBR['log.event.attacked']).toBe('{actor} acertou {target} por {damage}');
     expect(ptBR['log.event.missed']).toBe('{actor} errou');
     expect(ptBR['log.event.reloaded']).toBe('{actor} recarregou');
+    // The refill of a magic class' pool, which the engine calls a reload all the same (ADR 0011 §3).
+    expect(ptBR['log.event.meditated']).toBe('{actor} meditou');
+    expect(enUS['log.event.meditated']).toBe('{actor} meditated');
     expect(ptBR['log.event.defeated']).toBe('{target} caiu');
     expect(ptBR['log.event.corpseRemoved']).toBe('Corpo de {target} removido');
     expect(ptBR['log.event.turnEnded']).toBe('Vez de {next}');
@@ -156,6 +159,8 @@ describe('the pt-BR the game shows', () => {
       'target-out-of-range',
       'target-invalid',
       'no-magazine',
+      'no-ammunition',
+      'no-mana',
       'magazine-full',
       'game-over',
       'stale-turn',
@@ -179,6 +184,15 @@ describe('the pt-BR the game shows', () => {
     expect(message('en-US', 'log.rejection.no-path')).toBe('No path');
   });
 
+  it('carries the two empty-resource refusals in both catalogs', () => {
+    expect(message('pt-BR', 'log.rejection.no-ammunition')).toBe('Sem munição, recarregue');
+    expect(message('en-US', 'log.rejection.no-ammunition')).toBe('No ammunition — reload');
+    // The pool of a magic class is energy on the screen; the engine's own name for it is mana, which
+    // is the code the key is spelled with (ADR 0011).
+    expect(message('pt-BR', 'log.rejection.no-mana')).toBe('Sem energia, medite');
+    expect(message('en-US', 'log.rejection.no-mana')).toBe('No energy — meditate');
+  });
+
   it('carries the unit panel labels, keyed by the row they belong to', () => {
     const labels: Record<PanelKey, string> = {
       hp: 'HP',
@@ -186,7 +200,7 @@ describe('the pt-BR the game shows', () => {
       action: 'Ação',
       ammo: 'Munição',
       reaction: 'Reação',
-      mana: 'Mana',
+      energy: 'Energia',
     };
 
     for (const key of Object.keys(labels) as PanelKey[]) {

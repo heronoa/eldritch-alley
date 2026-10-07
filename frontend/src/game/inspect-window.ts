@@ -35,12 +35,14 @@ function row(key: InspectKey, label: string, value: string): InspectRow {
 }
 
 /**
- * The resource row: the ammunition of a class that carries a magazine, or its mana for one that does
- * not. The engine has no mana yet (ADR 0002, DT-57), so that row says what the panel's own row says.
+ * The resource row: the pool the unit's basic attack spends, labelled by its kind — rounds for a
+ * weapon class, energy for a magic one (ADR 0011). A unit that carries no pool keeps the row, with no
+ * value, so the sheet holds its four rows whatever the class.
  */
 function resourceRow(unit: UnitState): InspectRow {
-  if (unit.magazine === null) return row('resource', t('panel.label.mana'), NO_VALUE);
-  return row('resource', t('panel.label.ammo'), `${unit.ammo}/${unit.magazine}`);
+  const label = t(unit.resourceKind === 'mana' ? 'panel.label.energy' : 'panel.label.ammo');
+  const value = unit.magazine === null ? NO_VALUE : `${unit.ammo}/${unit.magazine}`;
+  return row('resource', label, value);
 }
 
 /** The sheet of one unit, or null when there is nothing to show. */

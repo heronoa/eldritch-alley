@@ -16,8 +16,11 @@ import type { MapId } from './map';
  * Version 5: a move stays pending until an action that is not another move commits it, so the state
  * carries `pendingMove`, the client may send `cancelMove` and `commitMove` (EA-5), the events
  * `move-cancelled` and `move-committed` close the run, and `no-pending-move` joins the refusals.
+ * Version 6: a basic attack spends its class's pool at every distance, so the state carries the
+ * unit's `resourceKind` and the `attacked` event carries `resource` where it carried `ammoSpent`,
+ * and `no-ammunition` and `no-mana` join the refusals (EA-14, ADR 0011).
  */
-export const PROTOCOL_VERSION = 5;
+export const PROTOCOL_VERSION = 6;
 
 /** The single room type of M2-a. One room is one match. */
 export const ROOM_NAME = 'battle';

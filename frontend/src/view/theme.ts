@@ -65,8 +65,9 @@ export const CORPSE_COLOR = 0x4a4a4a;
 /** The outline of a fallen unit, so its silhouette reads on every height. */
 export const CORPSE_OUTLINE_COLOR = PAPER_COLOR;
 
-/** Ammunition pips. */
+/** The pips of a basic attack: warm for the rounds of a magazine, cyan for mana (ADR 0011). */
 export const WARM_COLOR = 0xf0d9a0;
+export const MANA_COLOR = 0x3de9ff;
 
 /** The cells the armed mode would act on. A move and an attack never look alike. */
 export const HIGHLIGHT_MOVE_COLOR = TEAM_COLOR.A;

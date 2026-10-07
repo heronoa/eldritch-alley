@@ -103,8 +103,8 @@ export const DASHBOARD_HEALTH_RECT: Rect = {
   height: DASHBOARD_CELL.height,
 };
 
-/** The cell of the unit's resource — its ammunition, or its mana where it carries no magazine. */
-export const DASHBOARD_AMMO_RECT: Rect = {
+/** The cell of the unit's resource: the rounds of a magazine, or the energy of a magic class. */
+export const DASHBOARD_RESOURCE_RECT: Rect = {
   x: DASHBOARD_RECT.x + DASHBOARD_RECT.width - DASHBOARD_CELL.inset - DASHBOARD_CELL.width,
   y: ACTION_BAR_RECT.y,
   width: DASHBOARD_CELL.width,

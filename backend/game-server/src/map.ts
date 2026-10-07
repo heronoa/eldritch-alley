@@ -9,7 +9,16 @@
 // The map is a pure function of the seed, and the seed travels in the public state, so a live match is
 // still reproducible from it alone. The randomness is choosing the map, which is the room's business;
 // the engine never draws one (ADR 0005).
-import type { Abilities, Board, Equipment, MatchSetup, Position, Team, Unit } from '@eldritch-alley/engine';
+import type {
+  Abilities,
+  Board,
+  Equipment,
+  MatchSetup,
+  Position,
+  ResourceKind,
+  Team,
+  Unit,
+} from '@eldritch-alley/engine';
 import { PROTOTYPE_MAPS, type PrototypeMap, type PrototypeMapId } from './maps/prototype-maps';
 
 /** Every match built without a seed uses this one, so a match is reproducible from its events alone. */
@@ -67,6 +76,10 @@ export function mapFor(seed: number): MatchMap {
 /**
  * The three classes. Velocity order matters: the sniper is the fastest, so a match opens on team A's
  * sniper and the human always has a turn to take.
+ *
+ * The pool is the class's own (ADR 0011): the weapon class spends ammunition, the two magic classes
+ * spend mana, and every basic attack spends it at any distance. The magic classes carry the capacity
+ * of the characters prototype, three, and the reach the owner set for them (wizard 3, priest 2).
  */
 interface ClassSpec {
   readonly primaryClass: string;
@@ -78,12 +91,13 @@ interface ClassSpec {
   /** Reach in Chebyshev distance. */
   readonly range: number;
   readonly magazine: number | null;
+  readonly resourceKind: ResourceKind;
 }
 
 const CLASS_SPECS = {
-  sniper: { primaryClass: 'sniper', speed: 12, movement: 3, health: 12, attack: 4, hitChance: 80, range: 3, magazine: 3 },
-  wizard: { primaryClass: 'wizard', speed: 10, movement: 4, health: 14, attack: 3, hitChance: 75, range: 1, magazine: null },
-  priest: { primaryClass: 'priest', speed: 8, movement: 4, health: 16, attack: 2, hitChance: 70, range: 1, magazine: null },
+  sniper: { primaryClass: 'sniper', speed: 12, movement: 3, health: 12, attack: 4, hitChance: 80, range: 3, magazine: 3, resourceKind: 'ammo' },
+  wizard: { primaryClass: 'wizard', speed: 10, movement: 4, health: 14, attack: 3, hitChance: 75, range: 3, magazine: 3, resourceKind: 'mana' },
+  priest: { primaryClass: 'priest', speed: 8, movement: 4, health: 16, attack: 2, hitChance: 70, range: 2, magazine: 3, resourceKind: 'mana' },
 } as const satisfies Record<string, ClassSpec>;
 
 type ClassName = keyof typeof CLASS_SPECS;
@@ -109,6 +123,7 @@ function makeUnit(id: string, team: Team, position: Position, spec: ClassSpec): 
     hitChance: spec.hitChance,
     range: spec.range,
     magazine: spec.magazine,
+    resourceKind: spec.resourceKind,
     movement: spec.movement,
     // Nerve and attunement are carried from M1 but no M2-a rule reads them.
     nerve: 50,
