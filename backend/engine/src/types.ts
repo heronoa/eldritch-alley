@@ -297,7 +297,14 @@ export type Event =
   | { type: 'move-committed'; actor: UnitId }
   | { type: 'unit-defeated'; target: UnitId }
   | { type: 'corpse-removed'; target: UnitId }
-  | { type: 'turn-ended'; actor: UnitId; next: UnitId; round: number };
+  | { type: 'turn-ended'; actor: UnitId; next: UnitId; round: number }
+  /**
+   * The point a magic pool handed back as the turn passed to it (ADR 0017). Emitted right after the
+   * `turn-ended` that gives the turn away, and only when a point was actually regained: a unit at its
+   * ceiling, an ammunition class and a unit that never comes on turn emit nothing at all. It carries
+   * the amount, so a replay reads the point instead of inferring it from the turn order.
+   */
+  | { type: 'regained'; actor: UnitId; resource: ResourceKind; amount: number };
 
 /** Why an action was refused. A refused action never changes the state and never produces an event. */
 export type RejectReason =

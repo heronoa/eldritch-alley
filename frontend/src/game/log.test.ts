@@ -171,6 +171,13 @@ describe('describeEvent', () => {
     expect(describeEvent(event, NAMES)).toBe('Vez de Wizard');
   });
 
+  it('describes the point a magic pool hands back at the start of the turn', () => {
+    // ADR 0017: one point, magic pools only, so the sentence names the pool it came from.
+    const event: Event = { type: 'regained', actor: 'A-wizard', resource: 'mana', amount: 1 };
+
+    expect(describeEvent(event, NAMES)).toBe('Wizard recuperou 1 de mana');
+  });
+
   it('falls back for an unknown type', () => {
     const event = { type: 'something-else' } as unknown as Event;
 

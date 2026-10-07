@@ -231,6 +231,15 @@ export function buildEvents(state: MatchState, action: Action, rng: Rng): Event[
     const round = wraps ? state.round + 1 : state.round;
 
     const events: Event[] = [{ type: 'turn-ended', actor: action.actor, next, round }];
+
+    // The turn the unit receives opens with a point of mana (ADR 0017): one point, magic pools only,
+    // capped at the capacity. A unit that does not come on turn never regenerates, so this is read
+    // from the turn that was handed over and not from the one that passed.
+    const incoming = unitById(state, next);
+    if (incoming.resourceKind === 'mana' && incoming.ammo < (incoming.magazine ?? 0)) {
+      events.push({ type: 'regained', actor: next, resource: 'mana', amount: 1 });
+    }
+
     // Bodies whose time is up are removed as the new round starts, in setup order.
     for (const unit of state.units) {
       if (

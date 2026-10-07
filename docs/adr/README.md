@@ -20,4 +20,4 @@ Short records of decisions that shape the game and the codebase. Each ADR has a 
 | [0014](0014-facing-and-direction-bonus.md) | Facing and the direction bonus | Accepted |
 | [0015](0015-height-advantage.md) | Height advantage | Accepted |
 | [0016](0016-abilities-as-data.md) | Abilities as data | Proposed |
-| [0017](0017-mana-regeneration.md) | Mana regenerates one point at the start of the turn | Proposed |
+| [0017](0017-mana-regeneration.md) | Mana regenerates one point at the start of the turn | Accepted |

@@ -82,6 +82,8 @@ export function presentationOf(event: Event, units: ReadonlyMap<string, Snapshot
       return [{ kind: 'remove', unitId: event.target }];
 
     case 'turn-ended':
+      // The point a magic pool hands back (ADR 0017) is read from the log, not drawn on the board.
+    case 'regained':
       return [];
 
     // A pending move taken back or confirmed (EA-5) has no animation of its own: the cancel is a

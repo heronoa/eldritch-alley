@@ -53,6 +53,7 @@ export const enUS: Record<MessageKey, string> = {
   'log.event.defeated': '{target} fell',
   'log.event.corpseRemoved': 'Body of {target} removed',
   'log.event.turnEnded': 'Turn of {next}',
+  'log.event.regained': '{actor} regained {amount} mana',
   'log.event.unknown': 'unknown event',
 
   // One sentence per `RejectReason`, keyed by the code the server answers with. `unknown` is the

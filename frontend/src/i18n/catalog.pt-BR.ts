@@ -61,6 +61,7 @@ export const ptBR = {
   'log.event.defeated': '{target} caiu',
   'log.event.corpseRemoved': 'Corpo de {target} removido',
   'log.event.turnEnded': 'Vez de {next}',
+  'log.event.regained': '{actor} recuperou {amount} de mana',
   'log.event.unknown': 'evento desconhecido',
 
   // One sentence per `RejectReason`, keyed by the code the server answers with. `unknown` is the

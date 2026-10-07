@@ -156,6 +156,14 @@ export function applyEvent(state: MatchState, event: Event): MatchState {
       break;
     }
 
+    case 'regained': {
+      // The point the rule handed the unit coming on turn (ADR 0017). The cap is the engine's own,
+      // so a replay of an event that would break it lands on the ceiling rather than above it.
+      const regaining = unitById(next, event.actor);
+      regaining.ammo = Math.min(regaining.ammo + event.amount, regaining.magazine ?? 0);
+      break;
+    }
+
     case 'turn-ended': {
       next.round = event.round;
       next.currentIndex = advanceIndex(next, event.next);

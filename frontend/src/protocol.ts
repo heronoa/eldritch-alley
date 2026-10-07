@@ -17,6 +17,12 @@ export interface Position {
   y: number;
 }
 
+/**
+ * Which way a unit looks, in the board's own frame: east is +x and north is −y, so `'N'` is towards
+ * row 0 (ADR 0014). Mirrors the engine's own type, which the client passes its state back to.
+ */
+export type Facing = 'N' | 'S' | 'E' | 'W';
+
 /** The 8x8 battlefield: `levels` is row-major, so the level of (x, y) is `levels[y * width + x]`. */
 export interface Board {
   width: number;
@@ -116,6 +122,12 @@ export type ResourceKind = 'ammo' | 'mana';
 export interface UnitState extends Unit {
   /** What the unit may climb: every unit of a match carries one, so the preview can walk it. */
   movementProfile: MovementProfile;
+  /**
+   * Which way the unit looks, in the board's own frame: east is +x and north is −y (ADR 0014). The
+   * engine carries one on every unit in a match and this mirror has to follow it, because the client
+   * hands its own state back to the engine's `findPath`, `attackArea` and `canStillAct`.
+   */
+  facing: Facing;
   /** Which pool the unit's basic attack spends, or null for a unit that carries none. */
   resourceKind: ResourceKind | null;
   /** HP the unit entered the match with. The ceiling for `health`. */
@@ -197,7 +209,9 @@ export type Event =
   | { type: 'move-committed'; actor: UnitId }
   | { type: 'unit-defeated'; target: UnitId }
   | { type: 'corpse-removed'; target: UnitId }
-  | { type: 'turn-ended'; actor: UnitId; next: UnitId; round: number };
+  | { type: 'turn-ended'; actor: UnitId; next: UnitId; round: number }
+  /** The point a magic pool handed back as the turn passed to it (ADR 0017). */
+  | { type: 'regained'; actor: UnitId; resource: ResourceKind; amount: number };
 
 /** Why an action was refused. A refused action never changes the state and never produces an event. */
 export type RejectReason =

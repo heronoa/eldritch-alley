@@ -85,6 +85,13 @@ export function describeEvent(event: Event, names: UnitNames, battlefield?: Batt
       return t('log.event.corpseRemoved', { target: nameOf(names, event.target) });
     case 'turn-ended':
       return t('log.event.turnEnded', { next: nameOf(names, event.next) });
+    case 'regained':
+      // The rule is one point of mana and nothing else (ADR 0017), so the sentence names the pool it
+      // came from rather than reading it off the event.
+      return t('log.event.regained', {
+        actor: nameOf(names, event.actor),
+        amount: event.amount,
+      });
     default:
       return t('log.event.unknown');
   }

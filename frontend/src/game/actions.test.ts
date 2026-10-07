@@ -45,6 +45,7 @@ function makeUnit(spec: UnitSpec): UnitState {
     equipment: { armor: null, helmet: null, mainHand: null, offHand: null, accessory1: null, accessory2: null },
     abilities: { activeSets: [null, null], reaction: null, movement: null, support: null },
     movementProfile: { maxStepUp: 1, maxStepDown: 1, climbCost: 1 },
+    facing: 'E',
     // The pool a basic attack spends, filled the way `newMatch` fills it: a magazine implies a kind.
     resourceKind: magazine === null ? null : 'ammo',
     defeated: false,
@@ -140,8 +141,18 @@ describe('availableActions', () => {
     expect(availableActions(state, 'A').canAttack).toBe(true);
   });
 
-  it('refuses an attack when the sniper has no cell in reach to show', () => {
+  it('offers the attack to a unit whose own reach is zero, because the rule floors the reach at one', () => {
+    // ADR 0015: shooting from below costs reach, so `effectiveRange` is floored at one and never
+    // reaches zero. A `range` of 0 is therefore a reach of one, two adjacent cells are always in sight
+    // of each other, and a live unit always has a cell to show. What takes the button away is having
+    // acted, or having nobody left to shoot at — which the case below and the one after it cover.
     const state = makeState([{ ...SNIPER, range: 0 }, ENEMY]);
+
+    expect(availableActions(state, 'A').canAttack).toBe(true);
+  });
+
+  it('refuses an attack when the unit has already acted', () => {
+    const state = { ...makeState([SNIPER, ENEMY]), hasActed: true };
 
     expect(availableActions(state, 'A').canAttack).toBe(false);
   });

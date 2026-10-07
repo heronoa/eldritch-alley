@@ -95,11 +95,69 @@ function unitAt(state: MatchState, id: string) {
   return unit;
 }
 
-/** The same pool the setup filled, emptied, without playing the turns that would empty it. */
+/** A pool written by hand, without playing the turns that would spend it. */
+function withPool(state: MatchState, id: string, ammo: number): MatchState {
+  return { ...state, units: state.units.map((unit) => (unit.id === id ? { ...unit, ammo } : unit)) };
+}
+
+/** The same pool the setup filled, emptied. */
 function withEmptyPool(state: MatchState, id: string): MatchState {
+  return withPool(state, id, 0);
+}
+
+/**
+ * Hands the turn over twice, so the wizard comes on turn again: the moment a magic pool regenerates
+ * (ADR 0017). Two units, so the queue wraps and the round rises with the second hand-over.
+ */
+function backToTheWizard(state: MatchState): ActionResult & { ok: true } {
+  const handedOver = play(state, { type: 'endTurn', actor: 'wizard', round: state.round });
+  return play(handedOver.state, {
+    type: 'endTurn',
+    actor: 'target',
+    round: handedOver.state.round,
+  });
+}
+
+/**
+ * Three units, so the queue survives a death: a killer on A that can reach `doomed` on its first
+ * turn, and a second unit on B that cannot be reached and keeps the match running.
+ */
+function executionSetup(): MatchSetup {
   return {
-    ...state,
-    units: state.units.map((unit) => (unit.id === id ? { ...unit, ammo: 0 } : unit)),
+    seed: 11,
+    map: makeBoard(),
+    teams: [
+      [
+        makeUnit({
+          id: 'killer',
+          team: 'A',
+          position: { x: 0, y: 0 },
+          speed: 10,
+          attack: 100,
+          range: 3,
+        }),
+      ],
+      [
+        makeUnit({
+          id: 'doomed',
+          team: 'B',
+          position: { x: 0, y: 1 },
+          speed: 5,
+          health: 1,
+          magazine: 3,
+          resourceKind: 'mana',
+        }),
+        // A magic class well out of reach, so it does come on turn and does take its point.
+        makeUnit({
+          id: 'spare',
+          team: 'B',
+          position: { x: 7, y: 7 },
+          speed: 1,
+          magazine: 3,
+          resourceKind: 'mana',
+        }),
+      ],
+    ],
   };
 }
 
@@ -212,14 +270,108 @@ describe('mana', () => {
     expect(rejectedReason(state, STRIKE)).toBe('no-line-of-sight');
   });
 
-  it('replays a match of strikes and meditation to the same state and the same hash', () => {
-    const setup = casterSetup();
+  it('comes back to a full pool after a strike, so the meditation of the next round is refused', () => {
+    // A basic attack spends one point and the turn hands one back, so a magic class that attacks every
+    // round opens every round at its ceiling (ADR 0017). Meditation is what a class needs once one of
+    // its actions costs more than a turn gives back, which is the ability of ADR 0016 and not the
+    // basic attack; the case below is the rule read where it now lands.
+    const struck = play(newMatch(casterSetup()), STRIKE);
+    const handedOver = play(struck.state, { type: 'endTurn', actor: 'wizard', round: 1 });
+    const back = play(handedOver.state, { type: 'endTurn', actor: 'target', round: 1 });
+
+    expect(unitAt(back.state, 'wizard').ammo).toBe(3);
+    expect(rejectedReason(back.state, { type: 'reload', actor: 'wizard' })).toBe('magazine-full');
+  });
+});
+
+/**
+ * Mana comes back on its own, one point at the start of the unit's own turn (ADR 0017). The point is
+ * resolved by the `endTurn` that hands the turn over, for the unit that receives it.
+ */
+describe('mana regeneration', () => {
+  it('hands a spent magic pool back one point when its own turn starts', () => {
+    const back = backToTheWizard(withEmptyPool(newMatch(casterSetup()), 'wizard'));
+
+    expect(unitAt(back.state, 'wizard').ammo).toBe(1);
+    expect(back.events).toEqual([
+      { type: 'turn-ended', actor: 'target', next: 'wizard', round: 2 },
+      { type: 'regained', actor: 'wizard', resource: 'mana', amount: 1 },
+    ]);
+  });
+
+  it('gives the point to the unit that comes on turn, never to the one that passed', () => {
+    // Two magic pools, both empty: the one that receives the turn takes its point, the one that gave
+    // the turn away does not (ADR 0017 §1).
+    const setup = casterSetup({}, { magazine: 3, resourceKind: 'mana' });
+    const state = withPool(withPool(newMatch(setup), 'wizard', 0), 'target', 0);
+    const handedOver = play(state, { type: 'endTurn', actor: 'wizard', round: 1 });
+
+    expect(unitAt(handedOver.state, 'target').ammo).toBe(1);
+    expect(unitAt(handedOver.state, 'wizard').ammo).toBe(0);
+    expect(handedOver.events).toEqual([
+      { type: 'turn-ended', actor: 'wizard', next: 'target', round: 1 },
+      { type: 'regained', actor: 'target', resource: 'mana', amount: 1 },
+    ]);
+  });
+
+  it('stops at the capacity, and emits nothing when there is no room for the point', () => {
+    const oneShort = backToTheWizard(withPool(newMatch(casterSetup()), 'wizard', 2));
+    expect(unitAt(oneShort.state, 'wizard').ammo).toBe(3);
+
+    const full = backToTheWizard(newMatch(casterSetup()));
+    expect(unitAt(full.state, 'wizard').ammo).toBe(3);
+    // A pool already at the ceiling has nothing to hand back, so the event is not a per-turn heartbeat.
+    expect(full.events.some((event) => event.type === 'regained')).toBe(false);
+  });
+
+  it('leaves an ammunition pool alone while the magic pool beside it comes back', () => {
+    // A weapon class on A and a magic class on B, both empty: the same hand-over gives the magic
+    // class its point and gives the weapon class nothing (ADR 0017 §2). The two halves are read
+    // against each other, so neither case can pass on its own.
+    const setup = casterSetup({ resourceKind: 'ammo' }, { magazine: 3, resourceKind: 'mana' });
+    const state = withPool(withPool(newMatch(setup), 'wizard', 0), 'target', 0);
+
+    const atTarget = play(state, { type: 'endTurn', actor: 'wizard', round: 1 });
+    const atWizard = play(atTarget.state, { type: 'endTurn', actor: 'target', round: 1 });
+
+    expect(unitAt(atTarget.state, 'target').ammo).toBe(1);
+    expect(unitAt(atWizard.state, 'wizard').ammo).toBe(0);
+  });
+
+  it('regenerates nothing for a unit that was defeated before its turn ever came', () => {
+    const state = withPool(withPool(newMatch(executionSetup()), 'doomed', 0), 'spare', 0);
+    const killed = play(state, { type: 'attack', actor: 'killer', target: 'doomed' });
+    expect(unitAt(killed.state, 'doomed').defeated).toBe(true);
+
+    // Two hands-over: killer to spare, spare back to killer. The survivor on B does take its point,
+    // and the unit that died is out of the queue, so there is no start of turn for it to take one at
+    // (ADR 0017 §7).
+    const handedOver = play(killed.state, { type: 'endTurn', actor: 'killer', round: 1 });
+    const wrapped = play(handedOver.state, { type: 'endTurn', actor: 'spare', round: 1 });
+
+    expect(unitAt(handedOver.state, 'spare').ammo).toBe(1);
+    expect(unitAt(wrapped.state, 'doomed').ammo).toBe(0);
+    expect([...handedOver.events, ...wrapped.events]).toContainEqual({
+      type: 'regained',
+      actor: 'spare',
+      resource: 'mana',
+      amount: 1,
+    });
+  });
+
+  it('replays a match of strikes and regeneration to the same state and the same hash', () => {
+    const setup = casterSetup({}, { health: 100 });
     const steps: Action[] = [
       STRIKE,
       { type: 'endTurn', actor: 'wizard', round: 1 },
       { type: 'endTurn', actor: 'target', round: 1 },
-      // Round 2: the wizard has the turn again with two mana of three, so it meditates back to full.
-      { type: 'reload', actor: 'wizard' },
+      // Round 2 opens on the wizard: one of its three points was spent and comes back on its own.
+      STRIKE,
+      { type: 'endTurn', actor: 'wizard', round: 2 },
+      { type: 'endTurn', actor: 'target', round: 2 },
+      STRIKE,
+      { type: 'endTurn', actor: 'wizard', round: 3 },
+      { type: 'endTurn', actor: 'target', round: 3 },
     ];
 
     const run = () => {
@@ -236,7 +388,11 @@ describe('mana', () => {
     const first = run();
     const second = run();
 
+    // Three strikes, each paid for and each handed back at the start of the next turn, so the pool
+    // closes on the same three points it opened with.
+    expect(unitAt(first.state, 'wizard').ammo).toBe(3);
     expect(hashState(first.state)).toBe(hashState(second.state));
+    // The point is in the `regained` event, so a replay does not have to infer it from the turn order.
     expect(hashState(applyEvents(setup, first.events))).toBe(hashState(first.state));
   });
 });

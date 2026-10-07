@@ -1,6 +1,6 @@
 # 0017. Mana regenerates one point at the start of the turn
 
-**Status:** Proposed (2026-10-07), awaiting the owner's acceptance. Amends ADR 0011, decision 5.
+**Status:** Accepted (2026-10-07). Amends ADR 0011, decision 5.
 
 ## Context
 
