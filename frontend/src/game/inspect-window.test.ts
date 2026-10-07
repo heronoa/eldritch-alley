@@ -19,6 +19,7 @@ interface UnitSpec {
   movement?: number;
   magazine?: number | null;
   ammo?: number;
+  resourceKind?: 'ammo' | 'mana';
   reaction?: string | null;
   defeated?: boolean;
 }
@@ -49,7 +50,7 @@ function makeUnit(spec: UnitSpec = {}): UnitState {
     },
     movementProfile: { maxStepUp: 1, maxStepDown: 1, climbCost: 1 },
     // The pool a basic attack spends, filled the way `newMatch` fills it: a magazine implies a kind.
-    resourceKind: magazine === null ? null : 'ammo',
+    resourceKind: magazine === null ? null : (spec.resourceKind ?? 'ammo'),
     defeated: spec.defeated ?? false,
     ammo: spec.ammo ?? (magazine === null ? 0 : magazine),
     permanentlyDead: false,
@@ -105,10 +106,18 @@ describe('unitSheet', () => {
     expect(rowsOf(state, 'A-1')?.resource).toMatchObject({ label: 'Munição', value: '2/5' });
   });
 
-  it('shows mana, and no ammunition, for a class with no magazine', () => {
-    const state = makeState([makeUnit({ primaryClass: 'wizard', magazine: null })]);
+  it('reads the pool of a magic class as energy, not as ammunition', () => {
+    const state = makeState([
+      makeUnit({ primaryClass: 'wizard', magazine: 3, ammo: 3, resourceKind: 'mana' }),
+    ]);
 
-    expect(rowsOf(state, 'A-1')?.resource).toMatchObject({ label: 'Mana' });
+    expect(rowsOf(state, 'A-1')?.resource).toMatchObject({ label: 'Energia', value: '3/3' });
+  });
+
+  it('keeps the row, with no value, for a unit that carries no pool at all', () => {
+    const state = makeState([makeUnit({ magazine: null })]);
+
+    expect(rowsOf(state, 'A-1')?.resource).toMatchObject({ value: '—' });
   });
 
   it('shows the most the unit can walk in a turn, not what is left of it', () => {

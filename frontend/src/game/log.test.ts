@@ -111,7 +111,7 @@ describe('describeRejection', () => {
     'target-invalid': 'Alvo inválido',
     'no-magazine': 'Sem carregador',
     'no-ammunition': 'Sem munição, recarregue',
-    'no-mana': 'Sem mana, medite',
+    'no-mana': 'Sem energia, medite',
     'magazine-full': 'Carregador cheio',
     'game-over': 'Partida encerrada',
     'stale-turn': 'Ordem atrasada',

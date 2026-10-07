@@ -26,7 +26,7 @@ import {
   LOG_TEXT_POINT,
   LOG_TOGGLE_POINT,
   CELL_BAR_HEIGHT,
-  DASHBOARD_AMMO_RECT,
+  DASHBOARD_RESOURCE_RECT,
   DASHBOARD_HEALTH_RECT,
   DASHBOARD_RECT,
   DASHBOARD_TURN_POINT,
@@ -475,13 +475,12 @@ export class HudScene extends Phaser.Scene {
 
     const rows = unitPanel(state, selectedId);
     const health = rows.find((row) => row.key === 'hp');
-    const resources = rows.filter((row) => row.key === 'ammo' || row.key === 'mana');
-    // The resource the unit actually carries, or the last of the rows as a placeholder: a class with
-    // no magazine has an ammunition row saying nothing and a mana row waiting on the engine (DT-57).
-    const resource = resources.find((row) => row.fill !== null) ?? resources[resources.length - 1];
+    // The pool the unit carries, whichever kind it is: the row is already keyed and labelled by the
+    // kind, and a unit carries one of the two (ADR 0011).
+    const resource = rows.find((row) => row.key === 'ammo' || row.key === 'energy');
 
     if (health !== undefined) this.drawCell(health, DASHBOARD_HEALTH_RECT);
-    if (resource !== undefined) this.drawCell(resource, DASHBOARD_AMMO_RECT);
+    if (resource !== undefined) this.drawCell(resource, DASHBOARD_RESOURCE_RECT);
 
     const turn = rows.filter(
       (row) => row.key === 'movement' || row.key === 'action' || row.key === 'reaction',

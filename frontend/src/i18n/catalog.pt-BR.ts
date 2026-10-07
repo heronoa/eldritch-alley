@@ -61,9 +61,10 @@ export const ptBR = {
   'log.rejection.no-line-of-sight': 'Sem linha de visão',
   'log.rejection.target-invalid': 'Alvo inválido',
   'log.rejection.no-magazine': 'Sem carregador',
-  // The pool of a basic attack is empty: a magazine to reload, or mana to meditate (ADR 0011).
+  // The pool of a basic attack is empty: a magazine to reload, or energy to meditate (ADR 0011). The
+  // key keeps the engine's own word for the mechanism, mana; what the player reads is energy.
   'log.rejection.no-ammunition': 'Sem munição, recarregue',
-  'log.rejection.no-mana': 'Sem mana, medite',
+  'log.rejection.no-mana': 'Sem energia, medite',
   'log.rejection.magazine-full': 'Carregador cheio',
   'log.rejection.game-over': 'Partida encerrada',
   // A command that names a round the match has left behind: the order arrived too late (EA-4).
@@ -73,13 +74,14 @@ export const ptBR = {
   'log.rejection.no-pending-move': 'Nenhum movimento pendente',
   'log.rejection.unknown': 'Ação recusada',
 
-  // The unit panel, one label per `PanelKey`, and the two words a turn row can show.
+  // The unit panel, one label per `PanelKey`, and the two words a turn row can show. The two resource
+  // rows are the two kinds of pool: the Sniper's rounds stay ammunition, a magic class reads energy.
   'panel.label.hp': 'HP',
   'panel.label.movement': 'Movimento',
   'panel.label.action': 'Ação',
   'panel.label.ammo': 'Munição',
   'panel.label.reaction': 'Reação',
-  'panel.label.mana': 'Mana',
+  'panel.label.energy': 'Energia',
   'panel.value.spent': 'Gasta',
   'panel.value.available': 'Disponível',
 

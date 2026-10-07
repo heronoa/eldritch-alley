@@ -56,9 +56,10 @@ export const enUS: Record<MessageKey, string> = {
   'log.rejection.no-line-of-sight': 'No line of sight',
   'log.rejection.target-invalid': 'Invalid target',
   'log.rejection.no-magazine': 'No magazine',
-  // The pool of a basic attack is empty: a magazine to reload, or mana to meditate (ADR 0011).
+  // The pool of a basic attack is empty: a magazine to reload, or energy to meditate (ADR 0011). The
+  // key keeps the engine's own word for the mechanism, mana; what the player reads is energy.
   'log.rejection.no-ammunition': 'No ammunition — reload',
-  'log.rejection.no-mana': 'No mana — meditate',
+  'log.rejection.no-mana': 'No energy — meditate',
   'log.rejection.magazine-full': 'Magazine full',
   'log.rejection.game-over': 'Match over',
   // A command that names a round the match has left behind: the order arrived too late (EA-4).
@@ -68,13 +69,14 @@ export const enUS: Record<MessageKey, string> = {
   'log.rejection.no-pending-move': 'No move waiting to be confirmed',
   'log.rejection.unknown': 'Action refused',
 
-  // The unit panel, one label per `PanelKey`, and the two words a turn row can show.
+  // The unit panel, one label per `PanelKey`, and the two words a turn row can show. The two resource
+  // rows are the two kinds of pool: the Sniper's rounds stay ammunition, a magic class reads energy.
   'panel.label.hp': 'HP',
   'panel.label.movement': 'Movement',
   'panel.label.action': 'Action',
   'panel.label.ammo': 'Ammo',
   'panel.label.reaction': 'Reaction',
-  'panel.label.mana': 'Mana',
+  'panel.label.energy': 'Energy',
   'panel.value.spent': 'Spent',
   'panel.value.available': 'Available',
 

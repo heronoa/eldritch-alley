@@ -184,8 +184,10 @@ describe('the pt-BR the game shows', () => {
   it('carries the two empty-resource refusals in both catalogs', () => {
     expect(message('pt-BR', 'log.rejection.no-ammunition')).toBe('Sem munição, recarregue');
     expect(message('en-US', 'log.rejection.no-ammunition')).toBe('No ammunition — reload');
-    expect(message('pt-BR', 'log.rejection.no-mana')).toBe('Sem mana, medite');
-    expect(message('en-US', 'log.rejection.no-mana')).toBe('No mana — meditate');
+    // The pool of a magic class is energy on the screen; the engine's own name for it is mana, which
+    // is the code the key is spelled with (ADR 0011).
+    expect(message('pt-BR', 'log.rejection.no-mana')).toBe('Sem energia, medite');
+    expect(message('en-US', 'log.rejection.no-mana')).toBe('No energy — meditate');
   });
 
   it('carries the unit panel labels, keyed by the row they belong to', () => {
@@ -195,7 +197,7 @@ describe('the pt-BR the game shows', () => {
       action: 'Ação',
       ammo: 'Munição',
       reaction: 'Reação',
-      mana: 'Mana',
+      energy: 'Energia',
     };
 
     for (const key of Object.keys(labels) as PanelKey[]) {

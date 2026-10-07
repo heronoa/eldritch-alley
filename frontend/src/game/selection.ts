@@ -52,7 +52,7 @@ function chebyshev(a: Cell, b: Cell): number {
 /**
  * Why an attack nobody can pay for is refused, or null when the unit can pay (ADR 0011). The pool is
  * the unit's own kind, so the sentence the player is given names the resource to refill: a magazine
- * to reload, or mana to meditate.
+ * to reload, or energy to meditate.
  */
 function resourceRefusal(unit: UnitState): RejectReason | null {
   if (unit.magazine === null || unit.ammo > 0) return null;
