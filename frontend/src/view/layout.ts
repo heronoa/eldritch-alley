@@ -81,7 +81,7 @@ export const DASHBOARD_RECT: Rect = {
   height: DASHBOARD_HEIGHT,
 };
 
-/** The action bar: four buttons, `Mover` / `Atacar` / `Recarregar` / `Terminar turno`. */
+/** The action bar: five buttons, `Mover` / `Atacar` / `Habilidade` / `Recarregar` / `Terminar turno`. */
 export const ACTION_BAR_RECT: Rect = {
   x: CENTRED_X,
   y: DASHBOARD_RECT.y + 12,
@@ -89,8 +89,8 @@ export const ACTION_BAR_RECT: Rect = {
   height: 56,
 };
 
-/** Four buttons and three gaps fill the bar exactly. */
-export const ACTION_BUTTON = { width: 184, height: 56, gap: 16 };
+/** Five buttons and four gaps fill the bar exactly, which is what narrows a button from 184 to 144. */
+export const ACTION_BUTTON = { width: 144, height: 56, gap: 16 };
 
 /** How wide and how tall one of the two cells of the dashboard that hold a number is. */
 export const DASHBOARD_CELL = { width: 208, height: ACTION_BAR_RECT.height, inset: 12 };
@@ -338,8 +338,8 @@ export function buttonRect(index: number): Rect {
   };
 }
 
-/** How many buttons the action bar holds: Mover, Atacar, Recarregar, Terminar turno. */
-export const ACTION_BUTTONS = 4;
+/** How many buttons the action bar holds: Mover, Atacar, Habilidade, Recarregar, Terminar turno. */
+export const ACTION_BUTTONS = 5;
 
 /**
  * Whether a point of the canvas is inside a rectangle. Half-open, like `cellAt`'s top faces: the far

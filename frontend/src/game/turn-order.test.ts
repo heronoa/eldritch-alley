@@ -43,6 +43,7 @@ function makeState(units: readonly UnitState[], currentIndex = 0): PublicState {
   return {
     seed: 1,
     board: BOARD,
+    catalog: [],
     units: [...units],
     initiative: units.filter((unit) => !unit.defeated).map((unit) => unit.id),
     currentIndex,

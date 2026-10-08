@@ -22,6 +22,7 @@ import type {
   Unit,
 } from '@eldritch-alley/engine';
 import { PROTOTYPE_MAPS, type PrototypeMap, type PrototypeMapId } from './maps/prototype-maps';
+import { ABILITY_CATALOG, CLASS_ABILITIES } from './abilities';
 
 /** Every match built without a seed uses this one, so a match is reproducible from its events alone. */
 export const MATCH_SEED = 1;
@@ -161,11 +162,22 @@ function emptyEquipment(): Equipment {
   return { armor: null, helmet: null, mainHand: null, offHand: null, accessory1: null, accessory2: null };
 }
 
-function emptyAbilities(): Abilities {
-  return { activeSets: [null, null], reaction: null, movement: null, support: null };
+/**
+ * The slots a class opens the match with (ADR 0016). The class's own ability sits in the first active
+ * set, which is the only slot the engine reads; the second set and the reaction, movement and support
+ * slots stay empty until a record gives them a rule.
+ */
+function abilitiesFor(className: ClassName): Abilities {
+  return {
+    activeSets: [CLASS_ABILITIES[className] ?? null, null],
+    reaction: null,
+    movement: null,
+    support: null,
+  };
 }
 
-function makeUnit(id: string, team: Team, position: Position, spec: ClassSpec): Unit {
+function makeUnit(id: string, team: Team, position: Position, className: ClassName): Unit {
+  const spec = CLASS_SPECS[className];
   return {
     id,
     team,
@@ -183,13 +195,13 @@ function makeUnit(id: string, team: Team, position: Position, spec: ClassSpec): 
     attunement: 50,
     primaryClass: spec.primaryClass,
     equipment: emptyEquipment(),
-    abilities: emptyAbilities(),
+    abilities: abilitiesFor(className),
   };
 }
 
 function makeSquad(team: Team, spawns: readonly Position[]): readonly Unit[] {
   return CLASS_ORDER.map((className, index) =>
-    makeUnit(`${team}-${className}`, team, spawns[index], CLASS_SPECS[className]),
+    makeUnit(`${team}-${className}`, team, spawns[index], className),
   );
 }
 
@@ -202,5 +214,7 @@ export function rosterFor(spawns: MatchSpawns): MatchSetup['teams'] {
 export function createMatchSetup(seed: number = MATCH_SEED): MatchSetup {
   const map = mapFor(seed);
 
-  return { seed, map: map.board, teams: rosterFor(map.spawns) };
+  // The catalog travels with the setup the way the props travel with the board (ADR 0016 §3): a replay
+  // resolves the same abilities from the same setup it already carries.
+  return { seed, map: map.board, teams: rosterFor(map.spawns), catalog: ABILITY_CATALOG };
 }

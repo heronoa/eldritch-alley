@@ -6,17 +6,22 @@
 //
 // The labels come from the catalog, keyed by the button's own id, so a button cannot be added
 // without a word for it.
-import { attackArea, canStillAct, reachableCells } from '@eldritch-alley/engine';
+import { abilityById, attackArea, canStillAct, reachableCells } from '@eldritch-alley/engine';
 import { t } from '../i18n';
-import type { ClientAction, PublicState, Team, UnitState } from '../protocol';
+import type { AbilityDefinition, ClientAction, PublicState, Team, UnitState } from '../protocol';
 import { allowsIntent, type Intent } from './selection';
 
-export type ActionMode = 'inspect' | 'move' | 'attack';
+export type ActionMode = 'inspect' | 'move' | 'attack' | 'ability';
 
 /** The actions the engine would accept from the human right now. Hints for the pointer, not rules. */
 export interface AvailableActions {
   canMove: boolean;
   canAttack: boolean;
+  /**
+   * Whether the unit on turn carries an ability its own pool can pay for (ADR 0016). The button opens
+   * the reach of that ability; whether a cell inside it is worth aiming at is what the click decides.
+   */
+  canUseAbility: boolean;
   canReload: boolean;
   canEndTurn: boolean;
   /**
@@ -28,7 +33,7 @@ export interface AvailableActions {
 }
 
 export interface ActionButton {
-  id: 'move' | 'attack' | 'reload' | 'endTurn';
+  id: 'move' | 'attack' | 'ability' | 'reload' | 'endTurn';
   /** What the button says, in the language of the client. */
   label: string;
   enabled: boolean;
@@ -41,10 +46,22 @@ function actorOf(state: PublicState): UnitState | undefined {
   return state.units.find((unit) => unit.id === state.initiative[state.currentIndex]);
 }
 
+/**
+ * The ability the unit carries in its first active set, resolved in the match's own catalog, or
+ * undefined when the slots name none and when the catalog defines none of them (ADR 0016 §6). Only
+ * the first set is read: the second one, the reaction and the movement slots are unread this milestone.
+ */
+function carriedAbility(state: PublicState, unit: UnitState): AbilityDefinition | undefined {
+  const id = unit.abilities.activeSets[0];
+  if (id === null) return undefined;
+  return abilityById(state.catalog, id);
+}
+
 /** The action the acting unit is not allowed to take leaves the mode with nothing to do. */
 export function settleMode(mode: ActionMode, available: AvailableActions): ActionMode {
   if (mode === 'move' && !available.canMove) return 'inspect';
   if (mode === 'attack' && !available.canAttack) return 'inspect';
+  if (mode === 'ability' && !available.canUseAbility) return 'inspect';
   return mode;
 }
 
@@ -81,6 +98,7 @@ function computeAvailableActions(state: PublicState, humanTeam: Team): Available
     return {
       canMove: false,
       canAttack: false,
+      canUseAbility: false,
       canReload: false,
       canEndTurn: false,
       nothingLeft: false,
@@ -88,6 +106,7 @@ function computeAvailableActions(state: PublicState, humanTeam: Team): Available
   }
 
   const canAct = !state.hasActed;
+  const ability = carriedAbility(state, actor);
   return {
     // Movement needs a cell to end on, not only a budget: a walled-in unit has nothing to move.
     canMove: canAct && reachableCells(state, actor.id).length > 0,
@@ -98,6 +117,9 @@ function computeAvailableActions(state: PublicState, humanTeam: Team): Available
       canAct &&
       state.units.some((unit) => unit.team !== actor.team && !unit.defeated) &&
       attackArea(state, actor.position, actor).length > 0,
+    // The ability the class carries, offered while the unit's own pool covers its cost: a use the engine
+    // would refuse for the pool (ADR 0016 §7) is never a button the player can press.
+    canUseAbility: canAct && ability !== undefined && actor.ammo >= ability.cost,
     canReload: canAct && actor.magazine !== null && actor.ammo < actor.magazine,
     // Ending the turn is always legal; it is how a player with nothing left to do passes.
     canEndTurn: true,
@@ -119,6 +141,7 @@ export function actionButtons(state: PublicState, humanTeam: Team): ActionButton
   return [
     button('move', available.canMove, 'move'),
     button('attack', available.canAttack, 'attack'),
+    button('ability', available.canUseAbility, 'ability'),
     button('reload', available.canReload, null),
     button('endTurn', available.canEndTurn, null),
   ];

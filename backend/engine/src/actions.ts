@@ -1,5 +1,6 @@
 // Validation and event building for the actions of a turn. Nothing here changes the state: an
 // accepted action is turned into events, and events.ts applies them.
+import { abilityById, abilityCells } from './abilities';
 import { distance, inBounds } from './board';
 import { COVER_HIT_PENALTY, coverFor } from './cover';
 import { DIRECTION_BONUS, attackDirection } from './facing';
@@ -9,6 +10,7 @@ import { findPath, movementProfile, reachableCells, stepAllowed } from './moveme
 import { nextInt } from './rng';
 import { hasLineOfSight } from './sight';
 import type {
+  AbilityDefinition,
   Action,
   Direction,
   Event,
@@ -25,6 +27,7 @@ import type {
 
 type MoveAction = Extract<Action, { type: 'move' }>;
 type AttackAction = Extract<Action, { type: 'attack' }>;
+type UseAbilityAction = Extract<Action, { type: 'useAbility' }>;
 type ReloadAction = Extract<Action, { type: 'reload' }>;
 
 /** Everything the board says about one shot, read once for the roll and for the event alike. */
@@ -55,13 +58,22 @@ function shotBetween(state: PublicState, attacker: UnitState, target: UnitState)
  * around the target (ADR 0014) and how far above it it stands (ADR 0015). It is one expression, so
  * the client's preview and the server's roll cannot read two different sets of rules.
  *
+ * `ignoresCover` is the one thing an ability changes about the shot, and it changes nothing else
+ * (ADR 0016 §9): an effect that says so lifts the crate's penalty and still reads the direction and the
+ * relief, so a spell and a strike are read by the same function and never by two.
+ *
  * Never below zero: a shooter whose accuracy is under the penalties still takes the shot, and always
  * misses. A chance above 100 is the same certainty as 100. The floor and the ceiling are rules about
  * the roll, not clamps on a number the player can see, so they move no other value.
  */
-export function hitChanceFor(state: PublicState, attacker: UnitState, target: UnitState): number {
+export function hitChanceFor(
+  state: PublicState,
+  attacker: UnitState,
+  target: UnitState,
+  ignoresCover = false,
+): number {
   const shot = shotBetween(state, attacker, target);
-  const cover = shot.cover ? COVER_HIT_PENALTY : 0;
+  const cover = shot.cover && !ignoresCover ? COVER_HIT_PENALTY : 0;
   const direction = DIRECTION_BONUS[shot.direction].hit;
   const height = heightBonus(shot.stood).hit;
   const chance = attacker.hitChance - cover + direction + height;
@@ -75,8 +87,9 @@ export function resolveHit(
   attacker: UnitState,
   target: UnitState,
   rng: Rng,
+  ignoresCover = false,
 ): boolean {
-  return nextInt(rng, 1, 100) <= hitChanceFor(state, attacker, target);
+  return nextInt(rng, 1, 100) <= hitChanceFor(state, attacker, target, ignoresCover);
 }
 
 function teamHasUnits(state: PublicState, team: Team): boolean {
@@ -107,6 +120,7 @@ export function validateAction(state: MatchState, action: Action): RejectReason 
 
   if (action.type === 'move') return validateMove(state, action);
   if (action.type === 'attack') return validateAttack(state, action);
+  if (action.type === 'useAbility') return validateUseAbility(state, action);
   if (action.type === 'reload') return validateReload(state, action);
   if (action.type === 'cancelMove' || action.type === 'commitMove') return validatePendingMove(state);
   return null;
@@ -126,6 +140,17 @@ function validatePendingMove(state: PublicState): RejectReason | null {
  */
 function resourceRefusal(unit: UnitState): RejectReason | null {
   if (unit.magazine === null || unit.ammo > 0) return null;
+  return unit.resourceKind === 'mana' ? 'no-mana' : 'no-ammunition';
+}
+
+/**
+ * Why a use of an ability cannot be paid for, or null when it can. It is the same rule as the strike's
+ * read against a cost rather than against one point (ADR 0011 §2, ADR 0016 §7): the pool is not empty,
+ * it is short of what the definition asks. A unit that carries no pool at all holds nothing, so it pays
+ * a cost of zero and nothing else; its kind is null, which reads as an ammunition class.
+ */
+function abilityRefusal(unit: UnitState, cost: number): RejectReason | null {
+  if (unit.ammo >= cost) return null;
   return unit.resourceKind === 'mana' ? 'no-mana' : 'no-ammunition';
 }
 
@@ -183,6 +208,47 @@ function validateAttack(state: PublicState, action: AttackAction): RejectReason 
 }
 
 /**
+ * Whether the id is one the caster may use. Only the first active set is read: ADR 0016 leaves
+ * `activeSets[1]`, `reaction`, `movement` and `support` unread, so the ability a unit may use is the one
+ * its first set carries. An id that is not there is refused whether the catalog knows it or not — the
+ * lookup answers "is this the caster's" before it answers "what does it do".
+ */
+function carriesAbility(caster: UnitState, abilityId: string): boolean {
+  return caster.abilities.activeSets[0] === abilityId;
+}
+
+/**
+ * The refusals of a use, in the order ADR 0016 §7 fixes: the turn first, then the ability the caster
+ * carries, then the pool, then the geometry of the aim. The action names a cell, so there is no target
+ * to read `target-invalid` from: a cell nobody stands on is a legal aim, and one that covers no unit
+ * simply resolves to no event.
+ */
+function validateUseAbility(state: PublicState, action: UseAbilityAction): RejectReason | null {
+  // The action of the turn, so it is spent before the ability itself is read (ADR 0016 §7).
+  if (state.hasActed) return 'already-acted';
+
+  const caster = unitById(state, action.actor);
+  if (!carriesAbility(caster, action.abilityId)) return 'ability-unknown';
+  const ability = abilityById(state.catalog, action.abilityId);
+  if (!ability) return 'ability-unknown';
+
+  const unpaid = abilityRefusal(caster, ability.cost);
+  if (unpaid !== null) return unpaid;
+
+  if (!inBounds(state.board, action.to)) return 'out-of-bounds';
+  // The reach is the definition's own, in Chebyshev distance (ADR 0016 §1), read from the caster to the
+  // cell it aimed at.
+  if (distance(caster.position, action.to) > ability.range) return 'target-out-of-range';
+  // A definition that needs no sight reaches through a wall, which is the whole of what the priest's
+  // heal buys (ADR 0016, the three definitions). The cells strictly between are what is read, so a wall
+  // under the caster or under the aim blocks nothing.
+  if (ability.needsSight && !hasLineOfSight(state.board, caster.position, action.to)) {
+    return 'no-line-of-sight';
+  }
+  return null;
+}
+
+/**
  * Whether the unit with the turn has anything left to do. The engine does not end the turn: it
  * answers the question, so the client that ends one on a countdown (EA-4) asks exactly the rule the
  * server would apply, and the two sides cannot disagree (EA-1 D1).
@@ -211,6 +277,15 @@ export function canStillAct(state: PublicState): boolean {
   );
   if (aimed) return true;
 
+  // An ability the pool covers and whose aim is legal is something left to do, on the same footing as a
+  // shot (ADR 0016 §6). The caster can always aim at the cell it stands on — the distance is zero and
+  // every reach covers it — so a spell that is affordable is never out of reach.
+  for (const abilityId of actor.abilities.activeSets) {
+    if (abilityId === null) continue;
+    const cast: Action = { type: 'useAbility', actor: actor.id, abilityId, to: actor.position };
+    if (validateUseAbility(state, cast) === null) return true;
+  }
+
   return validateReload(state, { type: 'reload', actor: actor.id }) === null;
 }
 
@@ -219,9 +294,91 @@ function nextUnitId(state: MatchState): UnitId {
   return state.initiative[(state.currentIndex + 1) % state.initiative.length];
 }
 
+/** One unit a use reaches, and what its effect did to it, read before the events are assembled. */
+interface Affected {
+  unit: UnitState;
+  /** Whether the roll of this unit landed. A heal never rolls, so it is always true there. */
+  hit: boolean;
+  damage: number;
+}
+
 /**
- * Builds the events of an accepted action, in order. Only the attack draws from the rng, so a caller
- * that passes a copy of the generator leaves the original match untouched.
+ * The units a use reaches: every living unit standing on a cell of the effect, in setup order
+ * (ADR 0016 §8.2). The caster and its own allies are read like anybody else — a damage area hurts
+ * everyone standing in it (§12). A body occupies its tile but is not a unit the effect touches (§10).
+ */
+function unitsOn(state: PublicState, cells: readonly Position[]): UnitState[] {
+  return state.units.filter(
+    (unit) =>
+      isAlive(unit) &&
+      cells.some((cell) => cell.x === unit.position.x && cell.y === unit.position.y),
+  );
+}
+
+/** What a heal actually gives, capped at the ceiling the unit entered the match with (ADR 0016 §10). */
+function healedAmount(target: UnitState, amount: number): number {
+  return Math.max(0, Math.min(amount, target.maxHealth - target.health));
+}
+
+/**
+ * The events of an accepted use, in the order ADR 0016 §8 fixes: the use itself, then the effect on
+ * every unit it reaches, then the defeats the resolution caused.
+ *
+ * Every roll happens before the events are assembled, so the `ability-used` event carries the random
+ * source as the last of them left it (§9): one use, several units, several draws, all of them inside the
+ * one number a replay reads instead of rolling again.
+ */
+function abilityEvents(state: MatchState, action: UseAbilityAction, rng: Rng): Event[] {
+  const caster = unitById(state, action.actor);
+  const ability = abilityById(state.catalog, action.abilityId);
+  // Validation looked the same definition up, so an accepted use always has one.
+  if (!ability) throw new RangeError(`no definition for the accepted ability: ${action.abilityId}`);
+
+  const effect = ability.effect;
+  const affected: Affected[] = unitsOn(state, abilityCells(state, action.to, ability)).map((unit) => {
+    if (effect.kind === 'heal') return { unit, hit: true, damage: 0 };
+    const hit = resolveHit(state, caster, unit, rng, effect.ignoresCover);
+    // The amount of the definition is what lands: the effect is data and not a weapon, so neither the
+    // direction nor the relief adds to it (ADR 0016 §3 and §9). The cover the effect ignores is what it
+    // buys; the amount is the same in every direction.
+    return { unit, hit, damage: hit ? effect.amount : 0 };
+  });
+
+  const events: Event[] = [
+    {
+      type: 'ability-used',
+      actor: caster.id,
+      abilityId: ability.id,
+      to: { x: action.to.x, y: action.to.y },
+      rngState: rng.state,
+      resource: caster.resourceKind,
+    },
+  ];
+
+  for (const entry of affected) {
+    events.push(
+      effect.kind === 'heal'
+        ? { type: 'healed', target: entry.unit.id, amount: healedAmount(entry.unit, effect.amount) }
+        : { type: 'damaged', target: entry.unit.id, hit: entry.hit, damage: entry.damage },
+    );
+  }
+
+  // The defeats settle after every roll of the resolution, in the same setup order (§8.3), so the log
+  // reads the whole effect before it reads who fell to it.
+  if (effect.kind === 'damage') {
+    for (const entry of affected) {
+      if (entry.unit.health - entry.damage <= 0) {
+        events.push({ type: 'unit-defeated', target: entry.unit.id });
+      }
+    }
+  }
+
+  return events;
+}
+
+/**
+ * Builds the events of an accepted action, in order. Only a shot and an ability draw from the rng, so a
+ * caller that passes a copy of the generator leaves the original match untouched.
  */
 export function buildEvents(state: MatchState, action: Action, rng: Rng): Event[] {
   if (action.type === 'endTurn') {
@@ -291,6 +448,8 @@ export function buildEvents(state: MatchState, action: Action, rng: Rng): Event[
     // Nothing but the turn itself: no resource is spent and nothing else in the state moves.
     return [{ type: 'faced', actor: action.actor, facing: action.facing }];
   }
+
+  if (action.type === 'useAbility') return abilityEvents(state, action, rng);
 
   const attacker = unitById(state, action.actor);
   const target = unitById(state, action.target);

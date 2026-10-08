@@ -123,6 +123,40 @@ export function applyEvent(state: MatchState, event: Event): MatchState {
       break;
     }
 
+    case 'ability-used': {
+      const caster = unitById(next, event.actor);
+      const ability = next.catalog.find((definition) => definition.id === event.abilityId);
+      // The cost is the definition's, and the definition is in the state, so a replay pays exactly what
+      // the live match paid without the event carrying a number of its own (ADR 0016 §8.1).
+      if (!ability) {
+        throw new Error(`ability-used: the catalog has no definition for ${event.abilityId}`);
+      }
+      caster.ammo -= ability.cost;
+      // The cast leaves the caster looking at the cell it aimed at, the way a shot leaves it looking at
+      // its target (ADR 0014). An aim at its own cell turns nothing: there is no direction to read.
+      if (event.to.x !== caster.position.x || event.to.y !== caster.position.y) {
+        caster.facing = facingOf(caster.position, event.to);
+      }
+      next.hasActed = true;
+      next.rng = { state: event.rngState };
+      break;
+    }
+
+    case 'damaged': {
+      const target = unitById(next, event.target);
+      target.health = Math.max(0, target.health - event.damage);
+      break;
+    }
+
+    case 'healed': {
+      const target = unitById(next, event.target);
+      // A body is not healed back onto its feet (ADR 0016 §10). The builder already skips it, and a
+      // replay written by hand obeys the same rule rather than reviving it.
+      if (target.defeated) break;
+      target.health = Math.min(target.maxHealth, target.health + event.amount);
+      break;
+    }
+
     case 'faced': {
       // The turn the player asked for, which a walk and a shot would have written in their own event.
       unitById(next, event.actor).facing = event.facing;

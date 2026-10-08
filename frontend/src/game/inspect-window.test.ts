@@ -63,6 +63,7 @@ function makeState(units: readonly UnitState[]): PublicState {
   return {
     seed: 1,
     board: BOARD,
+    catalog: [],
     units: [...units],
     initiative: units.map((unit) => unit.id),
     currentIndex: 0,

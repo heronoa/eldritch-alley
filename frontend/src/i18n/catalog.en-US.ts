@@ -54,6 +54,11 @@ export const enUS: Record<MessageKey, string> = {
   'log.event.corpseRemoved': 'Body of {target} removed',
   'log.event.turnEnded': 'Turn of {next}',
   'log.event.regained': '{actor} regained {amount} mana',
+  // The use of an ability (ADR 0016): the action names a cell, never a unit, and the two outcomes
+  // of the use follow as events of their own.
+  'log.event.ability-used': '{actor} used an ability on {cell}',
+  'log.event.damaged': '{target} took {damage} damage',
+  'log.event.healed': '{target} recovered {amount} health',
   'log.event.unknown': 'unknown event',
 
   // One sentence per `RejectReason`, keyed by the code the server answers with. `unknown` is the
@@ -67,6 +72,7 @@ export const enUS: Record<MessageKey, string> = {
   'log.rejection.target-out-of-range': 'Target out of range',
   'log.rejection.no-line-of-sight': 'No line of sight',
   'log.rejection.target-invalid': 'Invalid target',
+  'log.rejection.ability-unknown': 'Unknown ability',
   'log.rejection.no-magazine': 'No magazine',
   // The pool of a basic attack is empty: a magazine to reload, or energy to meditate (ADR 0011). The
   // key keeps the engine's own word for the mechanism, mana; what the player reads is energy.
@@ -96,6 +102,7 @@ export const enUS: Record<MessageKey, string> = {
   // floats above it (EA-5): they are not buttons of the bar, but they are read the same way.
   'action.move': 'Move',
   'action.attack': 'Attack',
+  'action.ability': 'Ability',
   'action.reload': 'Reload',
   'action.endTurn': 'End turn',
   'action.confirmMove': 'Confirm',

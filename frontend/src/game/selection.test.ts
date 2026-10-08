@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { BoardState, PublicState, Team, UnitState } from '../protocol';
 import { applyMode } from './actions';
-import { resolveClick, resolveInspect } from './selection';
+import { allowsIntent, resolveClick, resolveInspect, type Intent } from './selection';
 
 const BOARD: BoardState = { width: 8, height: 8, levels: new Array<number>(64).fill(0), props: [] };
 
@@ -66,6 +66,7 @@ function makeState(
   return {
     seed: 1,
     board,
+    catalog: [],
     units: [...units],
     initiative: units.map((unit) => unit.id),
     currentIndex,
@@ -357,6 +358,56 @@ describe('resolveClick on a unit', () => {
 
     expect(portrait).toEqual({ kind: 'send', action: { type: 'attack', target: 'B-priest' } });
     expect(sprite).toEqual(portrait);
+  });
+});
+
+/**
+ * The mode a button arms is the mode a click obeys (EA-7): `allowsIntent` is the one rule the action
+ * bar and the click share, so the ability the bar arms filters a click exactly the way Atacar does.
+ */
+describe('allowsIntent', () => {
+  const USE_ABILITY: Intent = {
+    kind: 'send',
+    action: { type: 'useAbility', abilityId: 'fireball', to: { x: 2, y: 0 } },
+  };
+  const MOVE: Intent = { kind: 'send', action: { type: 'move', to: { x: 1, y: 0 } } };
+  const ATTACK: Intent = { kind: 'send', action: { type: 'attack', target: 'B-priest' } };
+  // The `face` action is the engine's own (ADR 0014) and the client's union has not learned it yet:
+  // the mode still has to turn it down, so it is built past the type the way an unknown event is.
+  const FACE = { kind: 'send', action: { type: 'face', facing: 'N' } } as unknown as Intent;
+
+  it('lets an ability through only while the ability is armed', () => {
+    expect(allowsIntent('ability', USE_ABILITY)).toBe(true);
+
+    for (const mode of ['inspect', 'move', 'attack'] as const) {
+      expect(allowsIntent(mode, USE_ABILITY), mode).toBe(false);
+    }
+  });
+
+  it('keeps the ability mode to the ability alone, and sends nothing else', () => {
+    // The mode narrows to its own action type and invents nothing (EA-7): every other action the
+    // client can send is turned down while an ability is armed.
+    const others: [string, Intent][] = [
+      ['move', MOVE],
+      ['attack', ATTACK],
+      ['reload', { kind: 'send', action: { type: 'reload' } }],
+      ['endTurn', { kind: 'send', action: { type: 'endTurn', round: 1 } }],
+      ['cancelMove', { kind: 'send', action: { type: 'cancelMove' } }],
+      ['commitMove', { kind: 'send', action: { type: 'commitMove' } }],
+      ['face', FACE],
+    ];
+
+    for (const [what, intent] of others) {
+      expect(allowsIntent('ability', intent), what).toBe(false);
+    }
+  });
+
+  it('still lets a selection, an inspection and a refusal through while the ability is armed', () => {
+    // Looking at the board and being told why a press was turned down are not actions: they pass in
+    // every mode (EA-8), the ability mode included.
+    expect(allowsIntent('ability', { kind: 'select', unitId: 'A-wizard' })).toBe(true);
+    expect(allowsIntent('ability', { kind: 'inspect', unitId: 'B-priest' })).toBe(true);
+    expect(allowsIntent('ability', { kind: 'refused', reason: 'ability-unknown' })).toBe(true);
   });
 });
 

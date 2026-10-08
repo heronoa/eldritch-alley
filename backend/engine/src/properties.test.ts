@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import { abilityById } from './abilities';
 import { distance, inBounds } from './board';
 import { currentUnitId, unitById } from './initiative';
 import { applyAction, applyEvents, hashState, newMatch } from './match';
 import { moveCost } from './movement';
 import { createRng, nextInt } from './rng';
 import type {
+  AbilityDefinition,
   Action,
   Board,
   Event,
@@ -63,6 +65,27 @@ function assertInteger(value: number, label: string): void {
   if (!Number.isInteger(value)) throw new Error(`${label} is not an integer: ${String(value)}`);
 }
 
+/**
+ * The two definitions the property match carries: one area that hurts everybody standing in it and one
+ * that heals them. They share a cost and a reach so neither is ever favoured by the shape alone.
+ */
+const PROPERTY_CATALOG: readonly AbilityDefinition[] = [
+  {
+    id: 'zap',
+    cost: 1,
+    range: 2,
+    needsSight: true,
+    effect: { kind: 'damage', amount: 2, radius: 1, ignoresCover: true },
+  },
+  {
+    id: 'mend',
+    cost: 1,
+    range: 2,
+    needsSight: false,
+    effect: { kind: 'heal', amount: 2, radius: 1 },
+  },
+];
+
 /** A four-unit match whose numbers move with the seed, so the 200 runs are not clones of each other. */
 function makePropertySetup(seed: number): MatchSetup {
   const units = [
@@ -87,6 +110,11 @@ function makePropertySetup(seed: number): MatchSetup {
       attack: 2,
       hitChance: 40 + (seed % 50),
       range: 1,
+      // A magic class: the pool is what an ability is paid from, and it is also what its basic attack
+      // spends, so the two costs meet on the same unit (ADR 0011, ADR 0016).
+      magazine: 3,
+      resourceKind: 'mana',
+      abilities: { activeSets: ['mend', null], reaction: null, movement: null, support: null },
     }),
     makeUnit({
       id: 'b1',
@@ -109,11 +137,15 @@ function makePropertySetup(seed: number): MatchSetup {
       attack: 1,
       hitChance: 90,
       range: 2,
+      magazine: 3,
+      resourceKind: 'mana',
+      abilities: { activeSets: ['zap', null], reaction: null, movement: null, support: null },
     }),
   ];
   const team = (id: Team) => units.filter((unit) => unit.team === id);
   return {
     seed: seed >>> 0,
+    catalog: PROPERTY_CATALOG,
     // The props are part of the board a match plays on, so every property below is asked of a board
     // that carries them: a crate beside the units, a tower across the alley from them.
     map: makeBoard({ '2,2': 1, '3,3': 2, '6,6': 1 }, [
@@ -194,6 +226,24 @@ function randomAction(state: MatchState, rng: Rng): Action {
       }
     }
   }
+
+  // An ability the unit carries and the match defines, aimed at the unit's own cell and at the cells of
+  // the two nearest enemies: the places a unit is most likely to be standing, so the effect lands on
+  // somebody and the roll of the resolution is exercised. It is a candidate on the same terms as an
+  // attack, and a refused use is a rejection like any other.
+  if (!state.hasActed) {
+    const abilityId = current.abilities.activeSets[0];
+    const ability = abilityId === null ? undefined : abilityById(state.catalog, abilityId);
+
+    if (ability) {
+      for (const to of [current.position, ...enemies.slice(0, 2).map((enemy) => enemy.position)]) {
+        if (distance(current.position, to) <= ability.range) {
+          candidates.push({ type: 'useAbility', actor, abilityId: ability.id, to });
+        }
+      }
+    }
+  }
+
   return candidates[nextInt(rng, 0, candidates.length - 1)];
 }
 
@@ -203,6 +253,9 @@ describe('properties', () => {
     let rejected = 0;
     let attacks = 0;
     let hits = 0;
+    let casts = 0;
+    let damaged = 0;
+    let healed = 0;
 
     for (let seed = 0; seed < 200; seed++) {
       const setup = makePropertySetup(seed);
@@ -223,6 +276,15 @@ describe('properties', () => {
               assertInteger(event.damage, 'damage');
               attacks++;
               if (event.hit) hits++;
+            }
+            if (event.type === 'ability-used') casts++;
+            if (event.type === 'damaged') {
+              assertInteger(event.damage, 'ability damage');
+              damaged++;
+            }
+            if (event.type === 'healed') {
+              assertInteger(event.amount, 'healing');
+              healed++;
             }
           }
         } else {
@@ -258,6 +320,11 @@ describe('properties', () => {
     expect(attacks).toBeGreaterThan(100);
     expect(hits).toBeGreaterThan(0);
     expect(attacks - hits).toBeGreaterThan(0);
+    // An ability rolls once per unit standing on the effect, so the replay property above only means
+    // something about `rngState` if uses actually happened. The same goes for both kinds of effect.
+    expect(casts).toBeGreaterThan(0);
+    expect(damaged).toBeGreaterThan(0);
+    expect(healed).toBeGreaterThan(0);
   }, 30_000);
 
   it('gives the same final state twice for the same seed and the same actions, props on the board', () => {

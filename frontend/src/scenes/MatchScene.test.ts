@@ -81,6 +81,7 @@ function stateFor(options: { onTurn: Team; spent: boolean }): PublicState {
   return {
     seed: 1,
     board: BOARD,
+    catalog: [],
     units: [makeUnit('A-sniper', 'A', 0, 0), makeUnit('B-priest', 'B', 7, 7)],
     initiative: ['A-sniper', 'B-priest'],
     currentIndex: options.onTurn === 'A' ? 0 : 1,

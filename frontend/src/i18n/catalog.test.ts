@@ -231,6 +231,7 @@ describe('the pt-BR the game shows', () => {
       'malformed-action',
       'no-line-of-sight',
       'no-pending-move',
+      'ability-unknown',
     ];
 
     for (const reason of reasons) {
@@ -275,10 +276,11 @@ describe('the pt-BR the game shows', () => {
     expect(ptBR['panel.value.available']).toBe('Disponível');
   });
 
-  it('carries the four action buttons, keyed by the action each sends', () => {
+  it('carries the five action buttons, keyed by the action each sends', () => {
     const labels: Record<ActionButton['id'], string> = {
       move: 'Mover',
       attack: 'Atacar',
+      ability: 'Habilidade',
       reload: 'Recarregar',
       endTurn: 'Terminar turno',
     };
@@ -286,6 +288,21 @@ describe('the pt-BR the game shows', () => {
     for (const id of Object.keys(labels) as ActionButton['id'][]) {
       expect(message('pt-BR', `action.${id}`), id).toBe(labels[id]);
     }
+  });
+
+  it('carries the sentences of an ability, in the reference catalog', () => {
+    // The three events of a use (ADR 0016 §8), one sentence each, with the placeholders the log fills.
+    expect(ptBR['log.event.ability-used']).toBe('{actor} usou uma habilidade em {cell}');
+    expect(ptBR['log.event.damaged']).toBe('{target} sofreu {damage} de dano');
+    expect(ptBR['log.event.healed']).toBe('{target} recuperou {amount} de vida');
+  });
+
+  it('carries the ability button and its unknown-ability refusal in both catalogs', () => {
+    expect(message('pt-BR', 'action.ability')).toBe('Habilidade');
+    expect(message('en-US', 'action.ability')).toBe('Ability');
+    // The actor names an id its slots do not carry, or the catalog does not define (ADR 0016 §7).
+    expect(message('pt-BR', 'log.rejection.ability-unknown')).toBe('Habilidade desconhecida');
+    expect(message('en-US', 'log.rejection.ability-unknown')).toBe('Unknown ability');
   });
 
   it('carries the HUD lines', () => {

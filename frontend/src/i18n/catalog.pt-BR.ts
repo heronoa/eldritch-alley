@@ -62,6 +62,13 @@ export const ptBR = {
   'log.event.corpseRemoved': 'Corpo de {target} removido',
   'log.event.turnEnded': 'Vez de {next}',
   'log.event.regained': '{actor} recuperou {amount} de mana',
+  // The use of an ability (ADR 0016): the action names a cell, never a unit, so the sentence shows the
+  // position the same way every other event that names one does. The two outcomes of the use follow as
+  // events of their own: one `damaged` per body the effect reached, and one `healed` per body a heal
+  // covered.
+  'log.event.ability-used': '{actor} usou uma habilidade em {cell}',
+  'log.event.damaged': '{target} sofreu {damage} de dano',
+  'log.event.healed': '{target} recuperou {amount} de vida',
   'log.event.unknown': 'evento desconhecido',
 
   // One sentence per `RejectReason`, keyed by the code the server answers with. `unknown` is the
@@ -75,6 +82,8 @@ export const ptBR = {
   'log.rejection.target-out-of-range': 'Alvo fora de alcance',
   'log.rejection.no-line-of-sight': 'Sem linha de visão',
   'log.rejection.target-invalid': 'Alvo inválido',
+  // An ability the caster's own slots do not name, or the catalog has no definition for (ADR 0016 §7).
+  'log.rejection.ability-unknown': 'Habilidade desconhecida',
   'log.rejection.no-magazine': 'Sem carregador',
   // The pool of a basic attack is empty: a magazine to reload, or energy to meditate (ADR 0011). The
   // key keeps the engine's own word for the mechanism, mana; what the player reads is energy.
@@ -104,6 +113,9 @@ export const ptBR = {
   // floats above it (EA-5): they are not buttons of the bar, but they are read the same way.
   'action.move': 'Mover',
   'action.attack': 'Atacar',
+  // The one active ability of the class (ADR 0016). It is the class's own, so the button is named for
+  // what it does rather than for the ability.
+  'action.ability': 'Habilidade',
   'action.reload': 'Recarregar',
   'action.endTurn': 'Terminar turno',
   'action.confirmMove': 'Confirmar',

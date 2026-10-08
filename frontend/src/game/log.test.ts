@@ -178,6 +178,39 @@ describe('describeEvent', () => {
     expect(describeEvent(event, NAMES)).toBe('Wizard recuperou 1 de mana');
   });
 
+  it('describes a use of an ability with the cell it named', () => {
+    // The action names a cell, never a unit (ADR 0016 §5), so the sentence shows the board position
+    // with the same `(x,y)` text every other event that names a cell carries.
+    const event: Event = {
+      type: 'ability-used',
+      actor: 'A-wizard',
+      abilityId: 'fireball',
+      to: { x: 2, y: 3 },
+      rngState: 7,
+      resource: 'mana',
+    };
+
+    expect(describeEvent(event, NAMES)).toBe('Wizard usou uma habilidade em (2,3)');
+  });
+
+  it('describes the damage an ability dealt, hit or not', () => {
+    // The engine emits a `damaged` for every living unit standing on the area, a miss included: the
+    // roll that did not land still tells the player a body was in the blast, at a cost of zero.
+    const hit: Event = { type: 'damaged', target: 'A-priest', hit: true, damage: 3 };
+
+    expect(describeEvent(hit, NAMES)).toBe('Priest sofreu 3 de dano');
+
+    const missed: Event = { type: 'damaged', target: 'A-priest', hit: false, damage: 0 };
+
+    expect(describeEvent(missed, NAMES)).toBe('Priest sofreu 0 de dano');
+  });
+
+  it('describes the health a heal gave back', () => {
+    const event: Event = { type: 'healed', target: 'A-priest', amount: 3 };
+
+    expect(describeEvent(event, NAMES)).toBe('Priest recuperou 3 de vida');
+  });
+
   it('falls back for an unknown type', () => {
     const event = { type: 'something-else' } as unknown as Event;
 
@@ -213,6 +246,7 @@ describe('describeRejection', () => {
     'stale-turn': 'Ordem atrasada',
     'malformed-action': 'Ação inválida',
     'no-pending-move': 'Nenhum movimento pendente',
+    'ability-unknown': 'Habilidade desconhecida',
   };
 
   it('answers a sentence in the player language for every reason', () => {

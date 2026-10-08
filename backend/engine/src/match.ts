@@ -8,6 +8,7 @@ import { DEFAULT_MOVEMENT_PROFILE } from './movement';
 import { createRng } from './rng';
 import type {
   Abilities,
+  AbilityDefinition,
   Action,
   ActionResult,
   Board,
@@ -148,6 +149,48 @@ function validateUnit(unit: Unit, board: Board): void {
 }
 
 /**
+ * The catalog is authored data too, so a broken one is a programming error and fails at the door rather
+ * than mid-match (ADR 0016 §4): an empty id, a repeated id, a negative cost or radius, a range below
+ * zero, an unknown effect kind and an effect that is missing a field it needs are all refused here.
+ *
+ * A slot that names an id the catalog does not define is not refused: that is a rule violation read at
+ * the action that tries to use it, which answers `ability-unknown` and leaves the match playable.
+ */
+function validateCatalog(catalog: readonly AbilityDefinition[]): void {
+  if (!Array.isArray(catalog)) {
+    throw new RangeError('catalog must be a list of ability definitions');
+  }
+
+  const seen = new Set<string>();
+  catalog.forEach((ability, index) => {
+    if (!ability || typeof ability !== 'object') {
+      throw new RangeError(`catalog[${index}] must be an ability definition`);
+    }
+    if (typeof ability.id !== 'string' || ability.id.length === 0) {
+      throw new RangeError(`catalog[${index}].id must be a non-empty string`);
+    }
+    if (seen.has(ability.id)) throw new RangeError(`two definitions share the id ${ability.id}`);
+    seen.add(ability.id);
+
+    requireNonNegativeInteger(ability.cost, `catalog[${index}].cost`);
+    requireNonNegativeInteger(ability.range, `catalog[${index}].range`);
+    if (typeof ability.needsSight !== 'boolean') {
+      throw new RangeError(`catalog[${index}].needsSight must be a boolean`);
+    }
+
+    const effect = ability.effect;
+    if (!effect || (effect.kind !== 'damage' && effect.kind !== 'heal')) {
+      throw new RangeError(`catalog[${index}].effect.kind must be damage or heal`);
+    }
+    requireNonNegativeInteger(effect.amount, `catalog[${index}].effect.amount`);
+    requireNonNegativeInteger(effect.radius, `catalog[${index}].effect.radius`);
+    if (effect.kind === 'damage' && typeof effect.ignoresCover !== 'boolean') {
+      throw new RangeError(`catalog[${index}].effect.ignoresCover must be a boolean`);
+    }
+  });
+}
+
+/**
  * A malformed setup is a programming error, so it throws. A rule violation never throws: it comes
  * back as a rejected action.
  */
@@ -157,6 +200,7 @@ function validateSetup(setup: MatchSetup): void {
   }
 
   validateBoard(setup.map);
+  validateCatalog(setup.catalog ?? []);
 
   if (!Array.isArray(setup.teams) || setup.teams.length !== 2) {
     throw new RangeError('teams must hold exactly two squads');
@@ -235,6 +279,15 @@ export function newMatch(setup: MatchSetup): MatchState {
   return {
     seed: setup.seed,
     board,
+    // A setup may leave the catalog out, the way it may leave the props out; a match always carries one,
+    // so no rule has to ask whether the abilities are there (ADR 0016 §3).
+    catalog: (setup.catalog ?? []).map((ability) => ({
+      id: ability.id,
+      cost: ability.cost,
+      range: ability.range,
+      needsSight: ability.needsSight,
+      effect: { ...ability.effect },
+    })),
     units,
     initiative,
     currentIndex: 0,

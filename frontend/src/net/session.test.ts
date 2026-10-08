@@ -407,7 +407,9 @@ describe('Session against a room', () => {
     const handed: { mapId: string }[] = [];
     session.onState((message) => handed.push(message));
 
-    expect(PROTOCOL_VERSION).toBe(7);
+    // The version both ends have to agree on: 10 is the one ADR 0016 §14 fixes for the payloads
+    // abilities added, and the server pins the same number (see `battle-room.test.ts`).
+    expect(PROTOCOL_VERSION).toBe(10);
     expect(handed).toEqual([{ version: PROTOCOL_VERSION, mapId: 'roof', state: null }]);
   });
 });

@@ -975,6 +975,7 @@ describe('game over', () => {
     for (const action of [
       { type: 'move', actor: 'a1', to: { x: 0, y: 1 } },
       { type: 'attack', actor: 'a1', target: 'b1' },
+      { type: 'useAbility', actor: 'a1', abilityId: 'any', to: { x: 0, y: 1 } },
       { type: 'endTurn', actor: 'a1', round: 1 },
     ] as Action[]) {
       expect(rejected(applyAction(killing.state, action)).reason).toBe('game-over');
@@ -1104,6 +1105,12 @@ describe('rejections', () => {
       setup: twoUnitSetup(),
       // The round is nonsense as well, and the turn is answered first: the order of the checks.
       action: { type: 'endTurn', actor: 'b1', round: 99 },
+    },
+    {
+      reason: 'ability-unknown',
+      setup: twoUnitSetup(),
+      // Neither slot of `a1` names anything, so there is no definition to resolve the aim against.
+      action: { type: 'useAbility', actor: 'a1', abilityId: 'nowhere', to: { x: 0, y: 1 } },
     },
   ];
 
@@ -1316,6 +1323,34 @@ describe('actions: attack and height advantage', () => {
     // The height is not the direction: the two answers are read apart.
     expect(above.direction).toBe(level.direction);
     expect(below.direction).toBe(level.direction);
+  });
+});
+
+/**
+ * The order the refusals of a use are answered in is part of the contract (ADR 0016 §7): a client that
+ * reads the reason explains the first thing that is wrong with the command, and never a later one.
+ */
+describe('actions: useAbility and the order of the refusals', () => {
+  it('answers ability-unknown before the aim is read, so an unknown id is never blamed on the board', () => {
+    const state = newMatch(twoUnitSetup());
+    const action: Action = { type: 'useAbility', actor: 'a1', abilityId: 'nowhere', to: { x: -1, y: 9 } };
+
+    expect(rejected(applyAction(state, action)).reason).toBe('ability-unknown');
+  });
+
+  it('answers the turn before the ability, so a misdirected command is never blamed on the id', () => {
+    const state = newMatch(twoUnitSetup());
+    const action: Action = { type: 'useAbility', actor: 'b1', abilityId: 'nowhere', to: { x: 0, y: 0 } };
+
+    expect(rejected(applyAction(state, action)).reason).toBe('not-your-turn');
+  });
+
+  it('answers a spent action before the ability, so a second use in a turn is already-acted', () => {
+    const state = newMatch(twoUnitSetup({}, { position: { x: 0, y: 1 } }));
+    const attacked = accepted(applyAction(state, { type: 'attack', actor: 'a1', target: 'b1' }));
+    const action: Action = { type: 'useAbility', actor: 'a1', abilityId: 'nowhere', to: { x: 0, y: 0 } };
+
+    expect(rejected(applyAction(attacked.state, action)).reason).toBe('already-acted');
   });
 });
 

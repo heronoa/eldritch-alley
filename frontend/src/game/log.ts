@@ -92,6 +92,26 @@ export function describeEvent(event: Event, names: UnitNames, battlefield?: Batt
         actor: nameOf(names, event.actor),
         amount: event.amount,
       });
+    case 'ability-used':
+      // The action names a cell, never a unit (ADR 0016 §5), so the sentence names the cell with the
+      // same `(x,y)` text a move shows. What the use did to the bodies it reached arrives as its own
+      // pair of events, one per unit.
+      return t('log.event.ability-used', {
+        actor: nameOf(names, event.actor),
+        cell: positionText(event.to),
+      });
+    case 'damaged':
+      // A roll that missed is emitted with a damage of zero, so the sentence is the same one: what the
+      // player is told is how much the body in the blast took, and zero is an answer.
+      return t('log.event.damaged', {
+        target: nameOf(names, event.target),
+        damage: event.damage,
+      });
+    case 'healed':
+      return t('log.event.healed', {
+        target: nameOf(names, event.target),
+        amount: event.amount,
+      });
     default:
       return t('log.event.unknown');
   }
@@ -109,6 +129,7 @@ export function describeRejection(reason: RejectReason): string {
     case 'target-out-of-range':
     case 'no-line-of-sight':
     case 'target-invalid':
+    case 'ability-unknown':
     case 'no-magazine':
     case 'no-ammunition':
     case 'no-mana':

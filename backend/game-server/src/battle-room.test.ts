@@ -181,9 +181,10 @@ describe('BattleRoom', () => {
     const message = (await human.waitForMessage(MESSAGE.state, 5_000)) as StateMessage;
 
     // The board itself is no longer enough to draw a map: the client reads the terrain of the id it
-    // is sent, so the id has to travel with the state that carries the seed it was drawn from.
-    expect(PROTOCOL_VERSION).toBe(7);
-    expect(message.version).toBe(7);
+    // is sent, so the id has to travel with the state that carries the seed it was drawn from. The
+    // version is the one ADR 0016 §14 fixes for the shape this state now has.
+    expect(PROTOCOL_VERSION).toBe(10);
+    expect(message.version).toBe(10);
     expect(message.mapId).toBe(MAPS[mapIndex(message.state.seed)].id);
 
     await human.leave(true);

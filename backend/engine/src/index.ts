@@ -12,6 +12,9 @@ export { hasLineOfSight } from './sight';
 export { findPath, reachableCells } from './movement';
 // And the same for the area of a shot: the client paints the cells the engine says it covers (EA-5).
 export { attackArea } from './attack';
+// And the same for the cells an ability covers (ADR 0016 §11): the highlight the client paints is the
+// function the server reads to decide who the effect reaches, so the two cannot disagree.
+export { abilityById, abilityCells } from './abilities';
 // And the same for what the board carries: the client marks the cells the rules call cover or wall
 // from the state, so what the player aims at is what the server applies (ADR 0012).
 export { propAt, propsOf } from './board';

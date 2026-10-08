@@ -1,6 +1,6 @@
 # 0016. Abilities as data
 
-**Status:** Proposed (2026-10-07), awaiting the owner's acceptance.
+**Status:** Accepted (2026-10-07).
 
 ## Context
 

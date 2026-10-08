@@ -636,7 +636,8 @@ export class MatchScene extends Phaser.Scene {
     // highlight it put on the board stays until the player closes it.
 
     // The armed mode decides what the click may send: a move only with `Mover` armed, an attack only
-    // with `Atacar` armed (EA-7 as amended: the destination is the move, Confirmar commits it).
+    // with `Atacar` armed (EA-7 as amended: the destination is the move, Confirmar commits it), and an
+    // aim with `Habilidade` armed, which is the one mode the click itself has to read (ADR 0016 §5).
     const intent = applyMode(
       this.mode,
       resolveClick({
@@ -645,6 +646,7 @@ export class MatchScene extends Phaser.Scene {
         cell,
         targetId: named?.id ?? null,
         humanTeam: HUMAN_TEAM,
+        mode: this.mode,
       }),
     );
 

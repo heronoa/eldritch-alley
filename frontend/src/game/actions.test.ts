@@ -23,6 +23,10 @@ interface UnitSpec {
   range?: number;
   magazine?: number | null;
   ammo?: number;
+  /** Which pool the basic attack spends, for a class that carries one of the magic kind. */
+  resourceKind?: 'ammo' | 'mana';
+  /** The id of the one active ability the unit carries, in `activeSets[0]` (ADR 0016 §6). */
+  ability?: string | null;
 }
 
 function makeUnit(spec: UnitSpec): UnitState {
@@ -43,11 +47,11 @@ function makeUnit(spec: UnitSpec): UnitState {
     attunement: 50,
     primaryClass: 'sniper',
     equipment: { armor: null, helmet: null, mainHand: null, offHand: null, accessory1: null, accessory2: null },
-    abilities: { activeSets: [null, null], reaction: null, movement: null, support: null },
+    abilities: { activeSets: [spec.ability ?? null, null], reaction: null, movement: null, support: null },
     movementProfile: { maxStepUp: 1, maxStepDown: 1, climbCost: 1 },
     facing: 'E',
     // The pool a basic attack spends, filled the way `newMatch` fills it: a magazine implies a kind.
-    resourceKind: magazine === null ? null : 'ammo',
+    resourceKind: magazine === null ? null : (spec.resourceKind ?? 'ammo'),
     defeated: false,
     ammo: spec.ammo ?? (magazine === null ? 0 : magazine),
     permanentlyDead: false,
@@ -63,6 +67,7 @@ function makeState(
   return {
     seed: 1,
     board: BOARD,
+    catalog: [],
     units: [...units],
     initiative: units.map((unit) => unit.id),
     currentIndex,
@@ -79,11 +84,46 @@ const SNIPER = makeUnit({ id: 'A-sniper', team: 'A', at: { x: 0, y: 0 }, range: 
 const WIZARD = makeUnit({ id: 'A-wizard', team: 'A', at: { x: 1, y: 0 }, range: 1, magazine: null });
 const ENEMY = makeUnit({ id: 'B-priest', team: 'B', at: { x: 3, y: 0 }, range: 1 });
 
+/**
+ * One definition, the way the match's catalog carries them (ADR 0016 §1): what an ability costs is
+ * paid out of the caster's own pool, and the reach is in Chebyshev distance.
+ */
+const FIREBALL: AbilityDefinitionFixture = {
+  id: 'fireball',
+  cost: 2,
+  range: 3,
+  needsSight: true,
+  effect: { kind: 'damage', amount: 3, radius: 1, ignoresCover: true },
+};
+
+interface AbilityDefinitionFixture {
+  id: string;
+  cost: number;
+  range: number;
+  needsSight: boolean;
+  effect: { kind: 'damage'; amount: number; radius: number; ignoresCover: boolean };
+}
+
+/**
+ * The same state with the catalog the ability rules read. It travels with the state the way the board
+ * does (ADR 0016 §3), and this mirror of `PublicState` has not learned the field yet, so the state is
+ * handed the catalog past its type until the protocol carries it.
+ */
+function withCatalog(state: PublicState, catalog: readonly AbilityDefinitionFixture[] = [FIREBALL]): PublicState {
+  return { ...state, catalog } as PublicState;
+}
+
+/** The same match with the catalog the ability rules read, for the cases that use one. */
+function catalogState(units: readonly UnitState[], currentIndex = 0): PublicState {
+  return withCatalog(makeState(units, currentIndex));
+}
+
 describe('availableActions', () => {
   it('offers move, attack and the end of the turn on a fresh turn', () => {
     expect(availableActions(makeState([SNIPER, ENEMY]), 'A')).toEqual({
       canMove: true,
       canAttack: true,
+      canUseAbility: false,
       canReload: false,
       canEndTurn: true,
       nothingLeft: false,
@@ -103,12 +143,58 @@ describe('availableActions', () => {
     expect(availableActions(state, 'A').canReload).toBe(false);
   });
 
+  it('offers the ability to a unit carrying one its pool can pay for', () => {
+    // The caster holds a fireball and the two points of mana it costs, so the button is live even
+    // though the basic attack of a magic class spends the same pool.
+    const caster = makeUnit({
+      id: 'A-wizard',
+      team: 'A',
+      at: { x: 1, y: 0 },
+      range: 1,
+      magazine: 3,
+      ammo: 2,
+      resourceKind: 'mana',
+      ability: 'fireball',
+    });
+    const state = catalogState([caster, ENEMY]);
+
+    // Two points in the pool against a cost of two: the ability is affordable, so the button is live.
+    expect(availableActions(state, 'A').canUseAbility).toBe(true);
+  });
+
+  it('refuses the ability when the pool cannot cover its cost', () => {
+    // One point of mana against a cost of two: the engine would refuse the use (ADR 0016 §7), so the
+    // button must not be offered.
+    const caster = makeUnit({
+      id: 'A-wizard',
+      team: 'A',
+      at: { x: 1, y: 0 },
+      range: 1,
+      magazine: 3,
+      ammo: 1,
+      resourceKind: 'mana',
+      ability: 'fireball',
+    });
+    const state = catalogState([caster, ENEMY]);
+
+    expect(availableActions(state, 'A').canUseAbility).toBe(false);
+  });
+
+  it('refuses the ability to a unit whose slots name none', () => {
+    // The sniper carries no ability, whatever the catalog defines.
+    const state = catalogState([SNIPER, ENEMY]);
+
+    expect(SNIPER.abilities.activeSets[0]).toBeNull();
+    expect(availableActions(state, 'A').canUseAbility).toBe(false);
+  });
+
   it('leaves only the end of the turn once the action is spent', () => {
     const state = makeState([SNIPER, ENEMY], 0, { hasActed: true });
 
     expect(availableActions(state, 'A')).toEqual({
       canMove: false,
       canAttack: false,
+      canUseAbility: false,
       canReload: false,
       canEndTurn: true,
       nothingLeft: true,
@@ -167,6 +253,7 @@ describe('availableActions', () => {
     expect(availableActions(state, 'A')).toEqual({
       canMove: false,
       canAttack: false,
+      canUseAbility: false,
       canReload: false,
       canEndTurn: false,
       nothingLeft: false,
@@ -234,6 +321,7 @@ describe('settleMode', () => {
   const ALL: AvailableActions = {
     canMove: true,
     canAttack: true,
+    canUseAbility: true,
     canReload: true,
     canEndTurn: true,
     nothingLeft: false,
@@ -241,6 +329,7 @@ describe('settleMode', () => {
   const SPENT: AvailableActions = {
     canMove: false,
     canAttack: false,
+    canUseAbility: false,
     canReload: false,
     canEndTurn: true,
     nothingLeft: true,
@@ -254,6 +343,7 @@ describe('settleMode', () => {
   it('keeps an armed mode that is still available', () => {
     expect(settleMode('move', ALL)).toBe('move');
     expect(settleMode('attack', ALL)).toBe('attack');
+    expect(settleMode('ability', ALL)).toBe('ability');
   });
 
   it('drops the move mode once the movement is gone', () => {
@@ -263,12 +353,20 @@ describe('settleMode', () => {
   it('drops the attack mode once the action is spent', () => {
     expect(settleMode('attack', { ...ALL, canAttack: false })).toBe('inspect');
   });
+
+  it('drops the ability mode once the pool cannot pay for it', () => {
+    expect(settleMode('ability', { ...ALL, canUseAbility: false })).toBe('inspect');
+  });
 });
 
 describe('applyMode', () => {
   const SELECT: Intent = { kind: 'select', unitId: 'A-sniper' };
   const MOVE: Intent = { kind: 'send', action: { type: 'move', to: { x: 1, y: 0 } } };
   const ATTACK: Intent = { kind: 'send', action: { type: 'attack', target: 'B-priest' } };
+  const USE_ABILITY: Intent = {
+    kind: 'send',
+    action: { type: 'useAbility', abilityId: 'fireball', to: { x: 2, y: 0 } },
+  };
   const NOTHING: Intent = { kind: 'none' };
 
   it('sends nothing while nothing is armed: a click only selects or inspects', () => {
@@ -292,35 +390,59 @@ describe('applyMode', () => {
     expect(applyMode('attack', MOVE)).toEqual({ kind: 'none' });
   });
 
+  it('keeps only the ability while the ability mode is armed', () => {
+    expect(applyMode('ability', USE_ABILITY)).toEqual(USE_ABILITY);
+    expect(applyMode('ability', MOVE)).toEqual({ kind: 'none' });
+    expect(applyMode('ability', ATTACK)).toEqual({ kind: 'none' });
+  });
+
   it('never turns nothing into something', () => {
     expect(applyMode('move', NOTHING)).toEqual({ kind: 'none' });
     expect(applyMode('attack', NOTHING)).toEqual({ kind: 'none' });
+    expect(applyMode('ability', NOTHING)).toEqual({ kind: 'none' });
   });
 });
 
 describe('actionButtons', () => {
-  it('offers the four actions in order, in the player language', () => {
+  it('offers the five actions in order, in the player language', () => {
     const labels = actionButtons(makeState([SNIPER, ENEMY]), 'A').map((button) => button.label);
 
-    expect(labels).toEqual(['Mover', 'Atacar', 'Recarregar', 'Terminar turno']);
+    expect(labels).toEqual(['Mover', 'Atacar', 'Habilidade', 'Recarregar', 'Terminar turno']);
   });
 
-  it('arms the two board modes and sends the other two at once', () => {
+  it('arms the three board modes and sends the other two at once', () => {
     const modes = actionButtons(makeState([SNIPER, ENEMY]), 'A').map((button) => button.mode);
 
-    expect(modes).toEqual(['move', 'attack', null, null]);
+    expect(modes).toEqual(['move', 'attack', 'ability', null, null]);
   });
 
   it('carries the availability of each action', () => {
     const enabled = actionButtons(makeState([SNIPER, ENEMY]), 'A').map((button) => button.enabled);
 
-    expect(enabled).toEqual([true, true, false, true]);
+    expect(enabled).toEqual([true, true, false, false, true]);
+  });
+
+  it('enables the ability button when the unit can pay for it', () => {
+    // The pool is full, so nothing needs reloading: the third button is the ability's own.
+    const caster = makeUnit({
+      id: 'A-wizard',
+      team: 'A',
+      at: { x: 1, y: 0 },
+      range: 1,
+      magazine: 3,
+      ammo: 3,
+      resourceKind: 'mana',
+      ability: 'fireball',
+    });
+    const enabled = actionButtons(catalogState([caster, ENEMY]), 'A').map((button) => button.enabled);
+
+    expect(enabled).toEqual([true, true, true, false, true]);
   });
 
   it('disables every button while the bot has the turn', () => {
     const enabled = actionButtons(makeState([SNIPER, ENEMY], 1), 'A').map((button) => button.enabled);
 
-    expect(enabled).toEqual([false, false, false, false]);
+    expect(enabled).toEqual([false, false, false, false, false]);
   });
 });
 

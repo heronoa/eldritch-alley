@@ -86,6 +86,14 @@ export function presentationOf(event: Event, units: ReadonlyMap<string, Snapshot
     case 'regained':
       return [];
 
+    // The three events of an ability (ADR 0016 §8) cue nothing yet: the use itself, each roll of a
+    // damage effect and what a heal gave back are read in the log, and the boards art for them is not
+    // this milestone's.
+    case 'ability-used':
+    case 'damaged':
+    case 'healed':
+      return [];
+
     // A pending move taken back or confirmed (EA-5) has no animation of its own: the cancel is a
     // correction, not a walk, and the state that follows puts the figure back where it started.
     case 'move-cancelled':
