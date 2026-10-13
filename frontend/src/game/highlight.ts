@@ -20,6 +20,11 @@ export interface HighlightInput {
   inspectedId?: string | null;
   mode: ActionMode;
   humanTeam: Team;
+  /**
+   * The ability the menu armed, so the reach painted is the one the player picked (EA-16). Null or
+   * absent reads the ability the unit's own first active set carries (ADR 0016 §6).
+   */
+  abilityId?: string | null;
 }
 
 /** The three tones an area is drawn in: the movement one, the attack one, and the ability's own. */
@@ -59,8 +64,9 @@ function carriedAbility(state: PublicState, unit: UnitState): AbilityDefinition 
  * engine refuses an aim for either rule (ADR 0016 §7), so painting a cell past one of them would offer
  * the player an aim the server would answer with a refusal.
  */
-function abilityReach(state: PublicState, unit: UnitState): Cell[] {
-  const ability = carriedAbility(state, unit);
+function abilityReach(state: PublicState, unit: UnitState, abilityId: string | null): Cell[] {
+  const ability =
+    abilityId === null ? carriedAbility(state, unit) : abilityById(state.catalog, abilityId);
   if (ability === undefined) return [];
 
   const cells: Cell[] = [];
@@ -89,6 +95,7 @@ function computeHighlightedCells({
   inspectedId = null,
   mode,
   humanTeam,
+  abilityId = null,
 }: HighlightInput): Cell[] {
   if (inspectedId !== null) {
     const inspected = state.units.find((unit) => unit.id === inspectedId);
@@ -105,7 +112,7 @@ function computeHighlightedCells({
   if (highlightTone({ mode }) === 'move') return reachableCells(state, selected.id);
   // The reach is shown only while Atacar is armed: a pending move does not open it on its own.
   if (mode === 'attack') return attackArea(state, selected.position, selected);
-  if (mode === 'ability') return abilityReach(state, selected);
+  if (mode === 'ability') return abilityReach(state, selected, abilityId);
   return [];
 }
 
@@ -121,7 +128,8 @@ const answered = new WeakMap<PublicState, Map<string, Cell[]>>();
  * same question: it must not be changed.
  */
 export function highlightedCells(input: HighlightInput): Cell[] {
-  const key = `${input.selectedId}|${input.mode}|${input.humanTeam}|${input.inspectedId ?? null}`;
+  // Two abilities on the same state are two reaches, so the id is part of the question (EA-16).
+  const key = `${input.selectedId}|${input.mode}|${input.humanTeam}|${input.inspectedId ?? null}|${input.abilityId ?? null}`;
 
   let byQuestion = answered.get(input.state);
   if (byQuestion === undefined) {

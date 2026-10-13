@@ -162,9 +162,10 @@ describe('availableActions', () => {
     expect(availableActions(state, 'A').canUseAbility).toBe(true);
   });
 
-  it('refuses the ability when the pool cannot cover its cost', () => {
-    // One point of mana against a cost of two: the engine would refuse the use (ADR 0016 §7), so the
-    // button must not be offered.
+  it('offers the ability even when the pool cannot cover its cost', () => {
+    // One point of mana against a cost of two (EA-16, D3): the button opens the menu, and the menu is
+    // where the cost is read — the row is the one that is dimmed, so a player with an empty pool can
+    // still read what the ability does. The aim that follows is refused in the engine's own words.
     const caster = makeUnit({
       id: 'A-wizard',
       team: 'A',
@@ -177,7 +178,7 @@ describe('availableActions', () => {
     });
     const state = catalogState([caster, ENEMY]);
 
-    expect(availableActions(state, 'A').canUseAbility).toBe(false);
+    expect(availableActions(state, 'A').canUseAbility).toBe(true);
   });
 
   it('refuses the ability to a unit whose slots name none', () => {

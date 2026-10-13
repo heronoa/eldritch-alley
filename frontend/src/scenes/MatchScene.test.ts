@@ -4,7 +4,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   PROTOCOL_VERSION,
+  type AbilityDefinition,
   type BoardState,
+  type Event,
   type PublicState,
   type RejectReason,
   type StateMessage,
@@ -15,6 +17,7 @@ import {
 import type { Session } from '../net/session';
 import { setLocale } from '../i18n/translate';
 import {
+  ABILITY_MENU_RECT,
   INSPECT_CLOSE_RECT,
   INSPECT_RECT,
   LOG_RECT,
@@ -24,14 +27,25 @@ import {
   SETTINGS_PANEL_RECT,
   SETTINGS_PAN_MINUS_RECT,
   SETTINGS_PAN_PLUS_RECT,
+  abilityMenuRowRect,
 } from '../view/layout';
 import { MatchScene } from './MatchScene';
 import { UnitSprite } from './units';
+import { EFFECTS } from '../view/effects';
 
 /** What the stand-in map was told, so a test can read back the calls the canvas would have painted. */
 const mapCalls = vi.hoisted(() => ({ marksVisible: [] as boolean[] }));
 
+/** The impacts the scene asked to be drawn, which is where the ability art is decided (EA-16). */
+const impactCalls = vi.hoisted(() => ({ impacts: [] as unknown[] }));
+
 vi.mock('phaser', async () => ({ default: (await import('./testing/phaser-stub')).stub() }));
+// The effects are drawn on the canvas the Node run does not have, so the scene's own drawing is a
+// stand-in here: what the test reads is the impact the scene plays, not the pixels it would paint.
+vi.mock('./effects', () => ({
+  playEffect: () => {},
+  playImpact: (_scene: unknown, impact: unknown) => void impactCalls.impacts.push(impact),
+}));
 // The map is painted on canvases the Node run does not have: the scene's wiring does not depend on it.
 // `setCovered` is the call that would paint the building the view cuts down (EA-12, slice 4): here it
 // only has to exist, because the canvas is not there to be set translucent.
@@ -93,10 +107,40 @@ function stateFor(options: { onTurn: Team; spent: boolean }): PublicState {
   };
 }
 
+/** The one ability the catalog of the cases below defines (ADR 0016 §1). */
+const FIREBALL: AbilityDefinition = {
+  id: 'fireball',
+  cost: 2,
+  range: 3,
+  needsSight: true,
+  effect: { kind: 'damage', amount: 3, radius: 1, ignoresCover: true },
+};
+
+/**
+ * The same match with a caster on turn: a magic class carrying a fireball in its first active set, and
+ * the catalog that defines it, which travels with the state (ADR 0016 §3, §6). The pool holds `mana`
+ * points, so a menu row can be read as affordable or not.
+ */
+function casterState(mana = 2): PublicState {
+  const state = stateFor({ onTurn: 'A', spent: false });
+  const sniper = state.units[0];
+  const caster: UnitState = {
+    ...sniper,
+    primaryClass: 'wizard',
+    magazine: 3,
+    ammo: mana,
+    resourceKind: 'mana',
+    abilities: { ...sniper.abilities, activeSets: ['fireball', null] },
+  };
+
+  return { ...state, units: [caster, state.units[1]], catalog: [FIREBALL] };
+}
+
 interface FakeSession extends Session {
   send: ReturnType<typeof vi.fn>;
   emit: {
     state(message: StateMessage): void;
+    events(events: readonly Event[]): void;
     rejected(reason: string): void;
     ended(winner: Team): void;
   };
@@ -119,6 +163,7 @@ function fakeSession(): FakeSession {
     onDrop: () => () => {},
     emit: {
       state: (message: StateMessage) => handlers.state(message as never),
+      events: (events: readonly Event[]) => handlers.events(events as never),
       rejected: (reason: RejectReason) => handlers.rejected({ reason } as never),
       ended: (winner: Team) => handlers.ended({ winner } as never),
     },
@@ -271,6 +316,151 @@ describe('the match scene', () => {
     const close = { x: INSPECT_CLOSE_RECT.x + 1, y: INSPECT_CLOSE_RECT.y + 1 };
     expect(scene_.hudTakesPress(close)).toBe(true);
     expect(lastView(render).inspectedId).toBeNull();
+  });
+
+  it('opens the menu on Habilidade instead of arming the aim, and closes it on the second press', () => {
+    const { scene, session, render } = startMatch();
+    session.emit.state(message(casterState()));
+
+    const scene_ = scene as unknown as {
+      pressAction(id: string, mode: string | null): void;
+      hudTakesPress(p: { x: number; y: number }): boolean;
+    };
+
+    // The button asks before it arms (EA-16): the menu is up, with what the ability is called, what it
+    // costs and what it does, and no mode has been armed yet.
+    scene_.pressAction('ability', 'ability');
+    const opened = lastView(render).abilityMenu as {
+      open: boolean;
+      options: { id: string; name: string; cost: string }[];
+    };
+    expect(opened.open).toBe(true);
+    expect(opened.options).toEqual([
+      {
+        id: 'fireball',
+        name: 'Bola de Fogo',
+        cost: '2 Energia',
+        detail: 'Dano 3 · raio 1 · ignora cobertura · atinge todos, inclusive aliados',
+        affordable: true,
+      },
+    ]);
+    expect(lastView(render).mode).toBe('inspect');
+
+    // The bar is its own undo: the same button takes the question off the screen.
+    scene_.pressAction('ability', 'ability');
+    expect((lastView(render).abilityMenu as { open: boolean }).open).toBe(false);
+  });
+
+  it('arms the row the player picks, and aims with the ability that row names', () => {
+    const { scene, session, render } = startMatch();
+    const state = casterState();
+    session.emit.state(message(state));
+
+    const scene_ = scene as unknown as {
+      pressAction(id: string, mode: string | null): void;
+      hudTakesPress(p: { x: number; y: number }): boolean;
+      pressOnCell(s: PublicState, c: { x: number; y: number }, sec: boolean): void;
+    };
+
+    scene_.pressAction('ability', 'ability');
+    const row = abilityMenuRowRect(0);
+    expect(scene_.hudTakesPress({ x: row.x + 4, y: row.y + 4 })).toBe(true);
+
+    // The pick closes the menu and leaves the aim armed, and the board then sends the ability itself.
+    expect((lastView(render).abilityMenu as { open: boolean }).open).toBe(false);
+    expect(lastView(render).mode).toBe('ability');
+
+    scene_.pressOnCell(state, { x: 2, y: 0 }, false);
+    expect(session.send).toHaveBeenCalledWith({ type: 'useAbility', abilityId: 'fireball', to: { x: 2, y: 0 } });
+  });
+
+  it('arms nothing from a row the pool cannot pay, and lets the menu be closed from outside it', () => {
+    const { scene, session, render } = startMatch();
+    session.emit.state(message(casterState(1)));
+
+    const scene_ = scene as unknown as {
+      pressAction(id: string, mode: string | null): void;
+      hudTakesPress(p: { x: number; y: number }): boolean;
+    };
+
+    scene_.pressAction('ability', 'ability');
+    const row = abilityMenuRowRect(0);
+    scene_.hudTakesPress({ x: row.x + 4, y: row.y + 4 });
+
+    // One point of mana against a cost of two (EA-16, D3): the row is drawn dimmed and arms nothing.
+    expect(lastView(render).mode).toBe('inspect');
+    expect((lastView(render).abilityMenu as { open: boolean }).open).toBe(true);
+
+    // A press outside the panel is the panel's own too, and it closes the question.
+    expect(scene_.hudTakesPress({ x: 4, y: 4 })).toBe(true);
+    expect((lastView(render).abilityMenu as { open: boolean }).open).toBe(false);
+  });
+
+  it('takes every press while it is open, so the point under the question reaches no tile', () => {
+    const { scene, session, render } = startMatch();
+    const state = casterState();
+    session.emit.state(message(state));
+
+    const scene_ = scene as unknown as {
+      pressAction(id: string, mode: string | null): void;
+      hudTakesPress(p: { x: number; y: number }): boolean;
+    };
+
+    scene_.pressAction('ability', 'ability');
+
+    // The title band of the panel is the panel's own: the press is taken and changes nothing.
+    const title = { x: ABILITY_MENU_RECT.x + 8, y: ABILITY_MENU_RECT.y + 8 };
+    expect(scene_.hudTakesPress(title)).toBe(true);
+    expect((lastView(render).abilityMenu as { open: boolean }).open).toBe(true);
+    expect(lastView(render).inspectedId).toBeNull();
+
+    // A press over the board is taken too, so it inspects nothing: it closes the question instead,
+    // because the menu is a modal and one overlay is on the screen at a time (EA-16, D2).
+    expect(scene_.hudTakesPress({ x: 700, y: 400 })).toBe(true);
+    expect(lastView(render).inspectedId).toBeNull();
+    expect((lastView(render).abilityMenu as { open: boolean }).open).toBe(false);
+  });
+
+  it('takes the question off the screen when the turn can no longer answer it', () => {
+    const { scene, session, render } = startMatch();
+    session.emit.state(message(casterState()));
+
+    (scene as unknown as { pressAction(id: string, mode: string | null): void }).pressAction('ability', 'ability');
+    expect((lastView(render).abilityMenu as { open: boolean }).open).toBe(true);
+
+    // The action is spent, so the engine would refuse every aim: the button goes with it, and so does
+    // the menu that is still on the screen (EA-16).
+    session.emit.state(message({ ...casterState(), hasActed: true }));
+
+    expect((lastView(render).abilityMenu as { open: boolean }).open).toBe(false);
+  });
+
+  it('plays the impact of an ability on the cells the server said it covered (EA-16)', () => {
+    const { scene, session } = startMatch();
+    session.emit.state(message(casterState()));
+
+    session.emit.events([
+      { type: 'ability-used', actor: 'A-sniper', abilityId: 'fireball', to: { x: 2, y: 0 }, rngState: 7, resource: 'mana' },
+    ]);
+
+    // The event names the ability and the cell: the catalog says what it does there, and the engine
+    // says which cells it covers, so the scene is asked to draw the blast and not a bare flash.
+    expect(impactCalls.impacts).toEqual([
+      {
+        kind: 'blast',
+        cell: { x: 2, y: 0 },
+        cells: [
+          { x: 1, y: 0 }, { x: 2, y: 0 }, { x: 3, y: 0 },
+          { x: 1, y: 1 }, { x: 2, y: 1 }, { x: 3, y: 1 },
+        ],
+        color: EFFECTS.wizard.ranged.color,
+      },
+    ]);
+    // The use is written into the log as well, which is where the player reads which ability was used
+    // (EA-16). The names of the roster are not loaded in this run, so the log falls back to the id.
+    expect((scene as unknown as { logLines: string[] }).logLines).toEqual([
+      'A-sniper usou Bola de Fogo em (2,0)',
+    ]);
   });
 
   it('starts with the log closed and opens it from its own header (Q3)', () => {

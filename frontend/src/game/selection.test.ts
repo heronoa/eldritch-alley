@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { BoardState, PublicState, Team, UnitState } from '../protocol';
+import type { AbilityDefinition, BoardState, PublicState, Team, UnitState } from '../protocol';
 import { applyMode } from './actions';
 import { allowsIntent, resolveClick, resolveInspect, type Intent } from './selection';
 
@@ -358,6 +358,110 @@ describe('resolveClick on a unit', () => {
 
     expect(portrait).toEqual({ kind: 'send', action: { type: 'attack', target: 'B-priest' } });
     expect(sprite).toEqual(portrait);
+  });
+});
+
+/**
+ * The aim of an armed ability (EA-16, ADR 0016 §5): the action names a cell, and the menu is what names
+ * the ability it is aimed with. The rules and the order they are asked in are the engine's own
+ * `validateUseAbility` (§7), so the sentence a refusal carries here is the one the server would answer.
+ */
+describe('the aim of an armed ability', () => {
+  const FIREBALL: AbilityDefinition = {
+    id: 'fireball',
+    cost: 2,
+    range: 3,
+    needsSight: true,
+    effect: { kind: 'damage', amount: 3, radius: 1, ignoresCover: true },
+  };
+  const PIERCING_SHOT: AbilityDefinition = {
+    id: 'piercing-shot',
+    cost: 1,
+    range: 4,
+    needsSight: true,
+    effect: { kind: 'damage', amount: 6, radius: 0, ignoresCover: true },
+  };
+  const CATALOG: readonly AbilityDefinition[] = [FIREBALL, PIERCING_SHOT];
+
+  /** The same state carrying the catalog the ability rules read, which travels with it (ADR 0016 §3). */
+  function withCatalog(state: PublicState, catalog: readonly AbilityDefinition[] = CATALOG): PublicState {
+    return { ...state, catalog };
+  }
+
+  /** A magic class of the roster: three points of mana, and a fireball in its first active set. */
+  const WIZARD = makeUnit({ id: 'A-wizard', team: 'A', at: { x: 1, y: 0 }, range: 1, ammo: 2, resourceKind: 'mana' });
+  const CASTER: UnitState = { ...WIZARD, abilities: { ...WIZARD.abilities, activeSets: ['fireball', null] } };
+  const ENEMY = makeUnit({ id: 'B-priest', team: 'B', at: { x: 7, y: 7 }, range: 1 });
+
+  it('sends the ability the unit carries when the menu armed none', () => {
+    // Every caller that never opened a menu means this: the first active set names the aim (ADR 0016 §6).
+    const state = withCatalog(makeState([CASTER, ENEMY]));
+
+    expect(
+      resolveClick({ state, selectedId: 'A-wizard', cell: { x: 2, y: 0 }, humanTeam: 'A', mode: 'ability' }),
+    ).toEqual({ kind: 'send', action: { type: 'useAbility', abilityId: 'fireball', to: { x: 2, y: 0 } } });
+  });
+
+  it('sends the ability the menu armed, whatever the unit carries by default', () => {
+    const state = withCatalog(makeState([CASTER, ENEMY]));
+
+    expect(
+      resolveClick({
+        state,
+        selectedId: 'A-wizard',
+        cell: { x: 2, y: 0 },
+        humanTeam: 'A',
+        mode: 'ability',
+        abilityId: 'piercing-shot',
+      }),
+    ).toEqual({ kind: 'send', action: { type: 'useAbility', abilityId: 'piercing-shot', to: { x: 2, y: 0 } } });
+  });
+
+  it('reads the reach and the cost of the armed ability, not of the one that was carried', () => {
+    // Distance 4 is past the fireball's reach of 3 and inside the piercing shot's reach of 4, and the
+    // piercing shot costs 1 of the 2 points of mana: the aim the player picked is the one judged.
+    const state = withCatalog(makeState([CASTER, ENEMY]));
+
+    expect(
+      resolveClick({ state, selectedId: 'A-wizard', cell: { x: 5, y: 0 }, humanTeam: 'A', mode: 'ability' }),
+    ).toEqual({ kind: 'refused', reason: 'target-out-of-range' });
+    expect(
+      resolveClick({
+        state,
+        selectedId: 'A-wizard',
+        cell: { x: 5, y: 0 },
+        humanTeam: 'A',
+        mode: 'ability',
+        abilityId: 'piercing-shot',
+      }),
+    ).toEqual({ kind: 'send', action: { type: 'useAbility', abilityId: 'piercing-shot', to: { x: 5, y: 0 } } });
+  });
+
+  it('refuses an armed id the match does not define, in the engine\'s own words', () => {
+    // The server answers `ability-unknown` for it (ADR 0016 §7), so the client says the same.
+    const state = withCatalog(makeState([CASTER, ENEMY]));
+
+    expect(
+      resolveClick({
+        state,
+        selectedId: 'A-wizard',
+        cell: { x: 2, y: 0 },
+        humanTeam: 'A',
+        mode: 'ability',
+        abilityId: 'time-stop',
+      }),
+    ).toEqual({ kind: 'refused', reason: 'ability-unknown' });
+  });
+
+  it('refuses the aim when the pool cannot pay the armed ability', () => {
+    // One point of mana against the fireball's cost of two: the row the menu dimmed is the one the
+    // engine turns down, and the sentence names the pool to refill (ADR 0011, ADR 0016 §7).
+    const poor: UnitState = { ...CASTER, ammo: 1 };
+    const state = withCatalog(makeState([poor, ENEMY]));
+
+    expect(
+      resolveClick({ state, selectedId: 'A-wizard', cell: { x: 2, y: 0 }, humanTeam: 'A', mode: 'ability' }),
+    ).toEqual({ kind: 'refused', reason: 'no-mana' });
   });
 });
 

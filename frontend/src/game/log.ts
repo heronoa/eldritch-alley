@@ -4,7 +4,7 @@
 // read by a player and the player reads one language. The unit names are not translated: they are
 // proper nouns of the setting (owner's decision, 2026-10-04).
 import { coverFor } from '@eldritch-alley/engine';
-import { t, type MessageKey } from '../i18n';
+import { abilityName, t, type MessageKey } from '../i18n';
 import type { Board, Event, Position, RejectReason, UnitId } from '../protocol';
 
 /** Display name of each unit id. An id with no entry is shown as it is. */
@@ -92,14 +92,20 @@ export function describeEvent(event: Event, names: UnitNames, battlefield?: Batt
         actor: nameOf(names, event.actor),
         amount: event.amount,
       });
-    case 'ability-used':
+    case 'ability-used': {
       // The action names a cell, never a unit (ADR 0016 §5), so the sentence names the cell with the
       // same `(x,y)` text a move shows. What the use did to the bodies it reached arrives as its own
-      // pair of events, one per unit.
-      return t('log.event.ability-used', {
-        actor: nameOf(names, event.actor),
-        cell: positionText(event.to),
-      });
+      // pair of events, one per unit. The ability is named when this build has a word for it (EA-16):
+      // the catalog travels with the match (ADR 0016 §3), so a newer server can ship one this build
+      // cannot name, and the generic sentence reads better than an id read out to the player (D7).
+      const actor = nameOf(names, event.actor);
+      const cell = positionText(event.to);
+      const ability = abilityName(event.abilityId);
+
+      return ability === null
+        ? t('log.event.ability-used', { actor, cell })
+        : t('log.event.ability-used-named', { actor, ability, cell });
+    }
     case 'damaged':
       // A roll that missed is emitted with a damage of zero, so the sentence is the same one: what the
       // player is told is how much the body in the blast took, and zero is an answer.

@@ -4,6 +4,9 @@ import { PROTOTYPE_MAPS } from '../maps/prototype-maps';
 import type { Cell } from './grid';
 import { topFace } from './iso';
 import {
+  ABILITY_MENU_CLOSE_RECT,
+  ABILITY_MENU_RECT,
+  ABILITY_MENU_ROWS,
   ACTION_BAR_RECT,
   ACTION_BUTTON,
   ACTION_HINT_RECT,
@@ -46,6 +49,8 @@ import {
   CAMERA_VIEW_RECT,
   CAMERA_ZOOM_RECT,
   boardBounds,
+  abilityMenuRowIndexAt,
+  abilityMenuRowRect,
   buttonIndexAt,
   buttonRect,
   cameraControlAt,
@@ -496,6 +501,66 @@ describe('the inspection window', () => {
   it('runs its values back to the right edge, inside the window', () => {
     expect(INSPECT_VALUE_X).toBeLessThanOrEqual(right(INSPECT_RECT));
     expect(INSPECT_VALUE_X).toBeGreaterThan(INSPECT_RECT.x + INSPECT_RECT.width / 2);
+  });
+});
+
+/**
+ * EA-16: the modal `Habilidade` opens before the aim. Its rectangle, its close button and the rows the
+ * scene hit-tests are laid out here, so a press on a drawn row is a press on that row.
+ */
+describe('the ability menu', () => {
+  it('fits inside the canvas, over the board', () => {
+    expect(ABILITY_MENU_RECT.x).toBeGreaterThanOrEqual(0);
+    expect(ABILITY_MENU_RECT.y).toBeGreaterThanOrEqual(0);
+    expect(right(ABILITY_MENU_RECT)).toBeLessThanOrEqual(CANVAS_WIDTH);
+    expect(bottom(ABILITY_MENU_RECT)).toBeLessThanOrEqual(CANVAS_HEIGHT);
+    expect(ABILITY_MENU_RECT.x).toBeLessThan(CANVAS_WIDTH / 2);
+    expect(right(ABILITY_MENU_RECT)).toBeGreaterThan(CANVAS_WIDTH / 2);
+  });
+
+  it('holds its close button inside itself, at its top right', () => {
+    expect(ABILITY_MENU_CLOSE_RECT.x).toBeGreaterThanOrEqual(ABILITY_MENU_RECT.x);
+    expect(ABILITY_MENU_CLOSE_RECT.y).toBeGreaterThanOrEqual(ABILITY_MENU_RECT.y);
+    expect(right(ABILITY_MENU_CLOSE_RECT)).toBeLessThanOrEqual(right(ABILITY_MENU_RECT));
+    expect(bottom(ABILITY_MENU_CLOSE_RECT)).toBeLessThanOrEqual(bottom(ABILITY_MENU_RECT));
+    expect(ABILITY_MENU_CLOSE_RECT.x).toBeGreaterThan(ABILITY_MENU_RECT.x + ABILITY_MENU_RECT.width / 2);
+  });
+
+  it('fits its rows under the close button and inside the panel', () => {
+    for (let index = 0; index < ABILITY_MENU_ROWS; index += 1) {
+      const row = abilityMenuRowRect(index);
+      expect(row.x, `row ${index}`).toBeGreaterThan(ABILITY_MENU_RECT.x);
+      expect(row.y, `row ${index}`).toBeGreaterThanOrEqual(bottom(ABILITY_MENU_CLOSE_RECT));
+      expect(right(row), `row ${index}`).toBeLessThan(right(ABILITY_MENU_RECT));
+      expect(bottom(row), `row ${index}`).toBeLessThanOrEqual(bottom(ABILITY_MENU_RECT));
+    }
+  });
+
+  it('never overlaps two rows, so the row under a press is never ambiguous', () => {
+    for (let i = 0; i < ABILITY_MENU_ROWS; i += 1) {
+      for (let j = i + 1; j < ABILITY_MENU_ROWS; j += 1) {
+        expect(overlaps(abilityMenuRowRect(i), abilityMenuRowRect(j)), `${i} over ${j}`).toBe(false);
+      }
+    }
+  });
+
+  it('names the row under a point, and nothing for the title, the close button or a gap', () => {
+    const centreOf = (index: number) => {
+      const row = abilityMenuRowRect(index);
+      return { x: row.x + row.width / 2, y: row.y + row.height / 2 };
+    };
+
+    for (let index = 0; index < ABILITY_MENU_ROWS; index += 1) {
+      expect(abilityMenuRowIndexAt(centreOf(index)), `row ${index}`).toBe(index);
+    }
+
+    // The title band and the close button are the panel's own: a press there arms nothing.
+    const title = { x: ABILITY_MENU_RECT.x + 8, y: ABILITY_MENU_RECT.y + 8 };
+    const close = { x: ABILITY_MENU_CLOSE_RECT.x + 1, y: ABILITY_MENU_CLOSE_RECT.y + 1 };
+    expect(abilityMenuRowIndexAt(title)).toBeNull();
+    expect(abilityMenuRowIndexAt(close)).toBeNull();
+    // And so is every point outside the panel, which is what closes it.
+    expect(abilityMenuRowIndexAt({ x: 0, y: 0 })).toBeNull();
   });
 });
 

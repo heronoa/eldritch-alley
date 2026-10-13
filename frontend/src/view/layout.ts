@@ -434,6 +434,64 @@ export function inspectRowPoint(index: number): Pixel {
 export const INSPECT_VALUE_X = INSPECT_RECT.x + INSPECT_RECT.width - PADDING;
 
 /**
+ * How many rows the menu is built for. One, because the engine reads one active slot (ADR 0016 §6): the
+ * panel is a fixed rectangle a scene builds once, so this is both how tall it is drawn and how many rows
+ * its press reads (D6). A second slot means this number and the model behind it, and nothing else.
+ */
+export const ABILITY_MENU_ROWS = 1;
+
+/** How tall one row is: the name with its cost, and the effect line under them. */
+export const ABILITY_MENU_ROW = 56;
+
+/** How far under the close button the first row starts, the way the rows of the sheet do. */
+const ABILITY_MENU_ROWS_TOP = PADDING + INSPECT_CLOSE + 8;
+
+/**
+ * The ability menu (EA-16): the question the `Habilidade` button asks before the aim opens. It floats
+ * over the board in the same column and at the same height as the inspection window, because both are
+ * the board's own overlays and the eye should not travel between them — and the menu closes the sheet,
+ * so the two are never on the screen at once (D2).
+ *
+ * Like the sheet, it is deliberately not one of `hudRects`: the scene reads it before every other
+ * overlay, and while it stands it swallows every press of the canvas.
+ */
+export const ABILITY_MENU_RECT: Rect = {
+  x: INSPECT_RECT.x,
+  y: INSPECT_RECT.y,
+  width: INSPECT_RECT.width,
+  height: ABILITY_MENU_ROWS_TOP + ABILITY_MENU_ROWS * ABILITY_MENU_ROW + PADDING,
+};
+
+/** The box of the close button: the top-right corner, where the sheet's own X is. */
+export const ABILITY_MENU_CLOSE_RECT: Rect = {
+  x: ABILITY_MENU_RECT.x + ABILITY_MENU_RECT.width - PADDING - INSPECT_CLOSE,
+  y: ABILITY_MENU_RECT.y + PADDING,
+  width: INSPECT_CLOSE,
+  height: INSPECT_CLOSE,
+};
+
+/** The rectangle of the nth row of the menu, counting from the top. */
+export function abilityMenuRowRect(index: number): Rect {
+  return {
+    x: ABILITY_MENU_RECT.x + PADDING,
+    y: ABILITY_MENU_RECT.y + ABILITY_MENU_ROWS_TOP + index * ABILITY_MENU_ROW,
+    width: ABILITY_MENU_RECT.width - 2 * PADDING,
+    height: ABILITY_MENU_ROW,
+  };
+}
+
+/**
+ * The row of the menu under a point, or null when the point is on none of them. The title, the close
+ * button and the gaps between the rows are the panel's own, and only a row arms anything.
+ */
+export function abilityMenuRowIndexAt(point: Pixel): number | null {
+  for (let index = 0; index < ABILITY_MENU_ROWS; index += 1) {
+    if (containsPoint(abilityMenuRowRect(index), point)) return index;
+  }
+  return null;
+}
+
+/**
  * The camera panel (EA-12): the two buttons that turn the view with the view they are looking from, the
  * two that zoom with the step they are on, and the one that brings the map back to the middle of the
  * canvas. It floats over the board at the top of the right column, against the edge, the way the

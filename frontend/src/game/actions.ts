@@ -18,8 +18,10 @@ export interface AvailableActions {
   canMove: boolean;
   canAttack: boolean;
   /**
-   * Whether the unit on turn carries an ability its own pool can pay for (ADR 0016). The button opens
-   * the reach of that ability; whether a cell inside it is worth aiming at is what the click decides.
+   * Whether the unit on turn carries an ability its own slots name (ADR 0016). The button opens the menu
+   * of what it carries, and the menu is where the cost is read: a pool that cannot pay dims the row and
+   * not the button, so a player with an empty pool can still read what the ability does (EA-16, D3). The
+   * aim that follows is refused in the engine's own words, so nothing illegal is ever offered.
    */
   canUseAbility: boolean;
   canReload: boolean;
@@ -117,9 +119,9 @@ function computeAvailableActions(state: PublicState, humanTeam: Team): Available
       canAct &&
       state.units.some((unit) => unit.team !== actor.team && !unit.defeated) &&
       attackArea(state, actor.position, actor).length > 0,
-    // The ability the class carries, offered while the unit's own pool covers its cost: a use the engine
-    // would refuse for the pool (ADR 0016 §7) is never a button the player can press.
-    canUseAbility: canAct && ability !== undefined && actor.ammo >= ability.cost,
+    // The ability the class carries, offered whether or not the pool can pay for it (EA-16, D3): the
+    // menu it opens says what the use costs, and a row the pool cannot cover is the one that is dimmed.
+    canUseAbility: canAct && ability !== undefined,
     canReload: canAct && actor.magazine !== null && actor.ammo < actor.magazine,
     // Ending the turn is always legal; it is how a player with nothing left to do passes.
     canEndTurn: true,

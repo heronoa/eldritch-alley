@@ -67,6 +67,9 @@ export const ptBR = {
   // events of their own: one `damaged` per body the effect reached, and one `healed` per body a heal
   // covered.
   'log.event.ability-used': '{actor} usou uma habilidade em {cell}',
+  // The same use with the ability named (EA-16): the sentence says what was cast, by the word the
+  // catalogs give the id. An id this build has no word for keeps the sentence above (D7).
+  'log.event.ability-used-named': '{actor} usou {ability} em {cell}',
   'log.event.damaged': '{target} sofreu {damage} de dano',
   'log.event.healed': '{target} recuperou {amount} de vida',
   'log.event.unknown': 'evento desconhecido',
@@ -114,12 +117,29 @@ export const ptBR = {
   'action.move': 'Mover',
   'action.attack': 'Atacar',
   // The one active ability of the class (ADR 0016). It is the class's own, so the button is named for
-  // what it does rather than for the ability.
+  // what it does rather than for the ability. The menu it opens carries the same heading (EA-16).
   'action.ability': 'Habilidade',
   'action.reload': 'Recarregar',
   'action.endTurn': 'Terminar turno',
   'action.confirmMove': 'Confirmar',
   'action.cancelMove': 'Cancelar',
+
+  // The abilities (EA-16): one word per id this build knows, and the fragments the menu composes the
+  // effect line from. The engine never learns a name (ADR 0016 §13) — the id is an opaque string and
+  // the words live here, which is the split ADR 0009 draws. An id with no word is named by itself in
+  // the menu and by the generic sentence in the log: the catalog travels with the match (ADR 0016 §3),
+  // so a newer server can ship an ability this build cannot name.
+  'ability.piercing-shot': 'Tiro Perfurante',
+  'ability.fireball': 'Bola de Fogo',
+  'ability.area-heal': 'Cura em Área',
+  'ability.detail.damage': 'Dano {amount}',
+  'ability.detail.heal': 'Cura {amount}',
+  'ability.detail.radius': 'raio {radius}',
+  // The cover of an area only means something to a roll, and only a damage effect rolls (ADR 0016 §9).
+  'ability.detail.ignoresCover': 'ignora cobertura',
+  // A damage effect that covers more than one cell hurts every body in it, the caster's own side
+  // included (ADR 0016 §12): the rule the player has to read before aiming.
+  'ability.detail.hitsAllies': 'atinge todos, inclusive aliados',
 
   // The rest of the HUD, and the lines the match shows over it: the two endings, the notice a
   // refused protocol version raises, and the two states of a dropped connection.

@@ -12,6 +12,7 @@ import {
   type ActionMode,
   type MoveChip,
 } from '../game/actions';
+import { abilityOptions, type AbilityOption } from '../game/ability-menu';
 import {
   endTurnAction,
   initialAutoEndTurn,
@@ -68,8 +69,11 @@ import { LAYER } from '../view/depth';
 import { covers, type Drawn } from '../view/cutaway';
 import { HZ, TILE_H, TILE_W, cellAt, cellToScreen, depthOfCell, topFace } from '../view/iso';
 import {
+  ABILITY_MENU_CLOSE_RECT,
+  ABILITY_MENU_RECT,
   LOG_LINES,
   LOG_TOGGLE_RECT,
+  abilityMenuRowIndexAt,
   buttonIndexAt,
   COUNTDOWN_LINK_RECT,
   COUNTDOWN_RECT,
@@ -102,7 +106,7 @@ import {
   HIGHLIGHT_MOVE_COLOR,
 } from '../view/theme';
 import { BODY_HEIGHT, SPRITE_SIZE } from '../view/unit-look';
-import { playEffect } from './effects';
+import { playEffect, playImpact } from './effects';
 import { MapView } from './map/MapView';
 import { boardMarks } from './map/marks';
 import { RotationView } from './map/RotationView';
@@ -184,6 +188,15 @@ export class MatchScene extends Phaser.Scene {
   private selectedId: string | null = null;
   /** The armed mode. `move` and `attack` narrow the next board click; `inspect` leaves it alone. */
   private mode: ActionMode = 'inspect';
+  /**
+   * The ability the menu armed (EA-16): the id the next aim is sent with, or null while no row has been
+   * picked. It is only set while the ability mode is armed, and the mode is what the aim reads.
+   */
+  private armedAbilityId: string | null = null;
+  /** Whether the ability menu is on the screen. It is a question, not a mode: it arms nothing by itself. */
+  private menuOpen = false;
+  /** The rows the open menu showed, so a press on one arms the ability the player read (EA-16). */
+  private menuModel: AbilityOption[] = [];
   /** The unit the secondary gesture is inspecting, or null when no inspection is open (EA-6). */
   private inspectedId: string | null = null;
   /** The timer of the long press, which the rules of `game/press.ts` decide when to arm (EA-6, D4). */
@@ -252,6 +265,8 @@ export class MatchScene extends Phaser.Scene {
     this.state = null;
     this.selectedId = null;
     this.mode = 'inspect';
+    this.armedAbilityId = null;
+    this.menuOpen = false;
     this.inspectedId = null;
     this.disarmLongPress();
     this.gestures.cancel();
@@ -277,6 +292,7 @@ export class MatchScene extends Phaser.Scene {
     this.lastFrameMs = 0;
     this.buttonModel = [];
     this.chipModel = [];
+    this.menuModel = [];
     this.statusText = '';
     this.resultText = '';
     this.camera = { zoom: MIN_ZOOM, centre: { x: CANVAS_WIDTH / 2, y: CANVAS_HEIGHT / 2 } };
@@ -459,6 +475,13 @@ export class MatchScene extends Phaser.Scene {
    * lets a click through to the tile. Only a point none of them takes reaches the board.
    */
   private hudTakesPress(point: Pixel): boolean {
+    // The ability menu (EA-16) is a modal and is read before everything else it covers: while it is on
+    // the screen it swallows every press of the canvas, so nothing under the question is pressed (D2).
+    if (this.menuOpen) {
+      this.pressAbilityMenu(point);
+      return true;
+    }
+
     // The inspection window floats over the board and over every panel of the HUD, so it is read
     // first: the X closes it, and a press anywhere else inside it is the window's own and reaches
     // nothing under it. Nothing else closes it — a press on the board acts as it always does and
@@ -647,6 +670,7 @@ export class MatchScene extends Phaser.Scene {
         targetId: named?.id ?? null,
         humanTeam: HUMAN_TEAM,
         mode: this.mode,
+        abilityId: this.armedAbilityId,
       }),
     );
 
@@ -712,6 +736,14 @@ export class MatchScene extends Phaser.Scene {
     if (this.finished || this.state === null) return;
 
     if (mode !== null) {
+      // `Habilidade` asks before it arms (EA-16): the menu names what the unit carries, what it costs
+      // and what it does, and the row the player picks is what the aim is aimed with. The other two
+      // modes have nothing to ask, so they arm on the press as they always did.
+      if (mode === 'ability') {
+        this.toggleAbilityMenu();
+        return;
+      }
+
       this.mode = this.mode === mode ? 'inspect' : mode;
       this.redraw(this.state);
       return;
@@ -727,6 +759,73 @@ export class MatchScene extends Phaser.Scene {
       this.pushHud();
     }
     this.session.send(action);
+  }
+
+  /**
+   * Opens or closes the ability menu (EA-16). The bar is its own undo, so pressing `Habilidade` while
+   * the rows are on the screen closes them and arms nothing; pressing it with the aim already armed —
+   * which is what a pick leaves behind — puts the aim down too.
+   */
+  private toggleAbilityMenu(): void {
+    if (this.menuOpen) {
+      this.closeAbilityMenu();
+      this.pushHud();
+      return;
+    }
+
+    if (this.mode === 'ability') {
+      this.mode = 'inspect';
+      this.armedAbilityId = null;
+      if (this.state !== null) this.redraw(this.state);
+      return;
+    }
+
+    this.menuOpen = true;
+    // The player is deciding, so the turn must not pass behind the question: the countdown stands down
+    // the way it does when the turn is handed over by hand (D4).
+    this.applyAutoEndTurn({ type: 'cancel' });
+    this.pushHud();
+  }
+
+  /** Takes the question off the screen. What it drew is redrawn by whoever called it. */
+  private closeAbilityMenu(): void {
+    this.menuOpen = false;
+  }
+
+  /** A press while the menu is open: its X and its rows are its own, and a press outside closes it. */
+  private pressAbilityMenu(point: Pixel): void {
+    if (!containsPoint(ABILITY_MENU_RECT, point) || containsPoint(ABILITY_MENU_CLOSE_RECT, point)) {
+      this.closeAbilityMenu();
+      this.pushHud();
+      return;
+    }
+
+    // The title and the gaps between the rows are the panel's own: a press on them asks nothing.
+    const row = abilityMenuRowIndexAt(point);
+    if (row !== null) this.pickAbility(row);
+  }
+
+  /**
+   * Arms the ability of one row: the reach drawn is its own and the action the next aim sends names it
+   * (EA-16). A row the unit's pool cannot pay arms nothing — the same refusal the engine would answer
+   * with, asked before the player aims rather than after.
+   */
+  private pickAbility(index: number): void {
+    const option = this.menuModel[index];
+    if (option === undefined || !option.affordable) return;
+
+    this.armedAbilityId = option.id;
+    this.mode = 'ability';
+    this.closeAbilityMenu();
+    if (this.state !== null) this.redraw(this.state);
+  }
+
+  /** The rows an open menu would show: what the unit on turn carries, and nothing without a state. */
+  private abilityRows(): AbilityOption[] {
+    if (this.state === null) return [];
+
+    const actor = activeSlot(this.state);
+    return actor === null ? [] : abilityOptions(this.state, actor.unit);
   }
 
   private handleState(message: StateMessage): void {
@@ -746,7 +845,12 @@ export class MatchScene extends Phaser.Scene {
     // can actually act; the mode then falls back if the new turn has nothing left to do.
     const actor = activeSlot(message.state);
     if (actor !== null && isHumanTurn(message.state, HUMAN_TEAM)) this.selectedId = actor.unit.id;
-    this.mode = settleMode(this.mode, availableActions(message.state, HUMAN_TEAM));
+    const available = availableActions(message.state, HUMAN_TEAM);
+    this.mode = settleMode(this.mode, available);
+    // The question only stands while the turn can still answer it (EA-16): an aim that fell back to
+    // another mode is put down, and so is a menu whose unit has nothing left to offer.
+    if (this.mode !== 'ability') this.armedAbilityId = null;
+    if (!available.canUseAbility) this.closeAbilityMenu();
     this.syncAutoEndTurn();
 
     this.redraw(message.state);
@@ -883,13 +987,25 @@ export class MatchScene extends Phaser.Scene {
   }
 
   /**
+   * Where an impact lands on a cell of the map (EA-16): the top face of the tile as the view draws it,
+   * which is where a figure standing there has its feet and where the marks of the board are drawn. An
+   * impact reads the map's own cells, so it is turned with the view like everything else the server
+   * states (EA-12).
+   */
+  private impactPoint(cell: Cell): Pixel {
+    return this.feetOf(this.viewCell(cell));
+  }
+
+  /**
    * Plays the events of one accepted action, then writes them into the log. The snapshot is read
    * for the cues and moved forward after them, so each event is read against the board it found —
    * and that is also what the log is handed, because a shot says where both ends stood (EA-15).
    */
   private handleEvents(events: Event[]): void {
     for (const event of events) {
-      for (const cue of presentationOf(event, this.snapshot)) this.play(cue);
+      // The state is handed along as well, because the cells an ability covers are the engine's own
+      // answer about the board: it is the state the events are read against, not the one after them.
+      for (const cue of presentationOf(event, this.snapshot, this.state ?? undefined)) this.play(cue);
       this.appendLog(describeEvent(event, UNIT_NAMES, this.battlefield()));
       this.advanceSnapshot(event);
     }
@@ -934,6 +1050,19 @@ export class MatchScene extends Phaser.Scene {
       case 'reload':
         this.sprites.get(cue.unitId)?.playReload(cue.from, cue.to, this.time.now);
         break;
+
+      case 'ability': {
+        // The effect is thrown from the caster's figure, and lands on the cells of the view: an impact
+        // carries the map's own cells, and the board on the screen is a view of them (EA-12, EA-16).
+        const actor = this.sprites.get(cue.actorId);
+        playImpact(this, cue.impact, {
+          // A figure the scene is not drawing has no hand for a shot to leave: the flight is dropped
+          // and the landing kept, and the areas, which need no caster, are drawn all the same.
+          from: actor === undefined ? null : this.effectPoint(actor, false),
+          at: (cell) => this.impactPoint(cell),
+        });
+        break;
+      }
 
       case 'defeat':
         this.sprites.get(cue.unitId)?.markDefeated();
@@ -1104,6 +1233,8 @@ export class MatchScene extends Phaser.Scene {
     this.finish();
     this.reconnecting = false;
     this.mode = 'inspect';
+    this.armedAbilityId = null;
+    this.closeAbilityMenu();
     this.selectedId = null;
     this.statusText = '';
     this.resultText = t(message.winner === HUMAN_TEAM ? 'match.victory' : 'match.defeat');
@@ -1176,6 +1307,9 @@ export class MatchScene extends Phaser.Scene {
   private pushHud(): void {
     this.buttonModel = this.state ? actionButtons(this.state, HUMAN_TEAM) : [];
     this.chipModel = this.state ? moveChips(this.state, HUMAN_TEAM) : [];
+    // The rows are read here, with the rest of the models, and only while the question is on the screen:
+    // a list nobody can see is not worth building (EA-16).
+    this.menuModel = this.menuOpen ? this.abilityRows() : [];
     this.hud.render({
       state: this.state,
       humanTeam: HUMAN_TEAM,
@@ -1185,6 +1319,7 @@ export class MatchScene extends Phaser.Scene {
       finished: this.finished,
       buttons: this.buttonModel,
       moveChips: this.chipModel,
+      abilityMenu: { open: this.menuOpen, options: this.menuModel },
       logLines: this.logLines,
       logOpen: this.logOpen,
       status: this.statusText,
@@ -1323,6 +1458,9 @@ export class MatchScene extends Phaser.Scene {
       inspectedId: this.inspectedId,
       mode: this.mode,
       humanTeam: HUMAN_TEAM,
+      // The reach of the ability the menu armed, so the wash answers the question the player asked and
+      // not the one the unit carries by default (EA-16).
+      abilityId: this.armedAbilityId,
     });
 
     // The areas come from the state, which states them in the map's own coordinates; the wash is drawn

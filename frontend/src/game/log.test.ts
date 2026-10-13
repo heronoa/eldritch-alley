@@ -180,11 +180,27 @@ describe('describeEvent', () => {
 
   it('describes a use of an ability with the cell it named', () => {
     // The action names a cell, never a unit (ADR 0016 §5), so the sentence shows the board position
-    // with the same `(x,y)` text every other event that names a cell carries.
+    // with the same `(x,y)` text every other event that names a cell carries. The ability is named
+    // too (EA-16): the player has to be able to read which one was used.
     const event: Event = {
       type: 'ability-used',
       actor: 'A-wizard',
       abilityId: 'fireball',
+      to: { x: 2, y: 3 },
+      rngState: 7,
+      resource: 'mana',
+    };
+
+    expect(describeEvent(event, NAMES)).toBe('Wizard usou Bola de Fogo em (2,3)');
+  });
+
+  it('falls back to the generic sentence for an ability this build cannot name', () => {
+    // The catalog is the server's, and it may carry an ability a later milestone added: the sentence
+    // loses the name, and the event is still described rather than swallowed (EA-16).
+    const event: Event = {
+      type: 'ability-used',
+      actor: 'A-wizard',
+      abilityId: 'time-stop',
       to: { x: 2, y: 3 },
       rngState: 7,
       resource: 'mana',

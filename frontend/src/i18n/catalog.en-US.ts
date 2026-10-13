@@ -57,6 +57,7 @@ export const enUS: Record<MessageKey, string> = {
   // The use of an ability (ADR 0016): the action names a cell, never a unit, and the two outcomes
   // of the use follow as events of their own.
   'log.event.ability-used': '{actor} used an ability on {cell}',
+  'log.event.ability-used-named': '{actor} used {ability} on {cell}',
   'log.event.damaged': '{target} took {damage} damage',
   'log.event.healed': '{target} recovered {amount} health',
   'log.event.unknown': 'unknown event',
@@ -107,6 +108,16 @@ export const enUS: Record<MessageKey, string> = {
   'action.endTurn': 'End turn',
   'action.confirmMove': 'Confirm',
   'action.cancelMove': 'Cancel',
+
+  // The abilities (EA-16): one word per id this build knows, and the fragments of the effect line.
+  'ability.piercing-shot': 'Piercing Shot',
+  'ability.fireball': 'Fireball',
+  'ability.area-heal': 'Area Heal',
+  'ability.detail.damage': 'Damage {amount}',
+  'ability.detail.heal': 'Heal {amount}',
+  'ability.detail.radius': 'radius {radius}',
+  'ability.detail.ignoresCover': 'ignores cover',
+  'ability.detail.hitsAllies': 'hits everyone, allies included',
 
   // The rest of the HUD, and the lines the match shows over it.
   'hud.legend':

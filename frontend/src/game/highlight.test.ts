@@ -92,6 +92,15 @@ const FIREBALL = {
   effect: { kind: 'damage' as const, amount: 3, radius: 1, ignoresCover: true },
 };
 
+/** A second ability of the same catalog, with a reach of its own (EA-16): two reaches, two answers. */
+const PIERCING_SHOT = {
+  id: 'piercing-shot',
+  cost: 1,
+  range: 4,
+  needsSight: true,
+  effect: { kind: 'damage' as const, amount: 6, radius: 0, ignoresCover: true },
+};
+
 /**
  * The same state carrying the catalog the ability rules read. It travels with the state the way the
  * board does (ADR 0016 §3), and this mirror of `PublicState` has not learned the field yet, so the
@@ -492,6 +501,42 @@ describe('the reach of an armed ability', () => {
     const state = withCatalog(makeState([bare, ENEMY]));
 
     expect(highlightedCells({ state, selectedId: 'A-sniper', mode: 'ability', humanTeam: 'A' })).toEqual([]);
+  });
+
+  it('paints the reach of the ability the menu armed, not the one the unit carries (EA-16)', () => {
+    // The unit carries a fireball (reaches 3) and the player picked the piercing shot (reaches 4): the
+    // wash answers the question that was asked, so the further ring is painted.
+    const state = withCatalog(makeState([CASTER, ENEMY]), [FIREBALL, PIERCING_SHOT]);
+
+    const carried = keys(highlightedCells({ state, selectedId: 'A-sniper', mode: 'ability', humanTeam: 'A' }));
+    const armed = keys(
+      highlightedCells({
+        state,
+        selectedId: 'A-sniper',
+        mode: 'ability',
+        humanTeam: 'A',
+        abilityId: 'piercing-shot',
+      }),
+    );
+
+    expect(carried).not.toContain('7,3'); // distance 4, past the fireball
+    expect(armed).toContain('7,3'); // distance 4, inside the piercing shot
+  });
+
+  it('paints nothing for an armed id the match does not define', () => {
+    // The menu only ever offers what the catalog carries, so this is a state that moved under the
+    // player: the aim would be refused with `ability-unknown`, and no cell is offered for it.
+    const state = withCatalog(makeState([CASTER, ENEMY]), [FIREBALL]);
+
+    expect(
+      highlightedCells({
+        state,
+        selectedId: 'A-sniper',
+        mode: 'ability',
+        humanTeam: 'A',
+        abilityId: 'time-stop',
+      }),
+    ).toEqual([]);
   });
 });
 

@@ -3,6 +3,7 @@
 // colour comes from the tested `game/` and `view/` modules, and it never reads the game's state itself.
 import Phaser from 'phaser';
 import type { ActionButton, ActionMode, MoveChip } from '../game/actions';
+import type { AbilityOption } from '../game/ability-menu';
 import type { AutoEndPhase } from '../game/autoEndTurn';
 import { bannerFor } from '../game/banner';
 import { HIGHLIGHT_COVERS_DEFAULT } from '../game/highlightCovers';
@@ -14,6 +15,8 @@ import { t } from '../i18n';
 import type { PublicState, Team } from '../protocol';
 import { MIN_ZOOM } from '../view/camera-math';
 import {
+  ABILITY_MENU_CLOSE_RECT,
+  ABILITY_MENU_RECT,
   ACTION_HINT_RECT,
   BANNER_RECT,
   CAMERA_CONTROLS,
@@ -45,6 +48,7 @@ import {
   SETTINGS_PAN_VALUE_RECT,
   SETTINGS_TOGGLE_RECT,
   STATUS_RECT,
+  abilityMenuRowRect,
   buttonRect,
   cameraControlRect,
   carouselSlotRect,
@@ -97,6 +101,13 @@ const TOGGLE_LABEL_GAP = 12;
 /** The face of the text of a settings row: the label of the toggle and the reading of the stepper. */
 const ROW_TEXT_STYLE = { fontFamily: FONT_BODY, fontSize: FONT_SIZE.log, color: TEXT_COLOR };
 
+/**
+ * How far into its row the two lines of an ability row start: the name with its cost on the first, the
+ * effect line under them. They add up with the two font sizes to leave the gap under the line.
+ */
+const ABILITY_ROW_TEXT_INSET = 9;
+const ABILITY_ROW_DETAIL_INSET = 31;
+
 /** The radius of the arrow bent round on a rotation button, and of the two circles of the centre mark. */
 const ROTATE_RADIUS = 8;
 const CENTRE_RIM_RADIUS = 9;
@@ -146,6 +157,15 @@ export interface PanSensitivityView {
   canIncrease: boolean;
 }
 
+/**
+ * The ability menu (EA-16), as the match scene has it: whether the question is on the screen, and the
+ * rows it holds. The HUD decides nothing about it — it draws the rows it is handed.
+ */
+export interface AbilityMenuView {
+  open: boolean;
+  options: readonly AbilityOption[];
+}
+
 /** Everything the HUD shows at one moment, as the match scene knows it. */
 export interface HudView {
   state: PublicState | null;
@@ -155,6 +175,8 @@ export interface HudView {
   /** The unit whose sheet is open in the inspection window, or null while there is none. */
   inspectedId: string | null;
   mode: ActionMode;
+  /** Whether the ability menu is on the screen, and the rows it asks with (EA-16). */
+  abilityMenu: AbilityMenuView;
   finished: boolean;
   buttons: readonly ActionButton[];
   /** The two controls of a pending move, drawn over the board above the Move button (EA-5, D6). */
@@ -189,6 +211,7 @@ const EMPTY_VIEW: HudView = {
   selectedId: null,
   inspectedId: null,
   mode: 'inspect',
+  abilityMenu: { open: false, options: [] },
   finished: false,
   buttons: [],
   moveChips: [],
@@ -215,6 +238,10 @@ export class HudScene extends Phaser.Scene {
   private inspectPanel!: Phaser.GameObjects.Container;
   private inspectClose!: Button;
   private inspectRows!: Phaser.GameObjects.Container;
+  /** The ability menu: its frame, the X that closes it, and the rows drawn inside it (EA-16). */
+  private abilityMenu!: Phaser.GameObjects.Container;
+  private abilityMenuClose!: Button;
+  private abilityMenuRows!: Phaser.GameObjects.Container;
   private banner!: Banner;
   /**
    * The unit the last drawn state had on turn, so the HUD can tell a hand-over from a redraw of the
@@ -337,6 +364,15 @@ export class HudScene extends Phaser.Scene {
     this.inspectClose = new Button(this, INSPECT_CLOSE_RECT, INSPECT_CLOSE_LABEL).setVisible(false);
     this.inspectRows = this.add.container(0, 0);
 
+    // The ability menu (EA-16): the question the Habilidade button asks before the aim opens. Built like
+    // the sheet and shown the same way — the frame and its X here, the rows from the tested model — and
+    // added after every other overlay because it is a modal and floats over all of them (D2).
+    this.abilityMenu = createPanel(this, ABILITY_MENU_RECT, t('action.ability')).setVisible(false);
+    this.abilityMenuClose = new Button(this, ABILITY_MENU_CLOSE_RECT, INSPECT_CLOSE_LABEL).setVisible(
+      false,
+    );
+    this.abilityMenuRows = this.add.container(0, 0);
+
     // Added last: a turn change floats over the panels, and it is gone before the next one comes.
     this.banner = new Banner(this, BANNER_RECT);
 
@@ -425,6 +461,7 @@ export class HudScene extends Phaser.Scene {
     this.drawChips(view.state);
     this.drawDashboard(view.state, view.selectedId);
     this.drawInspection(view.state, view.inspectedId);
+    this.drawAbilityMenu(view);
     this.drawButtons(view);
     this.drawMoveChips(view);
     this.drawSettings(view);
@@ -532,6 +569,49 @@ export class HudScene extends Phaser.Scene {
             color: TEXT_COLOR,
           })
           .setOrigin(1, 0),
+      ]);
+    });
+  }
+
+  /**
+   * The ability menu (EA-16): one row per ability the unit on turn carries, each with the word for its
+   * id, the cost in the unit's own pool, and the effect under them. It draws and it asks nothing — the
+   * rows come from the tested model — so the X and the rows are read by the scene above.
+   *
+   * A row the pool cannot pay is drawn dimmed (D3): the player reads the cost and the effect anyway,
+   * which is the whole point of opening the menu with an empty pool.
+   */
+  private drawAbilityMenu(view: HudView): void {
+    const open = view.abilityMenu.open;
+    this.abilityMenu.setVisible(open);
+    this.abilityMenuClose.setVisible(open);
+
+    this.abilityMenuRows.removeAll(true);
+    if (!open) return;
+
+    view.abilityMenu.options.forEach((option, index) => {
+      const row = abilityMenuRowRect(index);
+      const color = option.affordable ? TEXT_COLOR : TEXT_COLOR_DISABLED;
+
+      this.abilityMenuRows.add([
+        this.add.text(row.x, row.y + ABILITY_ROW_TEXT_INSET, option.name, {
+          fontFamily: FONT_BODY,
+          fontSize: FONT_SIZE.unit,
+          color,
+        }),
+        this.add
+          .text(row.x + row.width, row.y + ABILITY_ROW_TEXT_INSET, option.cost, {
+            fontFamily: FONT_BODY,
+            fontSize: FONT_SIZE.unit,
+            color,
+          })
+          .setOrigin(1, 0),
+        // The effect line is the second voice of the row and never the loud one, dimmed row or not.
+        this.add.text(row.x, row.y + ABILITY_ROW_DETAIL_INSET, option.detail, {
+          fontFamily: FONT_BODY,
+          fontSize: FONT_SIZE.log,
+          color: TEXT_COLOR_DISABLED,
+        }),
       ]);
     });
   }

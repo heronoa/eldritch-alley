@@ -50,6 +50,12 @@ export interface ClickInput {
    * top of the intent, and the click reads the same in all of them.
    */
   mode?: ActionMode;
+  /**
+   * The ability the menu armed (EA-16), or null when the caller has no choice to make. With it given,
+   * the aim is the one the player picked; with it null or absent, the aim is the ability the unit
+   * carries (ADR 0016 §6), which is what every caller that never opened a menu means.
+   */
+  abilityId?: string | null;
 }
 
 /** The unit standing on a cell, living or a body. A cell with a body is not empty. */
@@ -91,6 +97,20 @@ function carriedAbility(state: PublicState, unit: UnitState): AbilityDefinition 
   const id = unit.abilities.activeSets[0];
   if (id === null) return undefined;
   return abilityById(state.catalog, id);
+}
+
+/**
+ * The ability an aim is aimed with: the one the menu armed when it names one, and the one the unit's own
+ * first active set carries otherwise (EA-16). Both are resolved in the match's own catalog, so an id the
+ * match does not define is the same refusal whichever way it arrived.
+ */
+function armedAbility(
+  state: PublicState,
+  unit: UnitState,
+  abilityId: string | null,
+): AbilityDefinition | undefined {
+  if (abilityId !== null) return abilityById(state.catalog, abilityId);
+  return carriedAbility(state, unit);
 }
 
 /**
@@ -138,11 +158,16 @@ function actingUnit(state: PublicState, selectedId: string | null): UnitState | 
  * covers — the ally a heal is thrown at, and the ally a blast will hurt, which is what an effect that
  * spares nobody means (D2). A press the ability cannot be aimed at is refused in the engine's own words.
  */
-function aimAbility(state: PublicState, selectedId: string | null, cell: Cell): Intent {
+function aimAbility(
+  state: PublicState,
+  selectedId: string | null,
+  cell: Cell,
+  abilityId: string | null,
+): Intent {
   const caster = actingUnit(state, selectedId);
   if (caster === undefined) return { kind: 'none' };
 
-  const ability = carriedAbility(state, caster);
+  const ability = armedAbility(state, caster, abilityId);
   if (ability === undefined) return { kind: 'refused', reason: 'ability-unknown' };
 
   const refusal = aimRefusal(state, caster, ability, cell);
@@ -171,10 +196,11 @@ export function resolveClick({
   targetId = null,
   humanTeam,
   mode = 'inspect',
+  abilityId = null,
 }: ClickInput): Intent {
   // An armed ability is aimed first: the action names a cell, never a unit, so the aim is read before
   // anything else the press could mean and the `Atacar`/`Mover` rules below never see it (EA-7).
-  if (mode === 'ability') return aimAbility(state, selectedId, cell);
+  if (mode === 'ability') return aimAbility(state, selectedId, cell, abilityId);
 
   // The figure the press landed on decides first: only a press that covered no figure is read against
   // the cell under it, which is what keeps a walk onto a free cell working (EA-8).
