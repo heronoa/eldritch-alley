@@ -166,6 +166,15 @@ export const ptBR = {
   'hud.settings.panSensitivity': 'Arrasto do mapa',
   'hud.settings.panSensitivity.value': '{percent}%',
   'hud.settings.highlightCovers': 'Realçar Coberturas',
+  // The battle report (EA-17): the modal that opens the moment a match ends, with the whole log, a
+  // scroll and a plain-text export — the dashboard's six lines are not the only view of a fight.
+  'hud.report.title': 'Registro da partida',
+  'hud.report.export': 'Baixar .txt',
+  'hud.report.reopen': 'Ver registro completo',
+  'hud.report.range': '{from}–{to} de {total}',
+  // The odds over a unit's head while it is being aimed at (EA-18). A bare number plus a sign still
+  // comes from the catalog, like every other word on the screen (ADR 0009).
+  'hud.target.chance': '{value}%',
   // The badge a unit in cover wears over its head: the sentence, the conjunction that joins two sides,
   // and the name of each of the eight. The sides are the board's own and the camera never renames one
   // (m3-02, D1), so these are not the letters of the camera panel above.

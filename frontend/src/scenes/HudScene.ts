@@ -19,6 +19,13 @@ import {
   ABILITY_MENU_RECT,
   ACTION_HINT_RECT,
   BANNER_RECT,
+  BATTLE_REPORT_CLOSE_RECT,
+  BATTLE_REPORT_EXPORT_RECT,
+  BATTLE_REPORT_LIST_RECT,
+  BATTLE_REPORT_RECT,
+  BATTLE_REPORT_REOPEN_RECT,
+  BATTLE_REPORT_SCROLL_DOWN_RECT,
+  BATTLE_REPORT_SCROLL_UP_RECT,
   CAMERA_CONTROLS,
   CAMERA_RECT,
   CAMERA_VIEW_RECT,
@@ -166,6 +173,20 @@ export interface AbilityMenuView {
   options: readonly AbilityOption[];
 }
 
+/**
+ * The battle report (EA-17), as the match scene has it: whether it is on the screen, the window of
+ * lines it is scrolled to, the range already worded in the player's language, which chevron still does
+ * anything, and whether the link that reopens it belongs on the screen at all.
+ */
+export interface BattleReportView {
+  open: boolean;
+  lines: readonly string[];
+  range: string;
+  canScrollUp: boolean;
+  canScrollDown: boolean;
+  canReopen: boolean;
+}
+
 /** Everything the HUD shows at one moment, as the match scene knows it. */
 export interface HudView {
   state: PublicState | null;
@@ -177,6 +198,8 @@ export interface HudView {
   mode: ActionMode;
   /** Whether the ability menu is on the screen, and the rows it asks with (EA-16). */
   abilityMenu: AbilityMenuView;
+  /** The battle report (EA-17): opens on its own the moment the match ends. */
+  battleReport: BattleReportView;
   finished: boolean;
   buttons: readonly ActionButton[];
   /** The two controls of a pending move, drawn over the board above the Move button (EA-5, D6). */
@@ -212,6 +235,7 @@ const EMPTY_VIEW: HudView = {
   inspectedId: null,
   mode: 'inspect',
   abilityMenu: { open: false, options: [] },
+  battleReport: { open: false, lines: [], range: '', canScrollUp: false, canScrollDown: false, canReopen: false },
   finished: false,
   buttons: [],
   moveChips: [],
@@ -242,6 +266,18 @@ export class HudScene extends Phaser.Scene {
   private abilityMenu!: Phaser.GameObjects.Container;
   private abilityMenuClose!: Button;
   private abilityMenuRows!: Phaser.GameObjects.Container;
+  /**
+   * The battle report (EA-17): its frame, its X, the window of lines, the range under them, the two
+   * chevrons that scroll it, the export button, and the link that reopens it once it is closed.
+   */
+  private battleReportPanel!: Phaser.GameObjects.Container;
+  private battleReportClose!: Button;
+  private battleReportText!: Phaser.GameObjects.Text;
+  private battleReportRange!: Phaser.GameObjects.Text;
+  private battleReportScrollUp!: Button;
+  private battleReportScrollDown!: Button;
+  private battleReportExport!: Button;
+  private battleReportReopen!: Button;
   private banner!: Banner;
   /**
    * The unit the last drawn state had on turn, so the HUD can tell a hand-over from a redraw of the
@@ -373,6 +409,41 @@ export class HudScene extends Phaser.Scene {
     );
     this.abilityMenuRows = this.add.container(0, 0);
 
+    // The battle report (EA-17): opens on its own the moment the match ends, over everything else a
+    // finished match shows — built after the ability menu, the way the menu itself was built after the
+    // sheet, so the most recent modal is the one the player reads last and the scene reads first (D2).
+    this.battleReportPanel = createPanel(this, BATTLE_REPORT_RECT, t('hud.report.title')).setVisible(
+      false,
+    );
+    this.battleReportClose = new Button(this, BATTLE_REPORT_CLOSE_RECT, INSPECT_CLOSE_LABEL).setVisible(
+      false,
+    );
+    this.battleReportText = this.add
+      .text(BATTLE_REPORT_LIST_RECT.x, BATTLE_REPORT_LIST_RECT.y, '', {
+        fontFamily: FONT_BODY,
+        fontSize: FONT_SIZE.log,
+        color: TEXT_COLOR,
+        lineSpacing: 4,
+      })
+      .setVisible(false);
+    const rangeX = BATTLE_REPORT_EXPORT_RECT.x + BATTLE_REPORT_EXPORT_RECT.width + PADDING;
+    const rangeY = BATTLE_REPORT_EXPORT_RECT.y + BATTLE_REPORT_EXPORT_RECT.height / 2;
+    this.battleReportRange = this.add
+      .text(rangeX, rangeY, '', { fontFamily: FONT_BODY, fontSize: FONT_SIZE.log, color: TEXT_COLOR_DISABLED })
+      .setOrigin(0, 0.5)
+      .setVisible(false);
+    this.battleReportScrollUp = new Button(this, BATTLE_REPORT_SCROLL_UP_RECT, '▲').setVisible(false);
+    this.battleReportScrollDown = new Button(this, BATTLE_REPORT_SCROLL_DOWN_RECT, '▼').setVisible(
+      false,
+    );
+    this.battleReportExport = new Button(this, BATTLE_REPORT_EXPORT_RECT, t('hud.report.export')).setVisible(
+      false,
+    );
+    // Beside Sair, not inside the panel: it belongs to the finished match, not to the report (D1).
+    this.battleReportReopen = new Button(this, BATTLE_REPORT_REOPEN_RECT, t('hud.report.reopen')).setVisible(
+      false,
+    );
+
     // Added last: a turn change floats over the panels, and it is gone before the next one comes.
     this.banner = new Banner(this, BANNER_RECT);
 
@@ -462,6 +533,7 @@ export class HudScene extends Phaser.Scene {
     this.drawDashboard(view.state, view.selectedId);
     this.drawInspection(view.state, view.inspectedId);
     this.drawAbilityMenu(view);
+    this.drawBattleReport(view.battleReport);
     this.drawButtons(view);
     this.drawMoveChips(view);
     this.drawSettings(view);
@@ -614,6 +686,30 @@ export class HudScene extends Phaser.Scene {
         }),
       ]);
     });
+  }
+
+  /**
+   * The battle report (EA-17): the modal that opens the moment a match ends, with the whole log in a
+   * scrollable window, the range it covers, the two chevrons and the export button. It draws and it
+   * asks nothing — the window, the range and which chevron still does anything come from the match
+   * scene — and the link that reopens it is its own, drawn whether or not the panel itself is open.
+   */
+  private drawBattleReport(report: BattleReportView): void {
+    this.battleReportPanel.setVisible(report.open);
+    this.battleReportClose.setVisible(report.open);
+    this.battleReportScrollUp.setVisible(report.open);
+    this.battleReportScrollDown.setVisible(report.open);
+    this.battleReportExport.setVisible(report.open);
+    this.battleReportText.setVisible(report.open);
+    this.battleReportRange.setVisible(report.open);
+    this.battleReportReopen.setVisible(report.canReopen);
+
+    if (!report.open) return;
+
+    this.battleReportText.setText(report.lines.join('\n'));
+    this.battleReportRange.setText(report.range);
+    this.battleReportScrollUp.setEnabled(report.canScrollUp);
+    this.battleReportScrollDown.setEnabled(report.canScrollDown);
   }
 
   /** One number of the dashboard: its label, its value at the far end, and its bar under both. */

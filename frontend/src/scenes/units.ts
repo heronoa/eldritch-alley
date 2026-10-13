@@ -21,6 +21,8 @@ import { TURN_ARROW, TURN_ARROW_POINT } from '../view/layout';
 import {
   COVER_BADGE_FILL,
   COVER_BADGE_STROKE,
+  HIT_CHANCE_BADGE_FILL,
+  HIT_CHANCE_BADGE_STROKE,
   CORPSE_COLOR,
   CORPSE_OUTLINE_COLOR,
   FONT_BODY,
@@ -91,6 +93,12 @@ const PIP = { size: 4, gap: 3, gapAboveBar: 6 };
  */
 const COVER_BADGE = { gapAboveArrow: 6, strokeThickness: 4 };
 
+/**
+ * The odds a unit is shown while it is being aimed at (EA-18): a second line, over the cover badge's
+ * own, so a target that is both covered and aimed at reads both without either replacing the other.
+ */
+const HIT_CHANCE_BADGE = { gapAboveCover: 18, strokeThickness: 4 };
+
 /** What the sprite is busy with, and when it started. Only one action runs at a time. */
 type Action =
   | { kind: 'attack'; style: 'melee' | 'ranged'; hit: boolean; start: number; impactAt: number; impactUntil: number }
@@ -136,6 +144,8 @@ export class UnitSprite extends Phaser.GameObjects.Container {
   private readonly arrow: Phaser.GameObjects.Graphics;
   /** The words over the head of a unit in cover, or nothing at all (EA-15). */
   private readonly coverBadge: Phaser.GameObjects.Text;
+  /** The odds over the head of a unit being aimed at, or nothing while none is armed (EA-18). */
+  private readonly hitChanceBadge: Phaser.GameObjects.Text;
 
   private team: Team = 'A';
   /** The row of the sheet this unit is drawn from. A class without one falls back to Combatant. */
@@ -178,7 +188,26 @@ export class UnitSprite extends Phaser.GameObjects.Container {
       .setOrigin(0.5, 1)
       .setStroke(cssColor(COVER_BADGE_STROKE), COVER_BADGE.strokeThickness)
       .setVisible(false);
-    this.add([this.marker, this.corpse, this.figure, this.bars, this.arrow, this.ring, this.coverBadge]);
+    this.hitChanceBadge = scene.add
+      .text(
+        0,
+        TURN_ARROW_POINT.y - TURN_ARROW.height - COVER_BADGE.gapAboveArrow - HIT_CHANCE_BADGE.gapAboveCover,
+        '',
+        { fontFamily: FONT_BODY, fontSize: `${FONT_SIZE.log}px`, color: cssColor(HIT_CHANCE_BADGE_FILL) },
+      )
+      .setOrigin(0.5, 1)
+      .setStroke(cssColor(HIT_CHANCE_BADGE_STROKE), HIT_CHANCE_BADGE.strokeThickness)
+      .setVisible(false);
+    this.add([
+      this.marker,
+      this.corpse,
+      this.figure,
+      this.bars,
+      this.arrow,
+      this.ring,
+      this.coverBadge,
+      this.hitChanceBadge,
+    ]);
 
     scene.add.existing(this);
     this.sync(unit, marks, placement, facesRight);
@@ -220,6 +249,8 @@ export class UnitSprite extends Phaser.GameObjects.Container {
     this.defeated = true;
     // A fallen unit is covered by nothing, and the words would hang over the body it left (EA-15).
     this.setCoverBadge(null);
+    // Nor is it a target left to aim at (EA-18).
+    this.setHitChanceBadge(null);
     this.drawMarker();
     this.drawCorpse();
     this.drawArrow();
@@ -234,6 +265,16 @@ export class UnitSprite extends Phaser.GameObjects.Container {
   setCoverBadge(text: string | null): void {
     this.coverBadge.setText(text ?? '');
     this.coverBadge.setVisible(text !== null);
+  }
+
+  /**
+   * Writes the odds the scene worked out for this unit, or takes them down with `null`. The sprite
+   * decides nothing: whether an aim reaches this unit at all, and what the chance is, is the scene's
+   * business (`game/targetPreview.ts`), and this only draws what it is handed (EA-18).
+   */
+  setHitChanceBadge(text: string | null): void {
+    this.hitChanceBadge.setText(text ?? '');
+    this.hitChanceBadge.setVisible(text !== null);
   }
 
   /**

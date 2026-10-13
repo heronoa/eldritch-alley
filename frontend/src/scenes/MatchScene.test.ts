@@ -18,10 +18,17 @@ import type { Session } from '../net/session';
 import { setLocale } from '../i18n/translate';
 import {
   ABILITY_MENU_RECT,
+  BATTLE_REPORT_CLOSE_RECT,
+  BATTLE_REPORT_EXPORT_RECT,
+  BATTLE_REPORT_RECT,
+  BATTLE_REPORT_REOPEN_RECT,
+  BATTLE_REPORT_SCROLL_DOWN_RECT,
+  BATTLE_REPORT_SCROLL_UP_RECT,
   INSPECT_CLOSE_RECT,
   INSPECT_RECT,
   LOG_RECT,
   LOG_TOGGLE_RECT,
+  RESULT_BUTTON_RECT,
   SETTINGS_BUTTON_RECT,
   SETTINGS_COVERS_ROW_RECT,
   SETTINGS_PANEL_RECT,
@@ -32,6 +39,8 @@ import {
 import { MatchScene } from './MatchScene';
 import { UnitSprite } from './units';
 import { EFFECTS } from '../view/effects';
+import { download } from './download';
+import { exportFileName, exportText } from '../game/battle-report';
 
 /** What the stand-in map was told, so a test can read back the calls the canvas would have painted. */
 const mapCalls = vi.hoisted(() => ({ marksVisible: [] as boolean[] }));
@@ -115,6 +124,64 @@ const FIREBALL: AbilityDefinition = {
   needsSight: true,
   effect: { kind: 'damage', amount: 3, radius: 1, ignoresCover: true },
 };
+
+/** The one heal effect of the cases below (EA-18): it never rolls, so no badge should ever name it. */
+const AREA_HEAL: AbilityDefinition = {
+  id: 'area-heal',
+  cost: 2,
+  range: 3,
+  needsSight: false,
+  effect: { kind: 'heal', amount: 3, radius: 1 },
+};
+
+/** A sniper and an enemy two cells apart, in range and in sight of each other, for the preview cases. */
+function attackScenario(): PublicState {
+  const sniper = makeUnit('A-sniper', 'A', 0, 0);
+  const enemy = makeUnit('B-priest', 'B', 2, 0);
+  return {
+    seed: 1,
+    board: BOARD,
+    catalog: [],
+    units: [sniper, enemy],
+    initiative: ['A-sniper', 'B-priest'],
+    currentIndex: 0,
+    movementLeft: 3,
+    round: 1,
+    hasActed: false,
+    eventCount: 0,
+    pendingMove: null,
+  };
+}
+
+/**
+ * A caster carrying `ability` in its first active set, an ally and an enemy inside the radius an aim
+ * at the caster's own cell would cover, and a fourth unit far outside it (EA-18).
+ */
+function abilityScenario(ability: AbilityDefinition): PublicState {
+  const caster: UnitState = {
+    ...makeUnit('A-wizard', 'A', 2, 0),
+    primaryClass: 'wizard',
+    resourceKind: 'mana',
+    ammo: 2,
+    abilities: { activeSets: [ability.id, null], reaction: null, movement: null, support: null },
+  };
+  const ally = makeUnit('A-sniper', 'A', 1, 0);
+  const enemy = makeUnit('B-priest', 'B', 3, 0);
+  const far = makeUnit('B-far', 'B', 6, 6);
+  return {
+    seed: 1,
+    board: BOARD,
+    catalog: [ability],
+    units: [caster, ally, enemy, far],
+    initiative: ['A-wizard', 'A-sniper', 'B-priest', 'B-far'],
+    currentIndex: 0,
+    movementLeft: 3,
+    round: 1,
+    hasActed: false,
+    eventCount: 0,
+    pendingMove: null,
+  };
+}
 
 /**
  * The same match with a caster on turn: a magic class carrying a fireball in its first active set, and
@@ -737,5 +804,340 @@ describe('the match scene', () => {
     expect(lastView(render).highlightCovers).toBe(true);
     expect(writes[HIGHLIGHT_COVERS_KEY]).toBe('true');
     expect(mapCalls.marksVisible[mapCalls.marksVisible.length - 1]).toBe(true);
+  });
+
+  describe('the battle report (EA-17)', () => {
+    function turnEnded(round: number, next: UnitId): Event {
+      return { type: 'turn-ended', actor: 'A-sniper', next, round };
+    }
+
+    function tapAt(
+      scene_: { handlePointerDown(p: unknown): void; handlePointerUp(p: unknown): void },
+      x: number,
+      y: number,
+    ): void {
+      const at = { id: 1, x, y, worldX: 0, worldY: 0, rightButtonDown: () => false, wasTouch: true };
+      scene_.handlePointerDown(at);
+      scene_.handlePointerUp(at);
+    }
+
+    it('opens the moment the match ends, seeded with every line played — not only the last six', () => {
+      const { session, render } = startMatch();
+      session.emit.state(message(stateFor({ onTurn: 'A', spent: false })));
+      session.emit.events(Array.from({ length: 8 }, (_, i) => turnEnded(i + 1, 'B-priest')));
+
+      session.emit.ended('A');
+
+      const view = lastView(render) as { battleReport: { open: boolean; lines: string[] } };
+      expect(view.battleReport.open).toBe(true);
+      expect(view.battleReport.lines).toHaveLength(8);
+    });
+
+    it('scrolls when the wheel is over the panel, and still zooms the camera everywhere else', () => {
+      const { scene, session, render } = startMatch();
+      session.emit.state(message(stateFor({ onTurn: 'A', spent: false })));
+      session.emit.events(
+        Array.from({ length: 20 }, (_, i) => turnEnded(i + 1, i % 2 === 0 ? 'B-priest' : 'A-sniper')),
+      );
+      session.emit.ended('A');
+
+      const scene_ = scene as unknown as {
+        handleWheel(p: { x: number; y: number }, dy: number): void;
+        camera: { zoom: number; centre: { x: number; y: number } };
+      };
+
+      const firstLineBefore = (lastView(render) as { battleReport: { lines: string[] } }).battleReport
+        .lines[0];
+      scene_.handleWheel({ x: BATTLE_REPORT_RECT.x + 10, y: BATTLE_REPORT_RECT.y + 10 }, 1);
+      const firstLineAfter = (lastView(render) as { battleReport: { lines: string[] } }).battleReport
+        .lines[0];
+      expect(firstLineAfter).not.toBe(firstLineBefore);
+
+      // The same wheel outside the panel is the camera's own, unaffected by the report being open.
+      scene_.camera = { zoom: 1, centre: { x: 640, y: 360 } };
+      scene_.handleWheel({ x: 10, y: 10 }, -1);
+      expect(scene_.camera.zoom).toBeGreaterThan(1);
+    });
+
+    it('swallows a press over Sair while it stands over it, and closes on a press truly outside it (D2)', () => {
+      const { scene, session, render } = startMatch();
+      session.emit.state(message(stateFor({ onTurn: 'A', spent: false })));
+      session.emit.ended('A');
+      expect(lastView(render).battleReport).toMatchObject({ open: true });
+
+      const scene_ = scene as unknown as {
+        handlePointerDown(p: unknown): void;
+        handlePointerUp(p: unknown): void;
+      };
+
+      // Sair sits inside the report's own rectangle while the report is open, so a press there is the
+      // panel's own and leaves nothing — it neither closes the report nor reaches `Sair` underneath it.
+      tapAt(scene_, RESULT_BUTTON_RECT.x + 1, RESULT_BUTTON_RECT.y + 1);
+      expect(lastView(render).battleReport).toMatchObject({ open: true });
+      expect(lastView(render).finished).toBe(true);
+
+      // A press truly outside the panel closes it.
+      tapAt(scene_, 5, 5);
+      expect(lastView(render).battleReport).toMatchObject({ open: false });
+      expect(lastView(render).wayOutVisible).toBe(true);
+    });
+
+    it('downloads exactly what exportText builds, through the download seam', () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-10-13T15:04:05.000Z'));
+      const spy = vi.spyOn(download, 'text').mockImplementation(() => {});
+
+      try {
+        const { scene, session } = startMatch();
+        session.emit.state(message(stateFor({ onTurn: 'A', spent: false })));
+        session.emit.events([turnEnded(1, 'B-priest')]);
+        session.emit.ended('A');
+
+        const scene_ = scene as unknown as {
+          handlePointerDown(p: unknown): void;
+          handlePointerUp(p: unknown): void;
+        };
+        tapAt(scene_, BATTLE_REPORT_EXPORT_RECT.x + 1, BATTLE_REPORT_EXPORT_RECT.y + 1);
+
+        expect(spy).toHaveBeenCalledTimes(1);
+        const [fileName, content] = spy.mock.calls[0]!;
+        expect(fileName).toBe(exportFileName(new Date()));
+        expect(content).toBe(exportText({ result: 'Vitória', endedAt: new Date() }, ['Vez de B-priest']));
+      } finally {
+        spy.mockRestore();
+        vi.useRealTimers();
+      }
+    });
+
+    it('reopens from the link beside Sair once the report is closed', () => {
+      const { scene, session, render } = startMatch();
+      session.emit.state(message(stateFor({ onTurn: 'A', spent: false })));
+      session.emit.ended('A');
+
+      const scene_ = scene as unknown as {
+        handlePointerDown(p: unknown): void;
+        handlePointerUp(p: unknown): void;
+      };
+
+      tapAt(scene_, 5, 5); // outside every panel: closes the report, leaves nothing armed
+      expect(lastView(render).battleReport).toMatchObject({ open: false });
+
+      tapAt(scene_, BATTLE_REPORT_REOPEN_RECT.x + 1, BATTLE_REPORT_REOPEN_RECT.y + 1);
+      expect(lastView(render).battleReport).toMatchObject({ open: true });
+    });
+  });
+
+  describe('the hit-chance preview (EA-18)', () => {
+    function pointerAt(
+      scene_: { feetOf(c: { x: number; y: number }): { x: number; y: number } },
+      cell: { x: number; y: number },
+      touch: boolean,
+    ) {
+      const feet = scene_.feetOf(cell);
+      return {
+        id: 1,
+        x: feet.x,
+        y: feet.y,
+        worldX: feet.x,
+        worldY: feet.y,
+        rightButtonDown: () => false,
+        wasTouch: touch,
+      };
+    }
+
+    it("sets the hovered enemy's badge to the attack chance, and clears it off the cell", () => {
+      const { scene, session } = startMatch();
+      session.emit.state(message(attackScenario()));
+      (scene as unknown as { mode: string }).mode = 'attack';
+
+      const scene_ = scene as unknown as {
+        handlePointerMove(p: unknown): void;
+        feetOf(c: { x: number; y: number }): { x: number; y: number };
+      };
+      const badge = vi.spyOn(UnitSprite.prototype, 'setHitChanceBadge');
+      try {
+        scene_.handlePointerMove(pointerAt(scene_, { x: 2, y: 0 }, false));
+        expect(badge.mock.calls.some(([text]) => text !== null)).toBe(true);
+
+        badge.mockClear();
+        scene_.handlePointerMove(pointerAt(scene_, { x: 5, y: 5 }, false));
+        expect(badge.mock.calls.every(([text]) => text === null)).toBe(true);
+      } finally {
+        badge.mockRestore();
+      }
+    });
+
+    it('shows nothing for an enemy outside the current attack reach', () => {
+      const { scene, session } = startMatch();
+      const sniper = makeUnit('A-sniper', 'A', 0, 0);
+      const far = makeUnit('B-priest', 'B', 7, 7);
+      const state: PublicState = {
+        seed: 1,
+        board: BOARD,
+        catalog: [],
+        units: [sniper, far],
+        initiative: ['A-sniper', 'B-priest'],
+        currentIndex: 0,
+        movementLeft: 3,
+        round: 1,
+        hasActed: false,
+        eventCount: 0,
+        pendingMove: null,
+      };
+      session.emit.state(message(state));
+      (scene as unknown as { mode: string }).mode = 'attack';
+
+      const scene_ = scene as unknown as {
+        handlePointerMove(p: unknown): void;
+        feetOf(c: { x: number; y: number }): { x: number; y: number };
+      };
+      const badge = vi.spyOn(UnitSprite.prototype, 'setHitChanceBadge');
+      try {
+        scene_.handlePointerMove(pointerAt(scene_, { x: 7, y: 7 }, false));
+        expect(badge.mock.calls.every(([text]) => text === null)).toBe(true);
+      } finally {
+        badge.mockRestore();
+      }
+    });
+
+    it('shows one badge per living unit inside a fireball blast, allies and the caster included', () => {
+      const { scene, session } = startMatch();
+      session.emit.state(message(abilityScenario(FIREBALL)));
+      (scene as unknown as { mode: string; armedAbilityId: string | null }).mode = 'ability';
+      (scene as unknown as { armedAbilityId: string | null }).armedAbilityId = 'fireball';
+
+      const scene_ = scene as unknown as {
+        handlePointerMove(p: unknown): void;
+        feetOf(c: { x: number; y: number }): { x: number; y: number };
+      };
+      const badge = vi.spyOn(UnitSprite.prototype, 'setHitChanceBadge');
+      try {
+        scene_.handlePointerMove(pointerAt(scene_, { x: 2, y: 0 }, false));
+
+        // state.units order: caster, ally, enemy, far — and so is the sprite map's own.
+        const texts = badge.mock.calls.map(([text]) => text);
+        expect(texts).toHaveLength(4);
+        expect(texts[0]).not.toBeNull();
+        expect(texts[1]).not.toBeNull();
+        expect(texts[2]).not.toBeNull();
+        expect(texts[3]).toBeNull();
+      } finally {
+        badge.mockRestore();
+      }
+    });
+
+    it('shows no badge at all for a heal ability — it never rolls', () => {
+      const { scene, session } = startMatch();
+      session.emit.state(message(abilityScenario(AREA_HEAL)));
+      (scene as unknown as { mode: string; armedAbilityId: string | null }).mode = 'ability';
+      (scene as unknown as { armedAbilityId: string | null }).armedAbilityId = 'area-heal';
+
+      const scene_ = scene as unknown as {
+        handlePointerMove(p: unknown): void;
+        feetOf(c: { x: number; y: number }): { x: number; y: number };
+      };
+      const badge = vi.spyOn(UnitSprite.prototype, 'setHitChanceBadge');
+      try {
+        scene_.handlePointerMove(pointerAt(scene_, { x: 2, y: 0 }, false));
+        expect(badge.mock.calls.every(([text]) => text === null)).toBe(true);
+      } finally {
+        badge.mockRestore();
+      }
+    });
+
+    it(
+      'shows the badge on a long press while aiming instead of opening the sheet; lifting clears it ' +
+        'and a fresh tap still commits the shot',
+      () => {
+        const { scene, session } = startMatch();
+        session.emit.state(message(attackScenario()));
+        (scene as unknown as { mode: string }).mode = 'attack';
+
+        const scene_ = scene as unknown as {
+          handlePointerDown(p: unknown): void;
+          handlePointerUp(p: unknown): void;
+          triggerLongPress(p: unknown): void;
+          feetOf(c: { x: number; y: number }): { x: number; y: number };
+          inspectedId: string | null;
+        };
+        const badge = vi.spyOn(UnitSprite.prototype, 'setHitChanceBadge');
+        try {
+          const pointer = pointerAt(scene_, { x: 2, y: 0 }, true);
+          scene_.handlePointerDown(pointer);
+          scene_.triggerLongPress(pointer);
+
+          expect(badge.mock.calls.some(([text]) => text !== null)).toBe(true);
+          expect(scene_.inspectedId).toBeNull();
+
+          badge.mockClear();
+          scene_.handlePointerUp(pointer);
+          expect(badge.mock.calls.every(([text]) => text === null)).toBe(true);
+
+          // One gesture, one meaning (D4): the lift after a long press never taps. A fresh press does.
+          scene_.handlePointerDown(pointer);
+          scene_.handlePointerUp(pointer);
+          expect(session.send).toHaveBeenCalledWith({ type: 'attack', target: 'B-priest' });
+        } finally {
+          badge.mockRestore();
+        }
+      },
+    );
+
+    it('clears every badge when the mode falls back, the turn moves on, or the match ends', () => {
+      const { scene, session } = startMatch();
+      const state = attackScenario();
+      session.emit.state(message(state));
+      (scene as unknown as { mode: string }).mode = 'attack';
+
+      const scene_ = scene as unknown as {
+        handlePointerMove(p: unknown): void;
+        feetOf(c: { x: number; y: number }): { x: number; y: number };
+        mode: string;
+        pushHud(): void;
+      };
+      const badge = vi.spyOn(UnitSprite.prototype, 'setHitChanceBadge');
+      try {
+        scene_.handlePointerMove(pointerAt(scene_, { x: 2, y: 0 }, false));
+        expect(badge.mock.calls.some(([text]) => text !== null)).toBe(true);
+
+        badge.mockClear();
+        scene_.mode = 'inspect';
+        scene_.pushHud();
+        expect(badge.mock.calls.every(([text]) => text === null)).toBe(true);
+
+        scene_.mode = 'attack';
+        scene_.handlePointerMove(pointerAt(scene_, { x: 2, y: 0 }, false));
+        badge.mockClear();
+        session.emit.state(message({ ...state, currentIndex: 1 })); // the turn passes to the bot
+        expect(badge.mock.calls.every(([text]) => text === null)).toBe(true);
+
+        scene_.mode = 'attack';
+        scene_.handlePointerMove(pointerAt(scene_, { x: 2, y: 0 }, false));
+        badge.mockClear();
+        session.emit.ended('A');
+        expect(badge.mock.calls.every(([text]) => text === null)).toBe(true);
+      } finally {
+        badge.mockRestore();
+      }
+    });
+
+    it('shows no badge while the camera is turning a quarter (DT-86)', () => {
+      const { scene, session } = startMatch();
+      session.emit.state(message(attackScenario()));
+      (scene as unknown as { mode: string }).mode = 'attack';
+      (scene as unknown as { turn: unknown }).turn = {};
+
+      const scene_ = scene as unknown as {
+        handlePointerMove(p: unknown): void;
+        feetOf(c: { x: number; y: number }): { x: number; y: number };
+      };
+      const badge = vi.spyOn(UnitSprite.prototype, 'setHitChanceBadge');
+      try {
+        scene_.handlePointerMove(pointerAt(scene_, { x: 2, y: 0 }, false));
+        expect(badge.mock.calls.every(([text]) => text === null)).toBe(true);
+      } finally {
+        badge.mockRestore();
+      }
+    });
   });
 });

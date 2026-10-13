@@ -27,3 +27,6 @@ export { effectiveRange } from './height';
 // And the same for the whole turn: the client ends a turn nobody can use by itself (EA-4), and the
 // question has to be the engine's so the two sides answer it alike.
 export { canStillAct } from './actions';
+// And the same for the odds of a shot: the client reads the chance before it is rolled, so the
+// preview the player aims by and the number `resolveHit` actually consults are the same one (EA-18).
+export { hitChanceFor } from './actions';

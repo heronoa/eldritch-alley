@@ -635,3 +635,68 @@ export const SETTINGS_COVERS_ROW_RECT: Rect = {
   ...SETTINGS_TOGGLE_RECT,
   y: SETTINGS_PAN_ROW_RECT.y + PANEL_ROW_HEIGHT,
 };
+
+/**
+ * EA-17: the battle report that opens the moment a match ends. It is the whole log, not the
+ * dashboard's six lines, so it gets a panel of its own — centred over the board, the same fixed
+ * rectangle the sheet and the ability menu already use, closed by its own X and by a press outside it
+ * (the scene's own D2).
+ */
+export const BATTLE_REPORT_RECT: Rect = { x: 320, y: 100, width: 640, height: 520 };
+
+export const BATTLE_REPORT_CLOSE_RECT: Rect = {
+  x: BATTLE_REPORT_RECT.x + BATTLE_REPORT_RECT.width - PADDING - INSPECT_CLOSE,
+  y: BATTLE_REPORT_RECT.y + PADDING,
+  width: INSPECT_CLOSE,
+  height: INSPECT_CLOSE,
+};
+
+/** How many lines of the report show at once; the rest are reached by scrolling. */
+export const REPORT_LINES = 14;
+const REPORT_LINE_HEIGHT = 22;
+const REPORT_SCROLL_BUTTON = 28;
+
+/** How far under the close button the list starts, the way the sheet's own rows do. */
+const BATTLE_REPORT_LIST_TOP = PADDING + INSPECT_CLOSE + 8;
+
+/** Where the list of lines sits: under the title, clear of the scroll buttons at its right. */
+export const BATTLE_REPORT_LIST_RECT: Rect = {
+  x: BATTLE_REPORT_RECT.x + PADDING,
+  y: BATTLE_REPORT_RECT.y + BATTLE_REPORT_LIST_TOP,
+  width: BATTLE_REPORT_RECT.width - 2 * PADDING - REPORT_SCROLL_BUTTON - 8,
+  height: REPORT_LINES * REPORT_LINE_HEIGHT,
+};
+
+/** The two chevrons that scroll the list, stacked at its right edge. */
+export const BATTLE_REPORT_SCROLL_UP_RECT: Rect = {
+  x: BATTLE_REPORT_LIST_RECT.x + BATTLE_REPORT_LIST_RECT.width + 8,
+  y: BATTLE_REPORT_LIST_RECT.y,
+  width: REPORT_SCROLL_BUTTON,
+  height: REPORT_SCROLL_BUTTON,
+};
+
+export const BATTLE_REPORT_SCROLL_DOWN_RECT: Rect = {
+  x: BATTLE_REPORT_SCROLL_UP_RECT.x,
+  y: BATTLE_REPORT_LIST_RECT.y + BATTLE_REPORT_LIST_RECT.height - REPORT_SCROLL_BUTTON,
+  width: REPORT_SCROLL_BUTTON,
+  height: REPORT_SCROLL_BUTTON,
+};
+
+/** The download button, along the bottom edge of the panel. */
+export const BATTLE_REPORT_EXPORT_RECT: Rect = {
+  x: BATTLE_REPORT_RECT.x + PADDING,
+  y: BATTLE_REPORT_RECT.y + BATTLE_REPORT_RECT.height - PADDING - 44,
+  width: 200,
+  height: 44,
+};
+
+/**
+ * The link that reopens the report after it is closed, under the way-out button — closing the report
+ * is not a dead end (EA-17, D1).
+ */
+export const BATTLE_REPORT_REOPEN_RECT: Rect = {
+  x: RESULT_BUTTON_RECT.x,
+  y: RESULT_BUTTON_RECT.y + RESULT_BUTTON_RECT.height + 12,
+  width: RESULT_BUTTON_RECT.width,
+  height: 32,
+};

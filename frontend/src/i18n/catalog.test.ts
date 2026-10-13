@@ -211,6 +211,22 @@ describe('the pt-BR the game shows', () => {
     expect(message('en-US', 'hud.settings.highlightCovers')).toBe('Highlight Covers');
   });
 
+  it('carries the battle report in both catalogs (EA-17)', () => {
+    expect(message('pt-BR', 'hud.report.title')).toBe('Registro da partida');
+    expect(message('en-US', 'hud.report.title')).toBe('Battle log');
+    expect(message('pt-BR', 'hud.report.export')).toBe('Baixar .txt');
+    expect(message('en-US', 'hud.report.export')).toBe('Download .txt');
+    expect(message('pt-BR', 'hud.report.reopen')).toBe('Ver registro completo');
+    expect(message('en-US', 'hud.report.reopen')).toBe('View full log');
+    expect(message('pt-BR', 'hud.report.range')).toBe('{from}–{to} de {total}');
+    expect(message('en-US', 'hud.report.range')).toBe('{from}-{to} of {total}');
+  });
+
+  it('carries the hit-chance badge in both catalogs (EA-18)', () => {
+    expect(message('pt-BR', 'hud.target.chance')).toBe('{value}%');
+    expect(message('en-US', 'hud.target.chance')).toBe('{value}%');
+  });
+
   it('answers every refusal code out of the catalog, keyed by the code itself', () => {
     // A code with no key of its own is a compile error: the key is built from the code.
     const reasons: readonly RejectReason[] = [

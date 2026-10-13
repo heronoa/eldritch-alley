@@ -10,6 +10,13 @@ import {
   ACTION_BAR_RECT,
   ACTION_BUTTON,
   ACTION_HINT_RECT,
+  BATTLE_REPORT_CLOSE_RECT,
+  BATTLE_REPORT_EXPORT_RECT,
+  BATTLE_REPORT_LIST_RECT,
+  BATTLE_REPORT_RECT,
+  BATTLE_REPORT_REOPEN_RECT,
+  BATTLE_REPORT_SCROLL_DOWN_RECT,
+  BATTLE_REPORT_SCROLL_UP_RECT,
   CANVAS_HEIGHT,
   CANVAS_WIDTH,
   CAROUSEL_RECT,
@@ -22,6 +29,7 @@ import {
   INSPECT_CLOSE_RECT,
   INSPECT_RECT,
   INSPECT_VALUE_X,
+  REPORT_LINES,
   CAMERA_RECT,
   LEGEND_RECT,
   LOG_HEADER_HEIGHT,
@@ -656,5 +664,61 @@ describe('carouselSlotIndexAt', () => {
 
   it('answers nothing for a click on the board', () => {
     expect(carouselSlotIndexAt({ x: 640, y: 300 }, CAROUSEL_SLOTS)).toBeNull();
+  });
+});
+
+/**
+ * EA-17: the full match log, opened the moment the match ends. The same fixed-rectangle-plus-close-
+ * button shape the sheet and the ability menu already use, with a scrollable list, two chevrons and
+ * an export button besides.
+ */
+describe('the battle report', () => {
+  it('fits inside the canvas, over the board', () => {
+    expect(BATTLE_REPORT_RECT.x).toBeGreaterThanOrEqual(0);
+    expect(BATTLE_REPORT_RECT.y).toBeGreaterThanOrEqual(0);
+    expect(right(BATTLE_REPORT_RECT)).toBeLessThanOrEqual(CANVAS_WIDTH);
+    expect(bottom(BATTLE_REPORT_RECT)).toBeLessThanOrEqual(CANVAS_HEIGHT);
+    expect(BATTLE_REPORT_RECT.x).toBeLessThan(CANVAS_WIDTH / 2);
+    expect(right(BATTLE_REPORT_RECT)).toBeGreaterThan(CANVAS_WIDTH / 2);
+  });
+
+  it('holds its close button inside itself, at its top right', () => {
+    expect(BATTLE_REPORT_CLOSE_RECT.x).toBeGreaterThanOrEqual(BATTLE_REPORT_RECT.x);
+    expect(BATTLE_REPORT_CLOSE_RECT.y).toBeGreaterThanOrEqual(BATTLE_REPORT_RECT.y);
+    expect(right(BATTLE_REPORT_CLOSE_RECT)).toBeLessThanOrEqual(right(BATTLE_REPORT_RECT));
+    expect(bottom(BATTLE_REPORT_CLOSE_RECT)).toBeLessThanOrEqual(bottom(BATTLE_REPORT_RECT));
+    expect(BATTLE_REPORT_CLOSE_RECT.x).toBeGreaterThan(BATTLE_REPORT_RECT.x + BATTLE_REPORT_RECT.width / 2);
+  });
+
+  it('holds the list, both chevrons and the export button inside the panel, none of them overlapping', () => {
+    const pieces = [
+      BATTLE_REPORT_LIST_RECT,
+      BATTLE_REPORT_SCROLL_UP_RECT,
+      BATTLE_REPORT_SCROLL_DOWN_RECT,
+      BATTLE_REPORT_EXPORT_RECT,
+    ];
+
+    for (const piece of pieces) {
+      expect(piece.x).toBeGreaterThanOrEqual(BATTLE_REPORT_RECT.x);
+      expect(piece.y).toBeGreaterThanOrEqual(BATTLE_REPORT_RECT.y);
+      expect(right(piece)).toBeLessThanOrEqual(right(BATTLE_REPORT_RECT));
+      expect(bottom(piece)).toBeLessThanOrEqual(bottom(BATTLE_REPORT_RECT));
+    }
+    for (let i = 0; i < pieces.length; i += 1) {
+      for (let j = i + 1; j < pieces.length; j += 1) {
+        expect(overlaps(pieces[i]!, pieces[j]!), `${i} over ${j}`).toBe(false);
+      }
+    }
+  });
+
+  it('fits at least a dozen lines in the visible list', () => {
+    expect(REPORT_LINES).toBeGreaterThanOrEqual(12);
+  });
+
+  it('sits under the way-out button, so a finished match can still open it again', () => {
+    expect(BATTLE_REPORT_REOPEN_RECT.x).toBeGreaterThanOrEqual(0);
+    expect(right(BATTLE_REPORT_REOPEN_RECT)).toBeLessThanOrEqual(CANVAS_WIDTH);
+    expect(bottom(BATTLE_REPORT_REOPEN_RECT)).toBeLessThanOrEqual(CANVAS_HEIGHT);
+    expect(overlaps(BATTLE_REPORT_REOPEN_RECT, RESULT_BUTTON_RECT)).toBe(false);
   });
 });

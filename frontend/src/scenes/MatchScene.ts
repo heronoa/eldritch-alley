@@ -2,6 +2,7 @@
 // It decides nothing on its own — every rule lives on the server, and every label, colour and
 // coordinate comes from the tested `game/` and `view/` modules.
 import Phaser from 'phaser';
+import { abilityById } from '@eldritch-alley/engine';
 import {
   actionButtons,
   applyMode,
@@ -13,6 +14,7 @@ import {
   type MoveChip,
 } from '../game/actions';
 import { abilityOptions, type AbilityOption } from '../game/ability-menu';
+import { abilityChances, attackChance } from '../game/targetPreview';
 import {
   endTurnAction,
   initialAutoEndTurn,
@@ -32,6 +34,7 @@ import {
   savePanSensitivity,
   stepPanSensitivity,
 } from '../game/panSensitivity';
+import { clampScroll, exportFileName, exportText, visibleLines, type BattleReportHeader } from '../game/battle-report';
 import { coverSentence } from '../game/coverBadge';
 import { readHighlightCovers, saveHighlightCovers } from '../game/highlightCovers';
 import { buildEnv, highlightCoversDefault } from '../config';
@@ -71,8 +74,15 @@ import { HZ, TILE_H, TILE_W, cellAt, cellToScreen, depthOfCell, topFace } from '
 import {
   ABILITY_MENU_CLOSE_RECT,
   ABILITY_MENU_RECT,
+  BATTLE_REPORT_CLOSE_RECT,
+  BATTLE_REPORT_EXPORT_RECT,
+  BATTLE_REPORT_RECT,
+  BATTLE_REPORT_REOPEN_RECT,
+  BATTLE_REPORT_SCROLL_DOWN_RECT,
+  BATTLE_REPORT_SCROLL_UP_RECT,
   LOG_LINES,
   LOG_TOGGLE_RECT,
+  REPORT_LINES,
   abilityMenuRowIndexAt,
   buttonIndexAt,
   COUNTDOWN_LINK_RECT,
@@ -106,6 +116,7 @@ import {
   HIGHLIGHT_MOVE_COLOR,
 } from '../view/theme';
 import { BODY_HEIGHT, SPRITE_SIZE } from '../view/unit-look';
+import { download } from './download';
 import { playEffect, playImpact } from './effects';
 import { MapView } from './map/MapView';
 import { boardMarks } from './map/marks';
@@ -202,6 +213,12 @@ export class MatchScene extends Phaser.Scene {
   /** The timer of the long press, which the rules of `game/press.ts` decide when to arm (EA-6, D4). */
   private pressTimer: Phaser.Time.TimerEvent | null = null;
   /**
+   * The cell an aim is being previewed over, or null while none is (EA-18): a mouse hover, or a
+   * finger held long enough while `Atacar`/`Habilidade` is armed. It is a question the scene is
+   * holding, not a property of the match, so it is never sent anywhere.
+   */
+  private previewCell: Cell | null = null;
+  /**
    * The gestures of the match, by their own rules (DT-79, DT-84): the fingers that are down, the press
    * waiting on its own lift and the drag the map follows. The scene asks it what a pointer event means
    * and does that; nothing of the rule itself is written down here.
@@ -217,6 +234,15 @@ export class MatchScene extends Phaser.Scene {
   private logLines: string[] = [];
   /** Whether the log is showing every line it keeps, or only its header and the last one (Q3). */
   private logOpen = false;
+  /**
+   * The whole match, one line per event, never trimmed (EA-17): what the battle report reads, kept
+   * apart from `logLines`, which is only ever the dashboard's last six.
+   */
+  private fullLogLines: string[] = [];
+  /** Whether the battle report is on the screen. Opens on its own the moment the match ends (EA-17). */
+  private battleReportOpen = false;
+  /** How far the report has scrolled, in lines from the top. */
+  private reportScroll = 0;
   /** Set when the match is over or lost, after which clicks are ignored. */
   private finished = false;
   /** True while waiting for a reconnection, so the first state that arrives can clear the notice. */
@@ -270,6 +296,7 @@ export class MatchScene extends Phaser.Scene {
     this.inspectedId = null;
     this.disarmLongPress();
     this.gestures.cancel();
+    this.previewCell = null;
     this.pinchFrom = 0;
     this.pinchZoom = MIN_ZOOM;
     // Switching maps resets the view to N, so a match never opens from a side the last one was left on.
@@ -277,6 +304,9 @@ export class MatchScene extends Phaser.Scene {
     this.turn = null;
     this.logLines = [];
     this.logOpen = false;
+    this.fullLogLines = [];
+    this.battleReportOpen = false;
+    this.reportScroll = 0;
     this.finished = false;
     this.reconnecting = false;
     // The setting is read again on every match: another tab may have changed it since the last one.
@@ -326,7 +356,7 @@ export class MatchScene extends Phaser.Scene {
     // because a finger lost mid-gesture — a call, a system gesture — must not leave the map stuck.
     this.game.canvas.addEventListener('pointercancel', this.onPointerCancel);
     this.input.on('wheel', (pointer: Phaser.Input.Pointer, _objects: unknown, _dx: number, dy: number) => {
-      this.stepZoom(dy < 0 ? 1 : -1, { x: pointer.x, y: pointer.y });
+      this.handleWheel(pointer, dy);
     });
     this.input.keyboard?.on('keydown', (event: KeyboardEvent) => {
       const centre = { x: this.scale.width / 2, y: this.scale.height / 2 };
@@ -394,12 +424,24 @@ export class MatchScene extends Phaser.Scene {
    */
   private armLongPress(pointer: Phaser.Input.Pointer): void {
     this.disarmLongPress();
-    this.pressTimer = this.time.delayedCall(LONG_PRESS_MS, () => {
-      // The timer is spent, and taking the press down here is what keeps the release that follows from
-      // clicking as well: one gesture, one meaning (D4).
-      this.pressTimer = null;
-      if (this.gestures.longPress().kind === 'inspect') this.handlePress(pointer, true);
-    });
+    this.pressTimer = this.time.delayedCall(LONG_PRESS_MS, () => this.triggerLongPress(pointer));
+  }
+
+  /**
+   * The timer is spent: a finger that rested long enough is either previewing a shot or inspecting a
+   * unit, never both. While `Atacar` or `Habilidade` is armed the hold is the touch answer to a hover
+   * (EA-18, D1) — the odds are shown and nothing else happens, so a lift never taps as well (D4) and
+   * the player presses again to actually commit the shot. Any other mode keeps today's inspection.
+   */
+  private triggerLongPress(pointer: Phaser.Input.Pointer): void {
+    this.pressTimer = null;
+    if (this.gestures.longPress().kind !== 'inspect') return;
+
+    if (this.mode === 'attack' || this.mode === 'ability') {
+      this.updatePreview(pointer);
+      return;
+    }
+    this.handlePress(pointer, true);
   }
 
   private disarmLongPress(): void {
@@ -411,12 +453,16 @@ export class MatchScene extends Phaser.Scene {
    * A pointer moves. Two of them pinch the map; one of them drags it, and the drag begins only once the
    * gesture is no longer a tap — which is also when the press waiting under it is taken down, so a
    * click never nudges the map and panning never picks a cell by accident (EA-12).
+   *
+   * A mouse with no button down is a hover (EA-18): the touch answer is the long press above, so this
+   * is the one outcome a finger never reports.
    */
   private handlePointerMove(pointer: Phaser.Input.Pointer): void {
     const outcome = this.gestures.move(pressPointer(pointer));
     if (!this.gestures.waiting()) this.disarmLongPress();
 
-    if (outcome.kind === 'pinch') this.pinchTo(outcome.pinch);
+    if (outcome.kind === 'hover') this.updatePreview(pointer);
+    else if (outcome.kind === 'pinch') this.pinchTo(outcome.pinch);
     else if (outcome.kind === 'pan') {
       // The one place the drag sensitivity is read: the travel is the whole of it from where the finger
       // went down, so scaling it scales the gesture and never accumulates. The keys call the camera
@@ -430,6 +476,9 @@ export class MatchScene extends Phaser.Scene {
    * A pointer lifts, or the browser takes it away. Lifting one finger of a pinch ends the pinch, and the
    * zoom settles onto a whole step. A gesture that stayed a tap is an ordinary click, and it acts; one
    * that travelled was panning the map, and it does nothing else (D4, EA-12).
+   *
+   * A lift that was not a tap also takes the preview down (EA-18): a mouse that clicked through it is
+   * about to redraw the board anyway, and a finger that held it is no longer resting on anything.
    */
   private handlePointerUp(pointer: Phaser.Input.Pointer): void {
     const outcome = this.gestures.up(pressPointer(pointer));
@@ -437,6 +486,92 @@ export class MatchScene extends Phaser.Scene {
     this.endPinch();
 
     if (outcome.kind === 'tap') this.handlePress(pointer, false);
+    else this.setPreviewCell(null);
+  }
+
+  /**
+   * Reads which cell a hover or a held finger is over, the way a press itself does, and keeps it only
+   * while an aim could read it: the view must not be mid-turn (DT-86), and a mode with nothing to aim
+   * has nothing to preview.
+   */
+  private updatePreview(pointer: Phaser.Input.Pointer): void {
+    const state = this.state;
+    if (state === null || this.turn !== null || (this.mode !== 'attack' && this.mode !== 'ability')) {
+      this.setPreviewCell(null);
+      return;
+    }
+
+    const world = { x: pointer.worldX, y: pointer.worldY };
+    const hit = unitAtPoint(this.inView(state.units), world, this.spriteLayout);
+    const view =
+      hit?.position ??
+      cellAt(world, this.map?.size ?? state.board, (candidate) => this.levelAt(candidate), this.lift);
+
+    this.setPreviewCell(view === null ? null : this.mapCell(view));
+  }
+
+  /** Keeps the cell the preview is asking about, and redraws only the badges it can change (D2). */
+  private setPreviewCell(cell: Cell | null): void {
+    const before = this.previewCell;
+    const same = before === null ? cell === null : cell !== null && before.x === cell.x && before.y === cell.y;
+    if (same) return;
+
+    this.previewCell = cell;
+    this.drawTargetPreview(this.state);
+  }
+
+  /**
+   * The odds the preview cell asks about, read fresh every time: a basic attack against whoever stands
+   * there, or every living body an armed ability would reach from it (EA-18). Never a cell the current
+   * highlight would not legally offer — the badge is a readout of a shot the player could take, not a
+   * hint about one they could not.
+   */
+  private targetPreviewChances(state: PublicState): ReadonlyMap<string, number> {
+    const previewCell = this.previewCell;
+    if (previewCell === null || (this.mode !== 'attack' && this.mode !== 'ability')) return new Map();
+
+    const acting = state.units.find((unit) => unit.id === this.selectedId);
+    if (acting === undefined || acting.defeated || state.initiative[state.currentIndex] !== acting.id) {
+      return new Map();
+    }
+
+    const legalCells = highlightedCells({
+      state,
+      selectedId: this.selectedId,
+      inspectedId: this.inspectedId,
+      mode: this.mode,
+      humanTeam: HUMAN_TEAM,
+      abilityId: this.armedAbilityId,
+    });
+    if (!legalCells.some((cell) => cell.x === previewCell.x && cell.y === previewCell.y)) return new Map();
+
+    if (this.mode === 'attack') {
+      const target = state.units.find(
+        (unit) =>
+          !unit.permanentlyDead &&
+          unit.position.x === previewCell.x &&
+          unit.position.y === previewCell.y,
+      );
+      if (target === undefined || target.defeated || target.team === HUMAN_TEAM) return new Map();
+
+      return new Map([[target.id, attackChance(state, acting, target)]]);
+    }
+
+    const abilityId = this.armedAbilityId ?? acting.abilities.activeSets[0];
+    const ability = abilityId === null ? undefined : abilityById(state.catalog, abilityId);
+    if (ability === undefined) return new Map();
+
+    return abilityChances(state, acting, ability, previewCell);
+  }
+
+  /** Writes the odds over every sprite's head, or takes them all down while nothing is being aimed. */
+  private drawTargetPreview(state: PublicState | null): void {
+    const chances = state === null ? new Map<string, number>() : this.targetPreviewChances(state);
+
+    for (const [id, sprite] of this.sprites) {
+      const chance = chances.get(id);
+      sprite.setHitChanceBadge(chance === undefined ? null : t('hud.target.chance', { value: chance }));
+    }
   }
 
   /**
@@ -574,11 +709,25 @@ export class MatchScene extends Phaser.Scene {
     const point = { x: pointer.x, y: pointer.y };
     const world = { x: pointer.worldX, y: pointer.worldY };
 
-    if (this.finished && containsPoint(RESULT_BUTTON_RECT, point)) {
-      this.leave();
+    if (this.finished) {
+      // The report is a modal over everything else a finished match shows, including `Sair` itself: a
+      // press outside it only closes it, and the way out works once it is not standing over it (EA-17,
+      // D2 — the same rule the ability menu already follows).
+      if (this.battleReportOpen) {
+        this.pressBattleReport(point);
+        return;
+      }
+      if (containsPoint(RESULT_BUTTON_RECT, point)) {
+        this.leave();
+        return;
+      }
+      if (containsPoint(BATTLE_REPORT_REOPEN_RECT, point)) {
+        this.openBattleReport();
+        return;
+      }
       return;
     }
-    if (this.finished || this.state === null) return;
+    if (this.state === null) return;
 
     const state = this.state;
 
@@ -1102,6 +1251,9 @@ export class MatchScene extends Phaser.Scene {
     if (this.logLines.length > LOG_LINES) {
       this.logLines.splice(0, this.logLines.length - LOG_LINES);
     }
+    // The battle report reads the whole match, so nothing is trimmed here (EA-17): only the dashboard's
+    // own six-line ring forgets a line for good.
+    this.fullLogLines.push(line);
     this.pushHud();
   }
 
@@ -1238,7 +1390,49 @@ export class MatchScene extends Phaser.Scene {
     this.selectedId = null;
     this.statusText = '';
     this.resultText = t(message.winner === HUMAN_TEAM ? 'match.victory' : 'match.defeat');
+    // The whole fight is worth reading back the moment it is decided, not only its last six lines
+    // (EA-17, the owner's own request): the report opens on its own, scrolled to the top.
+    this.battleReportOpen = true;
+    this.reportScroll = 0;
     this.pushHud();
+  }
+
+  /** Opens the report again, scrolled to the top — the way back in from the "Ver registro" link. */
+  private openBattleReport(): void {
+    this.battleReportOpen = true;
+    this.reportScroll = 0;
+    this.pushHud();
+  }
+
+  /** Takes the report off the screen. What it drew is redrawn by whoever called it. */
+  private closeBattleReport(): void {
+    this.battleReportOpen = false;
+  }
+
+  /** A press while the report is open: its X, its chevrons and its export button are its own, and a
+   * press outside it closes it (EA-17, D2). */
+  private pressBattleReport(point: Pixel): void {
+    if (!containsPoint(BATTLE_REPORT_RECT, point) || containsPoint(BATTLE_REPORT_CLOSE_RECT, point)) {
+      this.closeBattleReport();
+      this.pushHud();
+      return;
+    }
+    if (containsPoint(BATTLE_REPORT_SCROLL_UP_RECT, point)) this.scrollBattleReport(-1);
+    else if (containsPoint(BATTLE_REPORT_SCROLL_DOWN_RECT, point)) this.scrollBattleReport(1);
+    else if (containsPoint(BATTLE_REPORT_EXPORT_RECT, point)) this.exportBattleReport();
+  }
+
+  /** Moves the report a few lines, clamped to what it actually holds (EA-17). */
+  private scrollBattleReport(direction: 1 | -1): void {
+    const step = 3;
+    this.reportScroll = clampScroll(this.reportScroll + direction * step, this.fullLogLines.length, REPORT_LINES);
+    this.pushHud();
+  }
+
+  /** Hands the browser the whole match as a plain-text file, through the one I/O seam (EA-17). */
+  private exportBattleReport(): void {
+    const header: BattleReportHeader = { result: this.resultText, endedAt: new Date() };
+    download.text(exportFileName(header.endedAt), exportText(header, this.fullLogLines));
   }
 
   private redraw(state: PublicState): void {
@@ -1310,6 +1504,14 @@ export class MatchScene extends Phaser.Scene {
     // The rows are read here, with the rest of the models, and only while the question is on the screen:
     // a list nobody can see is not worth building (EA-16).
     this.menuModel = this.menuOpen ? this.abilityRows() : [];
+    // Every other mutation already ends up here (a mode change, a state update, the match finishing),
+    // so this is the one place a stale preview is caught and taken down (EA-18). The high-frequency
+    // path, a mouse sweeping the board, goes through `setPreviewCell` instead and skips the rest of
+    // this method's own work.
+    this.drawTargetPreview(this.state);
+    const reportTotal = this.fullLogLines.length;
+    const reportFrom = reportTotal === 0 ? 0 : this.reportScroll + 1;
+    const reportTo = reportTotal === 0 ? 0 : Math.min(this.reportScroll + REPORT_LINES, reportTotal);
     this.hud.render({
       state: this.state,
       humanTeam: HUMAN_TEAM,
@@ -1322,6 +1524,16 @@ export class MatchScene extends Phaser.Scene {
       abilityMenu: { open: this.menuOpen, options: this.menuModel },
       logLines: this.logLines,
       logOpen: this.logOpen,
+      // The full match, read back the moment it ends (EA-17): a window of `fullLogLines`, the range it
+      // covers already worded in the player's language, and whether either chevron still does anything.
+      battleReport: {
+        open: this.battleReportOpen,
+        lines: visibleLines(this.fullLogLines, this.reportScroll, REPORT_LINES),
+        range: t('hud.report.range', { from: reportFrom, to: reportTo, total: reportTotal }),
+        canScrollUp: this.reportScroll > 0,
+        canScrollDown: this.reportScroll + REPORT_LINES < reportTotal,
+        canReopen: this.finished && !this.battleReportOpen,
+      },
       status: this.statusText,
       result: this.resultText,
       wayOutVisible: this.finished,
@@ -1343,6 +1555,20 @@ export class MatchScene extends Phaser.Scene {
         enabled: this.autoEndTurn.enabled,
       },
     });
+  }
+
+  /**
+   * The wheel zooms the map, unless the battle report is open and the wheel is over it — then it
+   * scrolls the report instead (EA-17). The report floats over the board like every other modal, so
+   * its own rectangle is read before the camera's.
+   */
+  private handleWheel(pointer: Phaser.Input.Pointer, dy: number): void {
+    const point = { x: pointer.x, y: pointer.y };
+    if (this.battleReportOpen && containsPoint(BATTLE_REPORT_RECT, point)) {
+      this.scrollBattleReport(dy < 0 ? -1 : 1);
+      return;
+    }
+    this.stepZoom(dy < 0 ? 1 : -1, point);
   }
 
   /**

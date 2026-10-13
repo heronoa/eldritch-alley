@@ -73,6 +73,15 @@ export const CORPSE_OUTLINE_COLOR = PAPER_COLOR;
 export const COVER_BADGE_FILL = PAPER_COLOR;
 export const COVER_BADGE_STROKE = INK_COLOR;
 
+/**
+ * The odds a unit is shown while it is being aimed at (EA-18): the same paper-on-ink pair as the cover
+ * badge, which is the one combination already proven at the outline floor against every tile the
+ * three maps draw. The plan's own first choice — the attack highlight's red — measures under 4:1
+ * against both paper and ink and would read as a warning nobody can actually read.
+ */
+export const HIT_CHANCE_BADGE_FILL = PAPER_COLOR;
+export const HIT_CHANCE_BADGE_STROKE = INK_COLOR;
+
 /** The pips of a basic attack: warm for the rounds of a magazine, cyan for mana (ADR 0011). */
 export const WARM_COLOR = 0xf0d9a0;
 export const MANA_COLOR = 0x3de9ff;

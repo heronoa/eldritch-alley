@@ -140,6 +140,13 @@ export const enUS: Record<MessageKey, string> = {
   'hud.settings.panSensitivity': 'Map drag',
   'hud.settings.panSensitivity.value': '{percent}%',
   'hud.settings.highlightCovers': 'Highlight Covers',
+  // The battle report (EA-17): the modal that opens the moment a match ends.
+  'hud.report.title': 'Battle log',
+  'hud.report.export': 'Download .txt',
+  'hud.report.reopen': 'View full log',
+  'hud.report.range': '{from}-{to} of {total}',
+  // The odds over a unit's head while it is being aimed at (EA-18).
+  'hud.target.chance': '{value}%',
   // The badge a unit in cover wears over its head. The sides are the board's own (m3-02, D1).
   'hud.cover.sides': 'In cover for {sides}',
   'hud.cover.and': ' and ',
