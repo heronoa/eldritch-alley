@@ -17,11 +17,40 @@ export interface Position {
   y: number;
 }
 
+/**
+ * Which way a unit looks, in the board's own frame: east is +x and north is −y, so `'N'` is towards
+ * row 0 (ADR 0014). Mirrors the engine's own type, which the client passes its state back to.
+ */
+export type Facing = 'N' | 'S' | 'E' | 'W';
+
 /** The 8x8 battlefield: `levels` is row-major, so the level of (x, y) is `levels[y * width + x]`. */
 export interface Board {
   width: number;
   height: number;
   levels: readonly number[];
+  /**
+   * What the map places on the board and the rules read (ADR 0012). Optional here because a setup may
+   * leave it out, exactly as the engine's own `Board` does; the board of a state always carries it, and
+   * that is what `BoardState` says.
+   */
+  props?: readonly Prop[];
+}
+
+/** The board of a state: the same grid, with the props the map placed always listed. */
+export interface BoardState extends Board {
+  props: readonly Prop[];
+}
+
+/**
+ * What a prop does to a shot. A `wall` blocks the line of sight; a `cover` prop is chest-high, so the
+ * shot passes over it and the chance to hit pays for it.
+ */
+export type PropKind = 'wall' | 'cover';
+
+/** One prop of the map, at the cell it stands on. At most one prop per cell. */
+export interface Prop {
+  position: Position;
+  kind: PropKind;
 }
 
 /** The six equipment slots. An empty slot is null. */
@@ -40,6 +69,30 @@ export interface Abilities {
   reaction: string | null;
   movement: string | null;
   support: string | null;
+}
+
+/**
+ * What an ability does to the cells it covers (ADR 0016 §2). A damage effect rolls for every living
+ * unit standing on one of them; a heal never rolls and is capped at the unit's `maxHealth`. `radius`
+ * is a Chebyshev distance around the cell the action named, so 0 is that cell alone.
+ */
+export type AbilityEffect =
+  | { kind: 'damage'; amount: number; radius: number; ignoresCover: boolean }
+  | { kind: 'heal'; amount: number; radius: number };
+
+/**
+ * One ability, as plain data (ADR 0016 §1). The engine never learns a class or an ability name: the id
+ * is an opaque string a unit's own slots are read for, and what it costs and reaches is a number.
+ */
+export interface AbilityDefinition {
+  id: string;
+  /** Points of the caster's own pool the use spends (ADR 0002, ADR 0011). */
+  cost: number;
+  /** Reach in Chebyshev distance, read from the caster to the target cell. */
+  range: number;
+  /** Whether the target cell has to be in sight. A definition that needs none reaches through a wall. */
+  needsSight: boolean;
+  effect: AbilityEffect;
 }
 
 /** What a unit may climb in one step, and what a climb costs. Mirrors the engine's profile. */
@@ -93,6 +146,12 @@ export type ResourceKind = 'ammo' | 'mana';
 export interface UnitState extends Unit {
   /** What the unit may climb: every unit of a match carries one, so the preview can walk it. */
   movementProfile: MovementProfile;
+  /**
+   * Which way the unit looks, in the board's own frame: east is +x and north is −y (ADR 0014). The
+   * engine carries one on every unit in a match and this mirror has to follow it, because the client
+   * hands its own state back to the engine's `findPath`, `attackArea` and `canStillAct`.
+   */
+  facing: Facing;
   /** Which pool the unit's basic attack spends, or null for a unit that carries none. */
   resourceKind: ResourceKind | null;
   /** HP the unit entered the match with. The ceiling for `health`. */
@@ -118,7 +177,12 @@ export interface PendingMove {
 /** The state a client may see: the whole match except the random source. */
 export interface PublicState {
   seed: number;
-  board: Board;
+  board: BoardState;
+  /**
+   * The definitions every use is resolved from (ADR 0016 §3). Always present, the way `board.props` is,
+   * because it travels in the state and the client reads it to paint the reach of an armed ability.
+   */
+  catalog: readonly AbilityDefinition[];
   units: UnitState[];
   /** Ids of the units still in play, in turn order. */
   initiative: UnitId[];
@@ -141,6 +205,8 @@ export interface PublicState {
 export type Action =
   | { type: 'move'; actor: UnitId; to: Position }
   | { type: 'attack'; actor: UnitId; target: UnitId }
+  /** Uses an ability the actor carries, aimed at a cell rather than at a unit (ADR 0016 §5). */
+  | { type: 'useAbility'; actor: UnitId; abilityId: string; to: Position }
   | { type: 'reload'; actor: UnitId }
   /** The round it was decided on, so one that arrives late ends nobody's turn (ADR 0010, EA-4). */
   | { type: 'endTurn'; actor: UnitId; round: number }
@@ -159,6 +225,8 @@ export type Event =
       rngState: number;
       /** The pool the attack spent one unit of, or null for a unit that carries none (ADR 0011). */
       resource: ResourceKind | null;
+      /** Whether a `cover` prop stood between the two when the roll was made (ADR 0012). */
+      cover: boolean;
     }
   | {
       type: 'reloaded';
@@ -172,7 +240,29 @@ export type Event =
   | { type: 'move-committed'; actor: UnitId }
   | { type: 'unit-defeated'; target: UnitId }
   | { type: 'corpse-removed'; target: UnitId }
-  | { type: 'turn-ended'; actor: UnitId; next: UnitId; round: number };
+  | { type: 'turn-ended'; actor: UnitId; next: UnitId; round: number }
+  /** The point a magic pool handed back as the turn passed to it (ADR 0017). */
+  | { type: 'regained'; actor: UnitId; resource: ResourceKind; amount: number }
+  /**
+   * The use of an ability: what it cost, where it was aimed, and the rng state its rolls left behind
+   * (ADR 0016 §8). The rolls themselves are not in the event twice: each one is a `damaged` of its own.
+   */
+  | {
+      type: 'ability-used';
+      actor: UnitId;
+      abilityId: string;
+      to: Position;
+      rngState: number;
+      /** The pool the use spent, or null for a caster that carries none (ADR 0011). */
+      resource: ResourceKind | null;
+    }
+  /**
+   * One roll of a damage effect, for one living unit standing on a cell it covered. A roll that missed
+   * is emitted too, with a damage of zero: the player is told a body was in the blast.
+   */
+  | { type: 'damaged'; target: UnitId; hit: boolean; damage: number }
+  /** What a heal gave back, capped at the unit's `maxHealth` (ADR 0016 §8). */
+  | { type: 'healed'; target: UnitId; amount: number };
 
 /** Why an action was refused. A refused action never changes the state and never produces an event. */
 export type RejectReason =
@@ -185,6 +275,8 @@ export type RejectReason =
   | 'target-out-of-range'
   | 'no-line-of-sight'
   | 'target-invalid'
+  /** An ability the caster's own slots do not name, or the catalog does not define (ADR 0016 §7). */
+  | 'ability-unknown'
   | 'no-magazine'
   /** A basic attack whose pool is empty: the ammunition of a weapon class, the mana of a magic one. */
   | 'no-ammunition'
@@ -214,8 +306,15 @@ export type RejectReason =
  * and `no-ammunition` and `no-mana` join the refusals (EA-14, ADR 0011). The refill of the pool is
  * one action for both kinds, so `reloaded` carries the pool it refilled as well: the log names the
  * reload of a magazine apart from the meditation of a magic class.
+ * Version 10: abilities as data (ADR 0016). The number is the record's, not the next one after 6:
+ * versions 8 and 9 belong to the records that landed between this constant and it — facing and height
+ * (ADR 0014, ADR 0015) and mana regeneration (ADR 0017) — and none of them reached this constant, so
+ * everything they added to the wire arrives with this bump. (This mirror is still missing m3-02's
+ * `faced` event and the direction a shot was thrown in; the server has sent both since version 8.) The
+ * state carries the match's `catalog`, the client sends `useAbility` naming a cell, the events
+ * `ability-used`, `damaged` and `healed` join the batch, and `ability-unknown` joins the refusals.
  */
-export const PROTOCOL_VERSION = 6;
+export const PROTOCOL_VERSION = 10;
 
 /** The single room type of M2-a. One room is one match. */
 export const ROOM_NAME = 'battle';
@@ -240,6 +339,12 @@ export const MESSAGE = {
 export type ClientAction =
   | { type: 'move'; to: Position }
   | { type: 'attack'; target: UnitId }
+  /**
+   * Uses an ability the unit on turn carries, aimed at a cell rather than at a unit (ADR 0016 §5). The
+   * server fills the actor in like it does for every other action, so the client chooses the ability and
+   * the cell and never the caster.
+   */
+  | { type: 'useAbility'; abilityId: string; to: Position }
   | { type: 'reload' }
   /** The round it was decided on, so one that arrives late ends nobody's turn (ADR 0010, EA-4). */
   | { type: 'endTurn'; round: number }

@@ -1,14 +1,22 @@
 import { describe, expect, it } from 'vitest';
 import { newMatch, publicState } from './match';
-import type { Board, MatchSetup, MatchState, Team, Unit } from './types';
+import type { Board, MatchSetup, MatchState, Prop, Team, Unit } from './types';
 
-function makeBoard(heights: Record<string, number> = {}): Board {
+function makeBoard(heights: Record<string, number> = {}, props: readonly Prop[] = []): Board {
   const levels = new Array<number>(64).fill(0);
   for (const [key, level] of Object.entries(heights)) {
     const [x, y] = key.split(',').map(Number);
     levels[y * 8 + x] = level;
   }
-  return { width: 8, height: 8, levels };
+  return { width: 8, height: 8, levels, props };
+}
+
+function coverAt(x: number, y: number): Prop {
+  return { position: { x, y }, kind: 'cover' };
+}
+
+function wallAt(x: number, y: number): Prop {
+  return { position: { x, y }, kind: 'wall' };
 }
 
 function makeUnit(overrides: Partial<Unit> & Pick<Unit, 'id' | 'team' | 'position'>): Unit {
@@ -119,6 +127,59 @@ describe('newMatch', () => {
     expect(state.board.levels).toEqual(setup.map.levels);
     expect(state.board.levels).not.toBe(setup.map.levels);
   });
+
+  it('carries the props of the board, and answers an empty list when the setup left them out', () => {
+    // The setup may leave `props` out, the way it may leave `movementProfile` out of a unit; the board
+    // inside a match always carries one, the way `UnitState` always carries a profile.
+    const bare: Board = { width: 8, height: 8, levels: new Array<number>(64).fill(0) };
+    expect(newMatch(makeSetup({ map: bare })).board.props).toEqual([]);
+
+    const props = [coverAt(3, 3), wallAt(5, 5)];
+    expect(newMatch(makeSetup({ map: makeBoard({}, props) })).board.props).toEqual(props);
+  });
+
+  it('copies the props instead of aliasing the setup', () => {
+    const setup = makeSetup({ map: makeBoard({}, [coverAt(3, 3)]) });
+    const state = newMatch(setup);
+
+    expect(state.board.props).toEqual(setup.map.props);
+    expect(state.board.props).not.toBe(setup.map.props);
+  });
+
+  it('accepts a wall on the cell a unit stands on, which is the limit of the blocking rule', () => {
+    // Only the cells strictly between the two ends block (`sight.ts`), so a wall under a unit is a
+    // wall it stands on. That is a board the engine plays rather than a board it refuses.
+    const setup = makeSetup({ map: makeBoard({}, [wallAt(0, 0)]) });
+
+    expect(() => newMatch(setup)).not.toThrow();
+    expect(newMatch(setup).board.props).toEqual([wallAt(0, 0)]);
+  });
+
+  it('opens every unit facing its own side of the map (decision D1)', () => {
+    const state = newMatch(
+      makeSetup({}, [
+        makeUnit({ id: 'a1', team: 'A', position: { x: 0, y: 0 }, speed: 9 }),
+        makeUnit({ id: 'a2', team: 'A', position: { x: 3, y: 5 }, speed: 7 }),
+        makeUnit({ id: 'b1', team: 'B', position: { x: 4, y: 0 }, speed: 5 }),
+        makeUnit({ id: 'b2', team: 'B', position: { x: 7, y: 5 }, speed: 3 }),
+      ]),
+    );
+
+    // The left half of the board looks east, towards the middle, and the right half looks west.
+    expect(state.units.map((unit) => unit.facing)).toEqual(['E', 'E', 'W', 'W']);
+  });
+
+  it('reads the opening facing from the spawn alone, so the seed does not move it', () => {
+    const units = [
+      makeUnit({ id: 'a1', team: 'A', position: { x: 1, y: 4 }, speed: 9 }),
+      makeUnit({ id: 'b1', team: 'B', position: { x: 6, y: 4 }, speed: 5 }),
+    ];
+    const openings = (seed: number) =>
+      newMatch(makeSetup({ seed }, units)).units.map((unit) => unit.facing);
+
+    expect(openings(1)).toEqual(['E', 'W']);
+    expect(openings(999)).toEqual(openings(1));
+  });
 });
 
 describe('newMatch validation', () => {
@@ -184,6 +245,18 @@ describe('newMatch validation', () => {
     {
       name: 'a seed above the unsigned 32-bit range',
       setup: makeSetup({ seed: 0x100000000 }),
+    },
+    {
+      name: 'a prop outside the board',
+      setup: makeSetup({ map: makeBoard({}, [coverAt(8, 0)]) }),
+    },
+    {
+      name: 'a prop on a cell that is not whole',
+      setup: makeSetup({ map: makeBoard({}, [coverAt(1.5, 0)]) }),
+    },
+    {
+      name: 'two props on the same cell',
+      setup: makeSetup({ map: makeBoard({}, [coverAt(3, 3), wallAt(3, 3)]) }),
     },
   ];
 

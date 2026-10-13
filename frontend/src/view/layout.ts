@@ -81,7 +81,7 @@ export const DASHBOARD_RECT: Rect = {
   height: DASHBOARD_HEIGHT,
 };
 
-/** The action bar: four buttons, `Mover` / `Atacar` / `Recarregar` / `Terminar turno`. */
+/** The action bar: five buttons, `Mover` / `Atacar` / `Habilidade` / `Recarregar` / `Terminar turno`. */
 export const ACTION_BAR_RECT: Rect = {
   x: CENTRED_X,
   y: DASHBOARD_RECT.y + 12,
@@ -89,8 +89,8 @@ export const ACTION_BAR_RECT: Rect = {
   height: 56,
 };
 
-/** Four buttons and three gaps fill the bar exactly. */
-export const ACTION_BUTTON = { width: 184, height: 56, gap: 16 };
+/** Five buttons and four gaps fill the bar exactly, which is what narrows a button from 184 to 144. */
+export const ACTION_BUTTON = { width: 144, height: 56, gap: 16 };
 
 /** How wide and how tall one of the two cells of the dashboard that hold a number is. */
 export const DASHBOARD_CELL = { width: 208, height: ACTION_BAR_RECT.height, inset: 12 };
@@ -338,8 +338,8 @@ export function buttonRect(index: number): Rect {
   };
 }
 
-/** How many buttons the action bar holds: Mover, Atacar, Recarregar, Terminar turno. */
-export const ACTION_BUTTONS = 4;
+/** How many buttons the action bar holds: Mover, Atacar, Habilidade, Recarregar, Terminar turno. */
+export const ACTION_BUTTONS = 5;
 
 /**
  * Whether a point of the canvas is inside a rectangle. Half-open, like `cellAt`'s top faces: the far
@@ -434,6 +434,64 @@ export function inspectRowPoint(index: number): Pixel {
 export const INSPECT_VALUE_X = INSPECT_RECT.x + INSPECT_RECT.width - PADDING;
 
 /**
+ * How many rows the menu is built for. One, because the engine reads one active slot (ADR 0016 §6): the
+ * panel is a fixed rectangle a scene builds once, so this is both how tall it is drawn and how many rows
+ * its press reads (D6). A second slot means this number and the model behind it, and nothing else.
+ */
+export const ABILITY_MENU_ROWS = 1;
+
+/** How tall one row is: the name with its cost, and the effect line under them. */
+export const ABILITY_MENU_ROW = 56;
+
+/** How far under the close button the first row starts, the way the rows of the sheet do. */
+const ABILITY_MENU_ROWS_TOP = PADDING + INSPECT_CLOSE + 8;
+
+/**
+ * The ability menu (EA-16): the question the `Habilidade` button asks before the aim opens. It floats
+ * over the board in the same column and at the same height as the inspection window, because both are
+ * the board's own overlays and the eye should not travel between them — and the menu closes the sheet,
+ * so the two are never on the screen at once (D2).
+ *
+ * Like the sheet, it is deliberately not one of `hudRects`: the scene reads it before every other
+ * overlay, and while it stands it swallows every press of the canvas.
+ */
+export const ABILITY_MENU_RECT: Rect = {
+  x: INSPECT_RECT.x,
+  y: INSPECT_RECT.y,
+  width: INSPECT_RECT.width,
+  height: ABILITY_MENU_ROWS_TOP + ABILITY_MENU_ROWS * ABILITY_MENU_ROW + PADDING,
+};
+
+/** The box of the close button: the top-right corner, where the sheet's own X is. */
+export const ABILITY_MENU_CLOSE_RECT: Rect = {
+  x: ABILITY_MENU_RECT.x + ABILITY_MENU_RECT.width - PADDING - INSPECT_CLOSE,
+  y: ABILITY_MENU_RECT.y + PADDING,
+  width: INSPECT_CLOSE,
+  height: INSPECT_CLOSE,
+};
+
+/** The rectangle of the nth row of the menu, counting from the top. */
+export function abilityMenuRowRect(index: number): Rect {
+  return {
+    x: ABILITY_MENU_RECT.x + PADDING,
+    y: ABILITY_MENU_RECT.y + ABILITY_MENU_ROWS_TOP + index * ABILITY_MENU_ROW,
+    width: ABILITY_MENU_RECT.width - 2 * PADDING,
+    height: ABILITY_MENU_ROW,
+  };
+}
+
+/**
+ * The row of the menu under a point, or null when the point is on none of them. The title, the close
+ * button and the gaps between the rows are the panel's own, and only a row arms anything.
+ */
+export function abilityMenuRowIndexAt(point: Pixel): number | null {
+  for (let index = 0; index < ABILITY_MENU_ROWS; index += 1) {
+    if (containsPoint(abilityMenuRowRect(index), point)) return index;
+  }
+  return null;
+}
+
+/**
  * The camera panel (EA-12): the two buttons that turn the view with the view they are looking from, the
  * two that zoom with the step they are on, and the one that brings the map back to the middle of the
  * canvas. It floats over the board at the top of the right column, against the edge, the way the
@@ -503,16 +561,16 @@ export function cameraControlAt(point: Pixel): CameraControl | null {
 }
 
 /**
- * The panel the gear opens (EA-4): a title and two rows — the automatic end of turn, and the drag
- * sensitivity the owner asked to have in his hands. It opens under the camera panel, which is the one
- * place in the right column that overlaps nothing: the top of the column belongs to the camera, the
- * corner to the gear, and this popup to the space below them both.
+ * The panel the gear opens (EA-4): a title and three rows — the automatic end of turn, the drag
+ * sensitivity the owner asked to have in his hands, and the marks of the rules. It opens under the
+ * camera panel, which is the one place in the right column that overlaps nothing: the top of the
+ * column belongs to the camera, the corner to the gear, and this popup to the space below them both.
  */
 export const SETTINGS_PANEL_RECT: Rect = {
   x: RIGHT_COLUMN_X,
   y: CAMERA_RECT.y + CAMERA_RECT.height + PADDING,
   width: COLUMN_WIDTH,
-  height: TITLE_HEIGHT + 2 * PANEL_ROW_HEIGHT + PADDING,
+  height: TITLE_HEIGHT + 3 * PANEL_ROW_HEIGHT + PADDING,
 };
 
 /** The first row of that panel: the toggle of "Passar o turno automaticamente". */
@@ -566,4 +624,79 @@ export const SETTINGS_PAN_VALUE_RECT: Rect = {
 export const SETTINGS_PAN_PLUS_RECT: Rect = {
   ...SETTINGS_PAN_MINUS_RECT,
   x: SETTINGS_PAN_MINUS_RECT.x + SETTINGS_STEPPER_BUTTON + SETTINGS_STEPPER_VALUE_WIDTH,
+};
+
+/**
+ * The third row: the checkbox of "Realçar Coberturas", which draws or hides the diamonds that mark
+ * the cells carrying cover (ADR 0012). The whole row is the press, not the box alone — the label is
+ * what the player aims at — so the row is what the scene reads.
+ */
+export const SETTINGS_COVERS_ROW_RECT: Rect = {
+  ...SETTINGS_TOGGLE_RECT,
+  y: SETTINGS_PAN_ROW_RECT.y + PANEL_ROW_HEIGHT,
+};
+
+/**
+ * EA-17: the battle report that opens the moment a match ends. It is the whole log, not the
+ * dashboard's six lines, so it gets a panel of its own — centred over the board, the same fixed
+ * rectangle the sheet and the ability menu already use, closed by its own X and by a press outside it
+ * (the scene's own D2).
+ */
+export const BATTLE_REPORT_RECT: Rect = { x: 320, y: 100, width: 640, height: 520 };
+
+export const BATTLE_REPORT_CLOSE_RECT: Rect = {
+  x: BATTLE_REPORT_RECT.x + BATTLE_REPORT_RECT.width - PADDING - INSPECT_CLOSE,
+  y: BATTLE_REPORT_RECT.y + PADDING,
+  width: INSPECT_CLOSE,
+  height: INSPECT_CLOSE,
+};
+
+/** How many lines of the report show at once; the rest are reached by scrolling. */
+export const REPORT_LINES = 14;
+const REPORT_LINE_HEIGHT = 22;
+const REPORT_SCROLL_BUTTON = 28;
+
+/** How far under the close button the list starts, the way the sheet's own rows do. */
+const BATTLE_REPORT_LIST_TOP = PADDING + INSPECT_CLOSE + 8;
+
+/** Where the list of lines sits: under the title, clear of the scroll buttons at its right. */
+export const BATTLE_REPORT_LIST_RECT: Rect = {
+  x: BATTLE_REPORT_RECT.x + PADDING,
+  y: BATTLE_REPORT_RECT.y + BATTLE_REPORT_LIST_TOP,
+  width: BATTLE_REPORT_RECT.width - 2 * PADDING - REPORT_SCROLL_BUTTON - 8,
+  height: REPORT_LINES * REPORT_LINE_HEIGHT,
+};
+
+/** The two chevrons that scroll the list, stacked at its right edge. */
+export const BATTLE_REPORT_SCROLL_UP_RECT: Rect = {
+  x: BATTLE_REPORT_LIST_RECT.x + BATTLE_REPORT_LIST_RECT.width + 8,
+  y: BATTLE_REPORT_LIST_RECT.y,
+  width: REPORT_SCROLL_BUTTON,
+  height: REPORT_SCROLL_BUTTON,
+};
+
+export const BATTLE_REPORT_SCROLL_DOWN_RECT: Rect = {
+  x: BATTLE_REPORT_SCROLL_UP_RECT.x,
+  y: BATTLE_REPORT_LIST_RECT.y + BATTLE_REPORT_LIST_RECT.height - REPORT_SCROLL_BUTTON,
+  width: REPORT_SCROLL_BUTTON,
+  height: REPORT_SCROLL_BUTTON,
+};
+
+/** The download button, along the bottom edge of the panel. */
+export const BATTLE_REPORT_EXPORT_RECT: Rect = {
+  x: BATTLE_REPORT_RECT.x + PADDING,
+  y: BATTLE_REPORT_RECT.y + BATTLE_REPORT_RECT.height - PADDING - 44,
+  width: 200,
+  height: 44,
+};
+
+/**
+ * The link that reopens the report after it is closed, under the way-out button — closing the report
+ * is not a dead end (EA-17, D1).
+ */
+export const BATTLE_REPORT_REOPEN_RECT: Rect = {
+  x: RESULT_BUTTON_RECT.x,
+  y: RESULT_BUTTON_RECT.y + RESULT_BUTTON_RECT.height + 12,
+  width: RESULT_BUTTON_RECT.width,
+  height: 32,
 };

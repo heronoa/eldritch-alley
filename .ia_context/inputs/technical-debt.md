@@ -107,6 +107,23 @@ Planned features are not debt: they live in [backlog.md](./backlog.md).
 - **Trigger:** if a profile on iOS or Android shows dropped frames during a rotation.
 - **Evidence:** `frontend/src/scenes/map/RotationView.ts:82-114`.
 
+### DT-89 · `propAt` scans the prop list linearly on every cell read
+
+- **Category:** Performance
+- **Risk if untreated:** `hasLineOfSight` calls it per cell on the line and `coverFor` up to eight times per shot, so the cost of a shot grows with the number of props. Irrelevant on the current maps (≤27 props), and it stays silent if the map data densifies.
+- **Effort:** P
+- **Trigger:** a prop count sustained above ~100, or a profile showing `coverFor`/`hasLineOfSight` on a hot path.
+- **Evidence:** `backend/engine/src/board.ts:38-43`; found in the m3-01 cover review (commit `bbd8865`).
+
+### DT-90 · BUG: Vite's dev-server pre-bundle cache does not follow a workspace package's new exports
+
+- **Category:** Build / Architecture (design)
+- **Severity:** serious while it lasts — the symptom reads as a feature being entirely broken (nothing is thrown that a player sees; a `[pageerror]` fires silently in the console the moment the code path is actually exercised, and the UI shows nothing instead of what was built).
+- **Risk if untreated:** `frontend/node_modules/.vite/deps/@eldritch-alley_engine.js` is a CommonJS bundle Vite produces once and reuses across `npm run dev` restarts; it is keyed by `@eldritch-alley/engine`'s `package.json`, not by its `dist/` output. Adding a new named export to `backend/engine/src/index.ts` and rebuilding the package (`npm run build -w @eldritch-alley/engine`) does not invalidate it, so the dev server keeps serving the stale bundle indefinitely — in this case from 2026-10-08, four commits and five days before the symptom surfaced. Importing the new export from the frontend type-checks and passes every Vitest suite (Vitest resolves the workspace package from its real `dist/`, not from Vite's dev cache), so nothing in `npm test` or `npm run typecheck` catches it. It only throws (`"<name> is not a function"`) the first time a real browser session reaches the code path that calls the new export, which can be well after the feature looked finished.
+- **Effort:** P to fix one occurrence (`rm -rf frontend/node_modules/.vite && npm run dev:frontend`); M for a durable fix (e.g. a `predev`/`postbuild` hook on `@eldritch-alley/engine` that clears `frontend/node_modules/.vite`, or moving the engine off `optimizeDeps.include` now that its `dist/` is small).
+- **Trigger:** every time a new export is added to `backend/engine/src/index.ts` (or any workspace package in `optimizeDeps.include`) without restarting the frontend dev server with a cleared `.vite` cache. Already flagged as a risk, informally, in the EA-16 plan's "out of scope" section (§7) when it first became a documented concern; this is the first time it actually broke a shipped feature end to end.
+- **Evidence:** EA-18 (hit-chance preview) added `export { hitChanceFor } from './actions';` to `backend/engine/src/index.ts`. The owner reported the hover preview showing nothing in a live smoke test; a Playwright session against the real dev server reproduced `[pageerror] hitChanceFor is not a function` the moment a target actually came into range (every earlier hover attempt had no target in range yet, so the broken code path was never reached and the bug looked intermittent). `frontend/vite.config.ts`'s `optimizeDeps: { include: ['@eldritch-alley/engine'] }`; the stale file's mtime (`2026-10-08`) predated the export by five days. Fixed by `rm -rf frontend/node_modules/.vite`.
+
 ---
 
 ## Closed

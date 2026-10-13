@@ -3,8 +3,10 @@
 // colour comes from the tested `game/` and `view/` modules, and it never reads the game's state itself.
 import Phaser from 'phaser';
 import type { ActionButton, ActionMode, MoveChip } from '../game/actions';
+import type { AbilityOption } from '../game/ability-menu';
 import type { AutoEndPhase } from '../game/autoEndTurn';
 import { bannerFor } from '../game/banner';
+import { HIGHLIGHT_COVERS_DEFAULT } from '../game/highlightCovers';
 import { unitSheet } from '../game/inspect-window';
 import { unitPanel, type PanelRow } from '../game/panel';
 import { PAN_SENSITIVITY_DEFAULT } from '../game/panSensitivity';
@@ -13,8 +15,17 @@ import { t } from '../i18n';
 import type { PublicState, Team } from '../protocol';
 import { MIN_ZOOM } from '../view/camera-math';
 import {
+  ABILITY_MENU_CLOSE_RECT,
+  ABILITY_MENU_RECT,
   ACTION_HINT_RECT,
   BANNER_RECT,
+  BATTLE_REPORT_CLOSE_RECT,
+  BATTLE_REPORT_EXPORT_RECT,
+  BATTLE_REPORT_LIST_RECT,
+  BATTLE_REPORT_RECT,
+  BATTLE_REPORT_REOPEN_RECT,
+  BATTLE_REPORT_SCROLL_DOWN_RECT,
+  BATTLE_REPORT_SCROLL_UP_RECT,
   CAMERA_CONTROLS,
   CAMERA_RECT,
   CAMERA_VIEW_RECT,
@@ -36,6 +47,7 @@ import {
   PADDING,
   RESULT_BUTTON_RECT,
   SETTINGS_BUTTON_RECT,
+  SETTINGS_COVERS_ROW_RECT,
   SETTINGS_PANEL_RECT,
   SETTINGS_PAN_MINUS_RECT,
   SETTINGS_PAN_PLUS_RECT,
@@ -43,6 +55,7 @@ import {
   SETTINGS_PAN_VALUE_RECT,
   SETTINGS_TOGGLE_RECT,
   STATUS_RECT,
+  abilityMenuRowRect,
   buttonRect,
   cameraControlRect,
   carouselSlotRect,
@@ -95,6 +108,13 @@ const TOGGLE_LABEL_GAP = 12;
 /** The face of the text of a settings row: the label of the toggle and the reading of the stepper. */
 const ROW_TEXT_STYLE = { fontFamily: FONT_BODY, fontSize: FONT_SIZE.log, color: TEXT_COLOR };
 
+/**
+ * How far into its row the two lines of an ability row start: the name with its cost on the first, the
+ * effect line under them. They add up with the two font sizes to leave the gap under the line.
+ */
+const ABILITY_ROW_TEXT_INSET = 9;
+const ABILITY_ROW_DETAIL_INSET = 31;
+
 /** The radius of the arrow bent round on a rotation button, and of the two circles of the centre mark. */
 const ROTATE_RADIUS = 8;
 const CENTRE_RIM_RADIUS = 9;
@@ -144,6 +164,29 @@ export interface PanSensitivityView {
   canIncrease: boolean;
 }
 
+/**
+ * The ability menu (EA-16), as the match scene has it: whether the question is on the screen, and the
+ * rows it holds. The HUD decides nothing about it — it draws the rows it is handed.
+ */
+export interface AbilityMenuView {
+  open: boolean;
+  options: readonly AbilityOption[];
+}
+
+/**
+ * The battle report (EA-17), as the match scene has it: whether it is on the screen, the window of
+ * lines it is scrolled to, the range already worded in the player's language, which chevron still does
+ * anything, and whether the link that reopens it belongs on the screen at all.
+ */
+export interface BattleReportView {
+  open: boolean;
+  lines: readonly string[];
+  range: string;
+  canScrollUp: boolean;
+  canScrollDown: boolean;
+  canReopen: boolean;
+}
+
 /** Everything the HUD shows at one moment, as the match scene knows it. */
 export interface HudView {
   state: PublicState | null;
@@ -153,6 +196,10 @@ export interface HudView {
   /** The unit whose sheet is open in the inspection window, or null while there is none. */
   inspectedId: string | null;
   mode: ActionMode;
+  /** Whether the ability menu is on the screen, and the rows it asks with (EA-16). */
+  abilityMenu: AbilityMenuView;
+  /** The battle report (EA-17): opens on its own the moment the match ends. */
+  battleReport: BattleReportView;
   finished: boolean;
   buttons: readonly ActionButton[];
   /** The two controls of a pending move, drawn over the board above the Move button (EA-5, D6). */
@@ -168,6 +215,8 @@ export interface HudView {
   autoEndTurn: AutoEndView;
   /** How hard a drag moves the map, as the stepper of the settings prints it (owner's request). */
   panSensitivity: PanSensitivityView;
+  /** Whether the board draws the marks of the rules, as the checkbox of the settings shows (EA-15). */
+  highlightCovers: boolean;
   /** Where the map camera is, as the camera panel prints it (EA-12). */
   camera: CameraPanelView;
 }
@@ -185,6 +234,8 @@ const EMPTY_VIEW: HudView = {
   selectedId: null,
   inspectedId: null,
   mode: 'inspect',
+  abilityMenu: { open: false, options: [] },
+  battleReport: { open: false, lines: [], range: '', canScrollUp: false, canScrollDown: false, canReopen: false },
   finished: false,
   buttons: [],
   moveChips: [],
@@ -196,6 +247,7 @@ const EMPTY_VIEW: HudView = {
   settingsOpen: false,
   autoEndTurn: { phase: 'idle', seconds: 0, enabled: true },
   panSensitivity: { percent: PAN_SENSITIVITY_DEFAULT, canDecrease: true, canIncrease: true },
+  highlightCovers: HIGHLIGHT_COVERS_DEFAULT,
   camera: { view: 'north', zoom: MIN_ZOOM },
 };
 
@@ -210,6 +262,22 @@ export class HudScene extends Phaser.Scene {
   private inspectPanel!: Phaser.GameObjects.Container;
   private inspectClose!: Button;
   private inspectRows!: Phaser.GameObjects.Container;
+  /** The ability menu: its frame, the X that closes it, and the rows drawn inside it (EA-16). */
+  private abilityMenu!: Phaser.GameObjects.Container;
+  private abilityMenuClose!: Button;
+  private abilityMenuRows!: Phaser.GameObjects.Container;
+  /**
+   * The battle report (EA-17): its frame, its X, the window of lines, the range under them, the two
+   * chevrons that scroll it, the export button, and the link that reopens it once it is closed.
+   */
+  private battleReportPanel!: Phaser.GameObjects.Container;
+  private battleReportClose!: Button;
+  private battleReportText!: Phaser.GameObjects.Text;
+  private battleReportRange!: Phaser.GameObjects.Text;
+  private battleReportScrollUp!: Button;
+  private battleReportScrollDown!: Button;
+  private battleReportExport!: Button;
+  private battleReportReopen!: Button;
   private banner!: Banner;
   /**
    * The unit the last drawn state had on turn, so the HUD can tell a hand-over from a redraw of the
@@ -332,6 +400,50 @@ export class HudScene extends Phaser.Scene {
     this.inspectClose = new Button(this, INSPECT_CLOSE_RECT, INSPECT_CLOSE_LABEL).setVisible(false);
     this.inspectRows = this.add.container(0, 0);
 
+    // The ability menu (EA-16): the question the Habilidade button asks before the aim opens. Built like
+    // the sheet and shown the same way — the frame and its X here, the rows from the tested model — and
+    // added after every other overlay because it is a modal and floats over all of them (D2).
+    this.abilityMenu = createPanel(this, ABILITY_MENU_RECT, t('action.ability')).setVisible(false);
+    this.abilityMenuClose = new Button(this, ABILITY_MENU_CLOSE_RECT, INSPECT_CLOSE_LABEL).setVisible(
+      false,
+    );
+    this.abilityMenuRows = this.add.container(0, 0);
+
+    // The battle report (EA-17): opens on its own the moment the match ends, over everything else a
+    // finished match shows — built after the ability menu, the way the menu itself was built after the
+    // sheet, so the most recent modal is the one the player reads last and the scene reads first (D2).
+    this.battleReportPanel = createPanel(this, BATTLE_REPORT_RECT, t('hud.report.title')).setVisible(
+      false,
+    );
+    this.battleReportClose = new Button(this, BATTLE_REPORT_CLOSE_RECT, INSPECT_CLOSE_LABEL).setVisible(
+      false,
+    );
+    this.battleReportText = this.add
+      .text(BATTLE_REPORT_LIST_RECT.x, BATTLE_REPORT_LIST_RECT.y, '', {
+        fontFamily: FONT_BODY,
+        fontSize: FONT_SIZE.log,
+        color: TEXT_COLOR,
+        lineSpacing: 4,
+      })
+      .setVisible(false);
+    const rangeX = BATTLE_REPORT_EXPORT_RECT.x + BATTLE_REPORT_EXPORT_RECT.width + PADDING;
+    const rangeY = BATTLE_REPORT_EXPORT_RECT.y + BATTLE_REPORT_EXPORT_RECT.height / 2;
+    this.battleReportRange = this.add
+      .text(rangeX, rangeY, '', { fontFamily: FONT_BODY, fontSize: FONT_SIZE.log, color: TEXT_COLOR_DISABLED })
+      .setOrigin(0, 0.5)
+      .setVisible(false);
+    this.battleReportScrollUp = new Button(this, BATTLE_REPORT_SCROLL_UP_RECT, '▲').setVisible(false);
+    this.battleReportScrollDown = new Button(this, BATTLE_REPORT_SCROLL_DOWN_RECT, '▼').setVisible(
+      false,
+    );
+    this.battleReportExport = new Button(this, BATTLE_REPORT_EXPORT_RECT, t('hud.report.export')).setVisible(
+      false,
+    );
+    // Beside Sair, not inside the panel: it belongs to the finished match, not to the report (D1).
+    this.battleReportReopen = new Button(this, BATTLE_REPORT_REOPEN_RECT, t('hud.report.reopen')).setVisible(
+      false,
+    );
+
     // Added last: a turn change floats over the panels, and it is gone before the next one comes.
     this.banner = new Banner(this, BANNER_RECT);
 
@@ -420,6 +532,8 @@ export class HudScene extends Phaser.Scene {
     this.drawChips(view.state);
     this.drawDashboard(view.state, view.selectedId);
     this.drawInspection(view.state, view.inspectedId);
+    this.drawAbilityMenu(view);
+    this.drawBattleReport(view.battleReport);
     this.drawButtons(view);
     this.drawMoveChips(view);
     this.drawSettings(view);
@@ -531,6 +645,73 @@ export class HudScene extends Phaser.Scene {
     });
   }
 
+  /**
+   * The ability menu (EA-16): one row per ability the unit on turn carries, each with the word for its
+   * id, the cost in the unit's own pool, and the effect under them. It draws and it asks nothing — the
+   * rows come from the tested model — so the X and the rows are read by the scene above.
+   *
+   * A row the pool cannot pay is drawn dimmed (D3): the player reads the cost and the effect anyway,
+   * which is the whole point of opening the menu with an empty pool.
+   */
+  private drawAbilityMenu(view: HudView): void {
+    const open = view.abilityMenu.open;
+    this.abilityMenu.setVisible(open);
+    this.abilityMenuClose.setVisible(open);
+
+    this.abilityMenuRows.removeAll(true);
+    if (!open) return;
+
+    view.abilityMenu.options.forEach((option, index) => {
+      const row = abilityMenuRowRect(index);
+      const color = option.affordable ? TEXT_COLOR : TEXT_COLOR_DISABLED;
+
+      this.abilityMenuRows.add([
+        this.add.text(row.x, row.y + ABILITY_ROW_TEXT_INSET, option.name, {
+          fontFamily: FONT_BODY,
+          fontSize: FONT_SIZE.unit,
+          color,
+        }),
+        this.add
+          .text(row.x + row.width, row.y + ABILITY_ROW_TEXT_INSET, option.cost, {
+            fontFamily: FONT_BODY,
+            fontSize: FONT_SIZE.unit,
+            color,
+          })
+          .setOrigin(1, 0),
+        // The effect line is the second voice of the row and never the loud one, dimmed row or not.
+        this.add.text(row.x, row.y + ABILITY_ROW_DETAIL_INSET, option.detail, {
+          fontFamily: FONT_BODY,
+          fontSize: FONT_SIZE.log,
+          color: TEXT_COLOR_DISABLED,
+        }),
+      ]);
+    });
+  }
+
+  /**
+   * The battle report (EA-17): the modal that opens the moment a match ends, with the whole log in a
+   * scrollable window, the range it covers, the two chevrons and the export button. It draws and it
+   * asks nothing — the window, the range and which chevron still does anything come from the match
+   * scene — and the link that reopens it is its own, drawn whether or not the panel itself is open.
+   */
+  private drawBattleReport(report: BattleReportView): void {
+    this.battleReportPanel.setVisible(report.open);
+    this.battleReportClose.setVisible(report.open);
+    this.battleReportScrollUp.setVisible(report.open);
+    this.battleReportScrollDown.setVisible(report.open);
+    this.battleReportExport.setVisible(report.open);
+    this.battleReportText.setVisible(report.open);
+    this.battleReportRange.setVisible(report.open);
+    this.battleReportReopen.setVisible(report.canReopen);
+
+    if (!report.open) return;
+
+    this.battleReportText.setText(report.lines.join('\n'));
+    this.battleReportRange.setText(report.range);
+    this.battleReportScrollUp.setEnabled(report.canScrollUp);
+    this.battleReportScrollDown.setEnabled(report.canScrollDown);
+  }
+
   /** One number of the dashboard: its label, its value at the far end, and its bar under both. */
   private drawCell(row: PanelRow, cell: Rect): void {
     const color = row.enabled ? TEXT_COLOR : TEXT_COLOR_DISABLED;
@@ -598,28 +779,37 @@ export class HudScene extends Phaser.Scene {
     this.settingsRows.removeAll(true);
     if (!view.settingsOpen) return;
 
+    this.drawCheckRow(SETTINGS_TOGGLE_RECT, view.autoEndTurn.enabled, t('hud.settings.autoEndTurn'));
+    this.drawPanRow(view);
+    this.drawCheckRow(SETTINGS_COVERS_ROW_RECT, view.highlightCovers, t('hud.settings.highlightCovers'));
+  }
+
+  /**
+   * One row of the settings that is a checkbox and a label: a full box while the setting is on, the
+   * fill of the panel while it is off. Two rows of the panel are these — the automatic end of turn
+   * (EA-4) and the marks of the rules (EA-15) — so they are drawn by one method. The scene reads the
+   * rectangle the row is drawn on, which is the press the player makes.
+   */
+  private drawCheckRow(row: Rect, enabled: boolean, label: string): void {
     const box = this.add
       .rectangle(
-        SETTINGS_TOGGLE_RECT.x,
-        SETTINGS_TOGGLE_RECT.y + (SETTINGS_TOGGLE_RECT.height - TOGGLE_BOX) / 2,
+        row.x,
+        row.y + (row.height - TOGGLE_BOX) / 2,
         TOGGLE_BOX,
         TOGGLE_BOX,
-        view.autoEndTurn.enabled ? PAPER_COLOR : PANEL_FILL,
+        enabled ? PAPER_COLOR : PANEL_FILL,
       )
       .setOrigin(0)
       .setStrokeStyle(1, PANEL_STROKE);
 
-    const label = this.add
-      .text(
-        SETTINGS_TOGGLE_RECT.x + TOGGLE_BOX + TOGGLE_LABEL_GAP,
-        SETTINGS_TOGGLE_RECT.y + SETTINGS_TOGGLE_RECT.height / 2,
-        t('hud.settings.autoEndTurn'),
-        ROW_TEXT_STYLE,
-      )
-      .setOrigin(0, 0.5);
+    const text = this.rowLabel(row.x + TOGGLE_BOX + TOGGLE_LABEL_GAP, row, label);
 
-    this.settingsRows.add([box, label]);
-    this.drawPanRow(view);
+    this.settingsRows.add([box, text]);
+  }
+
+  /** A line of a settings row: the panel's own text style, in the middle of the row it belongs to. */
+  private rowLabel(x: number, row: Rect, label: string): Phaser.GameObjects.Text {
+    return this.add.text(x, row.y + row.height / 2, label, ROW_TEXT_STYLE).setOrigin(0, 0.5);
   }
 
   /**
@@ -633,14 +823,11 @@ export class HudScene extends Phaser.Scene {
    * are drawn on.
    */
   private drawPanRow(view: HudView): void {
-    const panLabel = this.add
-      .text(
-        SETTINGS_PAN_ROW_RECT.x,
-        SETTINGS_PAN_ROW_RECT.y + SETTINGS_PAN_ROW_RECT.height / 2,
-        t('hud.settings.panSensitivity'),
-        ROW_TEXT_STYLE,
-      )
-      .setOrigin(0, 0.5);
+    const panLabel = this.rowLabel(
+      SETTINGS_PAN_ROW_RECT.x,
+      SETTINGS_PAN_ROW_RECT,
+      t('hud.settings.panSensitivity'),
+    );
 
     const value = this.add
       .text(

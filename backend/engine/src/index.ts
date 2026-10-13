@@ -12,6 +12,21 @@ export { hasLineOfSight } from './sight';
 export { findPath, reachableCells } from './movement';
 // And the same for the area of a shot: the client paints the cells the engine says it covers (EA-5).
 export { attackArea } from './attack';
+// And the same for the cells an ability covers (ADR 0016 §11): the highlight the client paints is the
+// function the server reads to decide who the effect reaches, so the two cannot disagree.
+export { abilityById, abilityCells } from './abilities';
+// And the same for what the board carries: the client marks the cells the rules call cover or wall
+// from the state, so what the player aims at is what the server applies (ADR 0012).
+export { propAt, propsOf } from './board';
+export { COVER_HIT_PENALTY, coverFor } from './cover';
+// And the same for how far a shot reaches and where it lands from: the reach is a property of the
+// pair and the relief of the board (ADR 0015), and the direction is read against the target's own
+// facing (ADR 0014). The client asks the engine rather than reading the tables on its own.
+export { attackDirection } from './facing';
+export { effectiveRange } from './height';
 // And the same for the whole turn: the client ends a turn nobody can use by itself (EA-4), and the
 // question has to be the engine's so the two sides answer it alike.
 export { canStillAct } from './actions';
+// And the same for the odds of a shot: the client reads the chance before it is rolled, so the
+// preview the player aims by and the number `resolveHit` actually consults are the same one (EA-18).
+export { hitChanceFor } from './actions';

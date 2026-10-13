@@ -4,7 +4,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   PROTOCOL_VERSION,
-  type Board,
+  type AbilityDefinition,
+  type BoardState,
+  type Event,
   type PublicState,
   type RejectReason,
   type StateMessage,
@@ -15,18 +17,44 @@ import {
 import type { Session } from '../net/session';
 import { setLocale } from '../i18n/translate';
 import {
+  ABILITY_MENU_RECT,
+  BATTLE_REPORT_CLOSE_RECT,
+  BATTLE_REPORT_EXPORT_RECT,
+  BATTLE_REPORT_RECT,
+  BATTLE_REPORT_REOPEN_RECT,
+  BATTLE_REPORT_SCROLL_DOWN_RECT,
+  BATTLE_REPORT_SCROLL_UP_RECT,
   INSPECT_CLOSE_RECT,
   INSPECT_RECT,
   LOG_RECT,
   LOG_TOGGLE_RECT,
+  RESULT_BUTTON_RECT,
   SETTINGS_BUTTON_RECT,
+  SETTINGS_COVERS_ROW_RECT,
   SETTINGS_PANEL_RECT,
   SETTINGS_PAN_MINUS_RECT,
   SETTINGS_PAN_PLUS_RECT,
+  abilityMenuRowRect,
 } from '../view/layout';
 import { MatchScene } from './MatchScene';
+import { UnitSprite } from './units';
+import { EFFECTS } from '../view/effects';
+import { download } from './download';
+import { exportFileName, exportText } from '../game/battle-report';
+
+/** What the stand-in map was told, so a test can read back the calls the canvas would have painted. */
+const mapCalls = vi.hoisted(() => ({ marksVisible: [] as boolean[] }));
+
+/** The impacts the scene asked to be drawn, which is where the ability art is decided (EA-16). */
+const impactCalls = vi.hoisted(() => ({ impacts: [] as unknown[] }));
 
 vi.mock('phaser', async () => ({ default: (await import('./testing/phaser-stub')).stub() }));
+// The effects are drawn on the canvas the Node run does not have, so the scene's own drawing is a
+// stand-in here: what the test reads is the impact the scene plays, not the pixels it would paint.
+vi.mock('./effects', () => ({
+  playEffect: () => {},
+  playImpact: (_scene: unknown, impact: unknown) => void impactCalls.impacts.push(impact),
+}));
 // The map is painted on canvases the Node run does not have: the scene's wiring does not depend on it.
 // `setCovered` is the call that would paint the building the view cuts down (EA-12, slice 4): here it
 // only has to exist, because the canvas is not there to be set translucent.
@@ -35,10 +63,13 @@ vi.mock('./map/MapView', () => ({
     destroy() {}
     update() {}
     setCovered(_cells: readonly { x: number; y: number }[]) {}
+    setMarksVisible(visible: boolean) {
+      mapCalls.marksVisible.push(visible);
+    }
   },
 }));
 
-const BOARD: Board = { width: 8, height: 8, levels: new Array<number>(64).fill(0) };
+const BOARD: BoardState = { width: 8, height: 8, levels: new Array<number>(64).fill(0), props: [] };
 
 function makeUnit(id: UnitId, team: Team, x: number, y: number): UnitState {
   return {
@@ -59,6 +90,7 @@ function makeUnit(id: UnitId, team: Team, x: number, y: number): UnitState {
     equipment: { armor: null, helmet: null, mainHand: null, offHand: null, accessory1: null, accessory2: null },
     abilities: { activeSets: [null, null], reaction: null, movement: null, support: null },
     movementProfile: { maxStepUp: 1, maxStepDown: 1, climbCost: 1 },
+    facing: 'E',
     resourceKind: 'ammo',
     defeated: false,
     ammo: 3,
@@ -72,6 +104,7 @@ function stateFor(options: { onTurn: Team; spent: boolean }): PublicState {
   return {
     seed: 1,
     board: BOARD,
+    catalog: [],
     units: [makeUnit('A-sniper', 'A', 0, 0), makeUnit('B-priest', 'B', 7, 7)],
     initiative: ['A-sniper', 'B-priest'],
     currentIndex: options.onTurn === 'A' ? 0 : 1,
@@ -83,10 +116,98 @@ function stateFor(options: { onTurn: Team; spent: boolean }): PublicState {
   };
 }
 
+/** The one ability the catalog of the cases below defines (ADR 0016 §1). */
+const FIREBALL: AbilityDefinition = {
+  id: 'fireball',
+  cost: 2,
+  range: 3,
+  needsSight: true,
+  effect: { kind: 'damage', amount: 3, radius: 1, ignoresCover: true },
+};
+
+/** The one heal effect of the cases below (EA-18): it never rolls, so no badge should ever name it. */
+const AREA_HEAL: AbilityDefinition = {
+  id: 'area-heal',
+  cost: 2,
+  range: 3,
+  needsSight: false,
+  effect: { kind: 'heal', amount: 3, radius: 1 },
+};
+
+/** A sniper and an enemy two cells apart, in range and in sight of each other, for the preview cases. */
+function attackScenario(): PublicState {
+  const sniper = makeUnit('A-sniper', 'A', 0, 0);
+  const enemy = makeUnit('B-priest', 'B', 2, 0);
+  return {
+    seed: 1,
+    board: BOARD,
+    catalog: [],
+    units: [sniper, enemy],
+    initiative: ['A-sniper', 'B-priest'],
+    currentIndex: 0,
+    movementLeft: 3,
+    round: 1,
+    hasActed: false,
+    eventCount: 0,
+    pendingMove: null,
+  };
+}
+
+/**
+ * A caster carrying `ability` in its first active set, an ally and an enemy inside the radius an aim
+ * at the caster's own cell would cover, and a fourth unit far outside it (EA-18).
+ */
+function abilityScenario(ability: AbilityDefinition): PublicState {
+  const caster: UnitState = {
+    ...makeUnit('A-wizard', 'A', 2, 0),
+    primaryClass: 'wizard',
+    resourceKind: 'mana',
+    ammo: 2,
+    abilities: { activeSets: [ability.id, null], reaction: null, movement: null, support: null },
+  };
+  const ally = makeUnit('A-sniper', 'A', 1, 0);
+  const enemy = makeUnit('B-priest', 'B', 3, 0);
+  const far = makeUnit('B-far', 'B', 6, 6);
+  return {
+    seed: 1,
+    board: BOARD,
+    catalog: [ability],
+    units: [caster, ally, enemy, far],
+    initiative: ['A-wizard', 'A-sniper', 'B-priest', 'B-far'],
+    currentIndex: 0,
+    movementLeft: 3,
+    round: 1,
+    hasActed: false,
+    eventCount: 0,
+    pendingMove: null,
+  };
+}
+
+/**
+ * The same match with a caster on turn: a magic class carrying a fireball in its first active set, and
+ * the catalog that defines it, which travels with the state (ADR 0016 §3, §6). The pool holds `mana`
+ * points, so a menu row can be read as affordable or not.
+ */
+function casterState(mana = 2): PublicState {
+  const state = stateFor({ onTurn: 'A', spent: false });
+  const sniper = state.units[0];
+  const caster: UnitState = {
+    ...sniper,
+    primaryClass: 'wizard',
+    magazine: 3,
+    ammo: mana,
+    resourceKind: 'mana',
+    abilities: { ...sniper.abilities, activeSets: ['fireball', null] },
+  };
+
+  return { ...state, units: [caster, state.units[1]], catalog: [FIREBALL] };
+}
+
 interface FakeSession extends Session {
   send: ReturnType<typeof vi.fn>;
   emit: {
     state(message: StateMessage): void;
+    events(events: readonly Event[]): void;
     rejected(reason: string): void;
     ended(winner: Team): void;
   };
@@ -109,6 +230,7 @@ function fakeSession(): FakeSession {
     onDrop: () => () => {},
     emit: {
       state: (message: StateMessage) => handlers.state(message as never),
+      events: (events: readonly Event[]) => handlers.events(events as never),
       rejected: (reason: RejectReason) => handlers.rejected({ reason } as never),
       ended: (winner: Team) => handlers.ended({ winner } as never),
     },
@@ -137,7 +259,26 @@ function message(state: PublicState): StateMessage {
   return { version: PROTOCOL_VERSION, mapId: 'street', state };
 }
 
+const HIGHLIGHT_COVERS_KEY = 'eldritch-alley.highlightCovers';
+
+/**
+ * A browser storage with what it already holds, and the writes the scene makes to it. The settings are
+ * read at boot, so this has to be in place before the scene is created.
+ */
+function withStorage(saved: Record<string, string> = {}): Record<string, string> {
+  const writes: Record<string, string> = {};
+  (globalThis as { localStorage?: unknown }).localStorage = {
+    getItem: (key: string) => saved[key] ?? null,
+    setItem: (key: string, value: string) => void (writes[key] = value),
+  };
+  return writes;
+}
+
 beforeEach(() => setLocale('pt-BR'));
+beforeEach(() => {
+  mapCalls.marksVisible.length = 0;
+  delete (globalThis as { localStorage?: unknown }).localStorage;
+});
 
 describe('the match scene', () => {
   it('hands the HUD the state, with the human unit on turn selected', () => {
@@ -242,6 +383,151 @@ describe('the match scene', () => {
     const close = { x: INSPECT_CLOSE_RECT.x + 1, y: INSPECT_CLOSE_RECT.y + 1 };
     expect(scene_.hudTakesPress(close)).toBe(true);
     expect(lastView(render).inspectedId).toBeNull();
+  });
+
+  it('opens the menu on Habilidade instead of arming the aim, and closes it on the second press', () => {
+    const { scene, session, render } = startMatch();
+    session.emit.state(message(casterState()));
+
+    const scene_ = scene as unknown as {
+      pressAction(id: string, mode: string | null): void;
+      hudTakesPress(p: { x: number; y: number }): boolean;
+    };
+
+    // The button asks before it arms (EA-16): the menu is up, with what the ability is called, what it
+    // costs and what it does, and no mode has been armed yet.
+    scene_.pressAction('ability', 'ability');
+    const opened = lastView(render).abilityMenu as {
+      open: boolean;
+      options: { id: string; name: string; cost: string }[];
+    };
+    expect(opened.open).toBe(true);
+    expect(opened.options).toEqual([
+      {
+        id: 'fireball',
+        name: 'Bola de Fogo',
+        cost: '2 Energia',
+        detail: 'Dano 3 · raio 1 · ignora cobertura · atinge todos, inclusive aliados',
+        affordable: true,
+      },
+    ]);
+    expect(lastView(render).mode).toBe('inspect');
+
+    // The bar is its own undo: the same button takes the question off the screen.
+    scene_.pressAction('ability', 'ability');
+    expect((lastView(render).abilityMenu as { open: boolean }).open).toBe(false);
+  });
+
+  it('arms the row the player picks, and aims with the ability that row names', () => {
+    const { scene, session, render } = startMatch();
+    const state = casterState();
+    session.emit.state(message(state));
+
+    const scene_ = scene as unknown as {
+      pressAction(id: string, mode: string | null): void;
+      hudTakesPress(p: { x: number; y: number }): boolean;
+      pressOnCell(s: PublicState, c: { x: number; y: number }, sec: boolean): void;
+    };
+
+    scene_.pressAction('ability', 'ability');
+    const row = abilityMenuRowRect(0);
+    expect(scene_.hudTakesPress({ x: row.x + 4, y: row.y + 4 })).toBe(true);
+
+    // The pick closes the menu and leaves the aim armed, and the board then sends the ability itself.
+    expect((lastView(render).abilityMenu as { open: boolean }).open).toBe(false);
+    expect(lastView(render).mode).toBe('ability');
+
+    scene_.pressOnCell(state, { x: 2, y: 0 }, false);
+    expect(session.send).toHaveBeenCalledWith({ type: 'useAbility', abilityId: 'fireball', to: { x: 2, y: 0 } });
+  });
+
+  it('arms nothing from a row the pool cannot pay, and lets the menu be closed from outside it', () => {
+    const { scene, session, render } = startMatch();
+    session.emit.state(message(casterState(1)));
+
+    const scene_ = scene as unknown as {
+      pressAction(id: string, mode: string | null): void;
+      hudTakesPress(p: { x: number; y: number }): boolean;
+    };
+
+    scene_.pressAction('ability', 'ability');
+    const row = abilityMenuRowRect(0);
+    scene_.hudTakesPress({ x: row.x + 4, y: row.y + 4 });
+
+    // One point of mana against a cost of two (EA-16, D3): the row is drawn dimmed and arms nothing.
+    expect(lastView(render).mode).toBe('inspect');
+    expect((lastView(render).abilityMenu as { open: boolean }).open).toBe(true);
+
+    // A press outside the panel is the panel's own too, and it closes the question.
+    expect(scene_.hudTakesPress({ x: 4, y: 4 })).toBe(true);
+    expect((lastView(render).abilityMenu as { open: boolean }).open).toBe(false);
+  });
+
+  it('takes every press while it is open, so the point under the question reaches no tile', () => {
+    const { scene, session, render } = startMatch();
+    const state = casterState();
+    session.emit.state(message(state));
+
+    const scene_ = scene as unknown as {
+      pressAction(id: string, mode: string | null): void;
+      hudTakesPress(p: { x: number; y: number }): boolean;
+    };
+
+    scene_.pressAction('ability', 'ability');
+
+    // The title band of the panel is the panel's own: the press is taken and changes nothing.
+    const title = { x: ABILITY_MENU_RECT.x + 8, y: ABILITY_MENU_RECT.y + 8 };
+    expect(scene_.hudTakesPress(title)).toBe(true);
+    expect((lastView(render).abilityMenu as { open: boolean }).open).toBe(true);
+    expect(lastView(render).inspectedId).toBeNull();
+
+    // A press over the board is taken too, so it inspects nothing: it closes the question instead,
+    // because the menu is a modal and one overlay is on the screen at a time (EA-16, D2).
+    expect(scene_.hudTakesPress({ x: 700, y: 400 })).toBe(true);
+    expect(lastView(render).inspectedId).toBeNull();
+    expect((lastView(render).abilityMenu as { open: boolean }).open).toBe(false);
+  });
+
+  it('takes the question off the screen when the turn can no longer answer it', () => {
+    const { scene, session, render } = startMatch();
+    session.emit.state(message(casterState()));
+
+    (scene as unknown as { pressAction(id: string, mode: string | null): void }).pressAction('ability', 'ability');
+    expect((lastView(render).abilityMenu as { open: boolean }).open).toBe(true);
+
+    // The action is spent, so the engine would refuse every aim: the button goes with it, and so does
+    // the menu that is still on the screen (EA-16).
+    session.emit.state(message({ ...casterState(), hasActed: true }));
+
+    expect((lastView(render).abilityMenu as { open: boolean }).open).toBe(false);
+  });
+
+  it('plays the impact of an ability on the cells the server said it covered (EA-16)', () => {
+    const { scene, session } = startMatch();
+    session.emit.state(message(casterState()));
+
+    session.emit.events([
+      { type: 'ability-used', actor: 'A-sniper', abilityId: 'fireball', to: { x: 2, y: 0 }, rngState: 7, resource: 'mana' },
+    ]);
+
+    // The event names the ability and the cell: the catalog says what it does there, and the engine
+    // says which cells it covers, so the scene is asked to draw the blast and not a bare flash.
+    expect(impactCalls.impacts).toEqual([
+      {
+        kind: 'blast',
+        cell: { x: 2, y: 0 },
+        cells: [
+          { x: 1, y: 0 }, { x: 2, y: 0 }, { x: 3, y: 0 },
+          { x: 1, y: 1 }, { x: 2, y: 1 }, { x: 3, y: 1 },
+        ],
+        color: EFFECTS.wizard.ranged.color,
+      },
+    ]);
+    // The use is written into the log as well, which is where the player reads which ability was used
+    // (EA-16). The names of the roster are not loaded in this run, so the log falls back to the id.
+    expect((scene as unknown as { logLines: string[] }).logLines).toEqual([
+      'A-sniper usou Bola de Fogo em (2,0)',
+    ]);
   });
 
   it('starts with the log closed and opens it from its own header (Q3)', () => {
@@ -446,5 +732,412 @@ describe('the match scene', () => {
     expect(view.finished).toBe(true);
     expect(view.wayOutVisible).toBe(true);
     expect(view.result).toBe('Vitória');
+  });
+
+  it('hangs the cover badge over the units, naming the side the prop is on', () => {
+    const { session } = startMatch();
+    const board: BoardState = { ...BOARD, props: [{ position: { x: 1, y: 0 }, kind: 'cover' }] };
+    const state = { ...stateFor({ onTurn: 'A', spent: false }), board };
+
+    // Phaser's Text cannot be read back here (the stand-in swallows it), so the sentence is read at the
+    // seam the scene hands it over: the sprite. The sides are the board's own, whatever the view is
+    // turned to (ADR 0012 § D5).
+    const badge = vi.spyOn(UnitSprite.prototype, 'setCoverBadge');
+    try {
+      session.emit.state(message(state));
+
+      // Sniper stands at (0,0), with the crate on its east; the priest at (7,7) has none beside it.
+      expect(badge.mock.calls.map(([sentence]) => sentence)).toEqual(['Em cobertura a leste', null]);
+    } finally {
+      badge.mockRestore();
+    }
+  });
+
+  it('takes the badge off a unit that has fallen, which is covered by nothing', () => {
+    const { session } = startMatch();
+    const board: BoardState = { ...BOARD, props: [{ position: { x: 1, y: 0 }, kind: 'cover' }] };
+    const down = { ...makeUnit('A-sniper', 'A', 0, 0), defeated: true };
+    const state = {
+      ...stateFor({ onTurn: 'A', spent: false }),
+      board,
+      units: [down, makeUnit('B-priest', 'B', 7, 7)],
+    };
+
+    const badge = vi.spyOn(UnitSprite.prototype, 'setCoverBadge');
+    try {
+      session.emit.state(message(state));
+
+      expect(badge.mock.calls.map(([sentence]) => sentence)).toEqual([null, null]);
+    } finally {
+      badge.mockRestore();
+    }
+  });
+
+  it('starts with the cover marks off when the browser was told so, and says so in the HUD', () => {
+    withStorage({ [HIGHLIGHT_COVERS_KEY]: 'false' });
+    const { session, render } = startMatch();
+    session.emit.state(message(stateFor({ onTurn: 'A', spent: false })));
+
+    expect(lastView(render).highlightCovers).toBe(false);
+    expect(mapCalls.marksVisible[mapCalls.marksVisible.length - 1]).toBe(false);
+  });
+
+  it('turns the cover marks on and off from the settings panel, and remembers the choice', () => {
+    const writes = withStorage();
+    const { scene, session, render } = startMatch();
+    session.emit.state(message(stateFor({ onTurn: 'A', spent: false })));
+
+    const scene_ = scene as unknown as { hudTakesPress(p: { x: number; y: number }): boolean };
+    const at = (rect: { x: number; y: number }) => ({ x: rect.x + 1, y: rect.y + 1 });
+    // The marks are on for a build that says nothing, and the panel is where they are turned off.
+    expect(lastView(render).highlightCovers).toBe(true);
+
+    expect(scene_.hudTakesPress(at(SETTINGS_BUTTON_RECT))).toBe(true);
+    expect(scene_.hudTakesPress(at(SETTINGS_COVERS_ROW_RECT))).toBe(true);
+
+    expect(lastView(render).highlightCovers).toBe(false);
+    expect(writes[HIGHLIGHT_COVERS_KEY]).toBe('false');
+    expect(mapCalls.marksVisible[mapCalls.marksVisible.length - 1]).toBe(false);
+
+    // And back on: the checkbox is one control, read the same way both ways.
+    expect(scene_.hudTakesPress(at(SETTINGS_COVERS_ROW_RECT))).toBe(true);
+    expect(lastView(render).highlightCovers).toBe(true);
+    expect(writes[HIGHLIGHT_COVERS_KEY]).toBe('true');
+    expect(mapCalls.marksVisible[mapCalls.marksVisible.length - 1]).toBe(true);
+  });
+
+  describe('the battle report (EA-17)', () => {
+    function turnEnded(round: number, next: UnitId): Event {
+      return { type: 'turn-ended', actor: 'A-sniper', next, round };
+    }
+
+    function tapAt(
+      scene_: { handlePointerDown(p: unknown): void; handlePointerUp(p: unknown): void },
+      x: number,
+      y: number,
+    ): void {
+      const at = { id: 1, x, y, worldX: 0, worldY: 0, rightButtonDown: () => false, wasTouch: true };
+      scene_.handlePointerDown(at);
+      scene_.handlePointerUp(at);
+    }
+
+    it('opens the moment the match ends, seeded with every line played — not only the last six', () => {
+      const { session, render } = startMatch();
+      session.emit.state(message(stateFor({ onTurn: 'A', spent: false })));
+      session.emit.events(Array.from({ length: 8 }, (_, i) => turnEnded(i + 1, 'B-priest')));
+
+      session.emit.ended('A');
+
+      const view = lastView(render) as { battleReport: { open: boolean; lines: string[] } };
+      expect(view.battleReport.open).toBe(true);
+      expect(view.battleReport.lines).toHaveLength(8);
+    });
+
+    it('scrolls when the wheel is over the panel, and still zooms the camera everywhere else', () => {
+      const { scene, session, render } = startMatch();
+      session.emit.state(message(stateFor({ onTurn: 'A', spent: false })));
+      session.emit.events(
+        Array.from({ length: 20 }, (_, i) => turnEnded(i + 1, i % 2 === 0 ? 'B-priest' : 'A-sniper')),
+      );
+      session.emit.ended('A');
+
+      const scene_ = scene as unknown as {
+        handleWheel(p: { x: number; y: number }, dy: number): void;
+        camera: { zoom: number; centre: { x: number; y: number } };
+      };
+
+      const firstLineBefore = (lastView(render) as { battleReport: { lines: string[] } }).battleReport
+        .lines[0];
+      scene_.handleWheel({ x: BATTLE_REPORT_RECT.x + 10, y: BATTLE_REPORT_RECT.y + 10 }, 1);
+      const firstLineAfter = (lastView(render) as { battleReport: { lines: string[] } }).battleReport
+        .lines[0];
+      expect(firstLineAfter).not.toBe(firstLineBefore);
+
+      // The same wheel outside the panel is the camera's own, unaffected by the report being open.
+      scene_.camera = { zoom: 1, centre: { x: 640, y: 360 } };
+      scene_.handleWheel({ x: 10, y: 10 }, -1);
+      expect(scene_.camera.zoom).toBeGreaterThan(1);
+    });
+
+    it('swallows a press over Sair while it stands over it, and closes on a press truly outside it (D2)', () => {
+      const { scene, session, render } = startMatch();
+      session.emit.state(message(stateFor({ onTurn: 'A', spent: false })));
+      session.emit.ended('A');
+      expect(lastView(render).battleReport).toMatchObject({ open: true });
+
+      const scene_ = scene as unknown as {
+        handlePointerDown(p: unknown): void;
+        handlePointerUp(p: unknown): void;
+      };
+
+      // Sair sits inside the report's own rectangle while the report is open, so a press there is the
+      // panel's own and leaves nothing — it neither closes the report nor reaches `Sair` underneath it.
+      tapAt(scene_, RESULT_BUTTON_RECT.x + 1, RESULT_BUTTON_RECT.y + 1);
+      expect(lastView(render).battleReport).toMatchObject({ open: true });
+      expect(lastView(render).finished).toBe(true);
+
+      // A press truly outside the panel closes it.
+      tapAt(scene_, 5, 5);
+      expect(lastView(render).battleReport).toMatchObject({ open: false });
+      expect(lastView(render).wayOutVisible).toBe(true);
+    });
+
+    it('downloads exactly what exportText builds, through the download seam', () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-10-13T15:04:05.000Z'));
+      const spy = vi.spyOn(download, 'text').mockImplementation(() => {});
+
+      try {
+        const { scene, session } = startMatch();
+        session.emit.state(message(stateFor({ onTurn: 'A', spent: false })));
+        session.emit.events([turnEnded(1, 'B-priest')]);
+        session.emit.ended('A');
+
+        const scene_ = scene as unknown as {
+          handlePointerDown(p: unknown): void;
+          handlePointerUp(p: unknown): void;
+        };
+        tapAt(scene_, BATTLE_REPORT_EXPORT_RECT.x + 1, BATTLE_REPORT_EXPORT_RECT.y + 1);
+
+        expect(spy).toHaveBeenCalledTimes(1);
+        const [fileName, content] = spy.mock.calls[0]!;
+        expect(fileName).toBe(exportFileName(new Date()));
+        expect(content).toBe(exportText({ result: 'Vitória', endedAt: new Date() }, ['Vez de B-priest']));
+      } finally {
+        spy.mockRestore();
+        vi.useRealTimers();
+      }
+    });
+
+    it('reopens from the link beside Sair once the report is closed', () => {
+      const { scene, session, render } = startMatch();
+      session.emit.state(message(stateFor({ onTurn: 'A', spent: false })));
+      session.emit.ended('A');
+
+      const scene_ = scene as unknown as {
+        handlePointerDown(p: unknown): void;
+        handlePointerUp(p: unknown): void;
+      };
+
+      tapAt(scene_, 5, 5); // outside every panel: closes the report, leaves nothing armed
+      expect(lastView(render).battleReport).toMatchObject({ open: false });
+
+      tapAt(scene_, BATTLE_REPORT_REOPEN_RECT.x + 1, BATTLE_REPORT_REOPEN_RECT.y + 1);
+      expect(lastView(render).battleReport).toMatchObject({ open: true });
+    });
+  });
+
+  describe('the hit-chance preview (EA-18)', () => {
+    function pointerAt(
+      scene_: { feetOf(c: { x: number; y: number }): { x: number; y: number } },
+      cell: { x: number; y: number },
+      touch: boolean,
+    ) {
+      const feet = scene_.feetOf(cell);
+      return {
+        id: 1,
+        x: feet.x,
+        y: feet.y,
+        worldX: feet.x,
+        worldY: feet.y,
+        rightButtonDown: () => false,
+        wasTouch: touch,
+      };
+    }
+
+    it("sets the hovered enemy's badge to the attack chance, and clears it off the cell", () => {
+      const { scene, session } = startMatch();
+      session.emit.state(message(attackScenario()));
+      (scene as unknown as { mode: string }).mode = 'attack';
+
+      const scene_ = scene as unknown as {
+        handlePointerMove(p: unknown): void;
+        feetOf(c: { x: number; y: number }): { x: number; y: number };
+      };
+      const badge = vi.spyOn(UnitSprite.prototype, 'setHitChanceBadge');
+      try {
+        scene_.handlePointerMove(pointerAt(scene_, { x: 2, y: 0 }, false));
+        expect(badge.mock.calls.some(([text]) => text !== null)).toBe(true);
+
+        badge.mockClear();
+        scene_.handlePointerMove(pointerAt(scene_, { x: 5, y: 5 }, false));
+        expect(badge.mock.calls.every(([text]) => text === null)).toBe(true);
+      } finally {
+        badge.mockRestore();
+      }
+    });
+
+    it('shows nothing for an enemy outside the current attack reach', () => {
+      const { scene, session } = startMatch();
+      const sniper = makeUnit('A-sniper', 'A', 0, 0);
+      const far = makeUnit('B-priest', 'B', 7, 7);
+      const state: PublicState = {
+        seed: 1,
+        board: BOARD,
+        catalog: [],
+        units: [sniper, far],
+        initiative: ['A-sniper', 'B-priest'],
+        currentIndex: 0,
+        movementLeft: 3,
+        round: 1,
+        hasActed: false,
+        eventCount: 0,
+        pendingMove: null,
+      };
+      session.emit.state(message(state));
+      (scene as unknown as { mode: string }).mode = 'attack';
+
+      const scene_ = scene as unknown as {
+        handlePointerMove(p: unknown): void;
+        feetOf(c: { x: number; y: number }): { x: number; y: number };
+      };
+      const badge = vi.spyOn(UnitSprite.prototype, 'setHitChanceBadge');
+      try {
+        scene_.handlePointerMove(pointerAt(scene_, { x: 7, y: 7 }, false));
+        expect(badge.mock.calls.every(([text]) => text === null)).toBe(true);
+      } finally {
+        badge.mockRestore();
+      }
+    });
+
+    it('shows one badge per living unit inside a fireball blast, allies and the caster included', () => {
+      const { scene, session } = startMatch();
+      session.emit.state(message(abilityScenario(FIREBALL)));
+      (scene as unknown as { mode: string; armedAbilityId: string | null }).mode = 'ability';
+      (scene as unknown as { armedAbilityId: string | null }).armedAbilityId = 'fireball';
+
+      const scene_ = scene as unknown as {
+        handlePointerMove(p: unknown): void;
+        feetOf(c: { x: number; y: number }): { x: number; y: number };
+      };
+      const badge = vi.spyOn(UnitSprite.prototype, 'setHitChanceBadge');
+      try {
+        scene_.handlePointerMove(pointerAt(scene_, { x: 2, y: 0 }, false));
+
+        // state.units order: caster, ally, enemy, far — and so is the sprite map's own.
+        const texts = badge.mock.calls.map(([text]) => text);
+        expect(texts).toHaveLength(4);
+        expect(texts[0]).not.toBeNull();
+        expect(texts[1]).not.toBeNull();
+        expect(texts[2]).not.toBeNull();
+        expect(texts[3]).toBeNull();
+      } finally {
+        badge.mockRestore();
+      }
+    });
+
+    it('shows no badge at all for a heal ability — it never rolls', () => {
+      const { scene, session } = startMatch();
+      session.emit.state(message(abilityScenario(AREA_HEAL)));
+      (scene as unknown as { mode: string; armedAbilityId: string | null }).mode = 'ability';
+      (scene as unknown as { armedAbilityId: string | null }).armedAbilityId = 'area-heal';
+
+      const scene_ = scene as unknown as {
+        handlePointerMove(p: unknown): void;
+        feetOf(c: { x: number; y: number }): { x: number; y: number };
+      };
+      const badge = vi.spyOn(UnitSprite.prototype, 'setHitChanceBadge');
+      try {
+        scene_.handlePointerMove(pointerAt(scene_, { x: 2, y: 0 }, false));
+        expect(badge.mock.calls.every(([text]) => text === null)).toBe(true);
+      } finally {
+        badge.mockRestore();
+      }
+    });
+
+    it(
+      'shows the badge on a long press while aiming instead of opening the sheet; lifting clears it ' +
+        'and a fresh tap still commits the shot',
+      () => {
+        const { scene, session } = startMatch();
+        session.emit.state(message(attackScenario()));
+        (scene as unknown as { mode: string }).mode = 'attack';
+
+        const scene_ = scene as unknown as {
+          handlePointerDown(p: unknown): void;
+          handlePointerUp(p: unknown): void;
+          triggerLongPress(p: unknown): void;
+          feetOf(c: { x: number; y: number }): { x: number; y: number };
+          inspectedId: string | null;
+        };
+        const badge = vi.spyOn(UnitSprite.prototype, 'setHitChanceBadge');
+        try {
+          const pointer = pointerAt(scene_, { x: 2, y: 0 }, true);
+          scene_.handlePointerDown(pointer);
+          scene_.triggerLongPress(pointer);
+
+          expect(badge.mock.calls.some(([text]) => text !== null)).toBe(true);
+          expect(scene_.inspectedId).toBeNull();
+
+          badge.mockClear();
+          scene_.handlePointerUp(pointer);
+          expect(badge.mock.calls.every(([text]) => text === null)).toBe(true);
+
+          // One gesture, one meaning (D4): the lift after a long press never taps. A fresh press does.
+          scene_.handlePointerDown(pointer);
+          scene_.handlePointerUp(pointer);
+          expect(session.send).toHaveBeenCalledWith({ type: 'attack', target: 'B-priest' });
+        } finally {
+          badge.mockRestore();
+        }
+      },
+    );
+
+    it('clears every badge when the mode falls back, the turn moves on, or the match ends', () => {
+      const { scene, session } = startMatch();
+      const state = attackScenario();
+      session.emit.state(message(state));
+      (scene as unknown as { mode: string }).mode = 'attack';
+
+      const scene_ = scene as unknown as {
+        handlePointerMove(p: unknown): void;
+        feetOf(c: { x: number; y: number }): { x: number; y: number };
+        mode: string;
+        pushHud(): void;
+      };
+      const badge = vi.spyOn(UnitSprite.prototype, 'setHitChanceBadge');
+      try {
+        scene_.handlePointerMove(pointerAt(scene_, { x: 2, y: 0 }, false));
+        expect(badge.mock.calls.some(([text]) => text !== null)).toBe(true);
+
+        badge.mockClear();
+        scene_.mode = 'inspect';
+        scene_.pushHud();
+        expect(badge.mock.calls.every(([text]) => text === null)).toBe(true);
+
+        scene_.mode = 'attack';
+        scene_.handlePointerMove(pointerAt(scene_, { x: 2, y: 0 }, false));
+        badge.mockClear();
+        session.emit.state(message({ ...state, currentIndex: 1 })); // the turn passes to the bot
+        expect(badge.mock.calls.every(([text]) => text === null)).toBe(true);
+
+        scene_.mode = 'attack';
+        scene_.handlePointerMove(pointerAt(scene_, { x: 2, y: 0 }, false));
+        badge.mockClear();
+        session.emit.ended('A');
+        expect(badge.mock.calls.every(([text]) => text === null)).toBe(true);
+      } finally {
+        badge.mockRestore();
+      }
+    });
+
+    it('shows no badge while the camera is turning a quarter (DT-86)', () => {
+      const { scene, session } = startMatch();
+      session.emit.state(message(attackScenario()));
+      (scene as unknown as { mode: string }).mode = 'attack';
+      (scene as unknown as { turn: unknown }).turn = {};
+
+      const scene_ = scene as unknown as {
+        handlePointerMove(p: unknown): void;
+        feetOf(c: { x: number; y: number }): { x: number; y: number };
+      };
+      const badge = vi.spyOn(UnitSprite.prototype, 'setHitChanceBadge');
+      try {
+        scene_.handlePointerMove(pointerAt(scene_, { x: 2, y: 0 }, false));
+        expect(badge.mock.calls.every(([text]) => text === null)).toBe(true);
+      } finally {
+        badge.mockRestore();
+      }
+    });
   });
 });

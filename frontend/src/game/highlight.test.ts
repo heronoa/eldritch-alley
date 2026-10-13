@@ -1,21 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import { attackArea, reachableCells } from '@eldritch-alley/engine';
 import { PROTOTYPE_MAPS, type PrototypeMap } from '../maps/prototype-maps';
-import type { Board, PublicState, Team, UnitId, UnitState } from '../protocol';
+import type { BoardState, PublicState, Team, UnitId, UnitState } from '../protocol';
 import type { ActionMode } from './actions';
 import { highlightedCells, highlightTone } from './highlight';
 import { resolveClick } from './selection';
 
-const BOARD: Board = { width: 8, height: 8, levels: new Array<number>(64).fill(0) };
+const BOARD: BoardState = { width: 8, height: 8, levels: new Array<number>(64).fill(0), props: [] };
 
 /** A flat board with the given cells raised, keyed by `x,y`. */
-function makeBoard(heights: Record<string, number>): Board {
+function makeBoard(heights: Record<string, number>): BoardState {
   const levels = new Array<number>(64).fill(0);
   for (const [key, level] of Object.entries(heights)) {
     const [x, y] = key.split(',').map(Number);
     levels[y * 8 + x] = level;
   }
-  return { width: 8, height: 8, levels };
+  return { width: 8, height: 8, levels, props: [] };
 }
 
 interface UnitSpec {
@@ -24,6 +24,8 @@ interface UnitSpec {
   at: { x: number; y: number };
   range?: number;
   movement?: number;
+  /** The id of the one active ability the unit carries, in `activeSets[0]` (ADR 0016 §6). */
+  ability?: string | null;
 }
 
 function makeUnit(spec: UnitSpec): UnitState {
@@ -43,8 +45,9 @@ function makeUnit(spec: UnitSpec): UnitState {
     attunement: 50,
     primaryClass: 'sniper',
     equipment: { armor: null, helmet: null, mainHand: null, offHand: null, accessory1: null, accessory2: null },
-    abilities: { activeSets: [null, null], reaction: null, movement: null, support: null },
+    abilities: { activeSets: [spec.ability ?? null, null], reaction: null, movement: null, support: null },
     movementProfile: { maxStepUp: 1, maxStepDown: 1, climbCost: 1 },
+    facing: 'E',
     resourceKind: 'ammo',
     defeated: false,
     ammo: 3,
@@ -56,13 +59,14 @@ function makeUnit(spec: UnitSpec): UnitState {
 function makeState(
   units: readonly UnitState[],
   currentIndex = 0,
-  board: Board = BOARD,
+  board: BoardState = BOARD,
   movementLeft = 3,
   pendingMove: PublicState['pendingMove'] = null,
 ): PublicState {
   return {
     seed: 1,
     board,
+    catalog: [],
     units: [...units],
     initiative: units.map((unit) => unit.id),
     currentIndex,
@@ -79,12 +83,40 @@ function keys(cells: readonly { x: number; y: number }[]): string[] {
   return cells.map((cell) => `${cell.x},${cell.y}`).sort();
 }
 
+/** The id of the ability the fixtures carry, and how far it reaches (ADR 0016 §1). */
+const FIREBALL = {
+  id: 'fireball',
+  cost: 2,
+  range: 3,
+  needsSight: true,
+  effect: { kind: 'damage' as const, amount: 3, radius: 1, ignoresCover: true },
+};
+
+/** A second ability of the same catalog, with a reach of its own (EA-16): two reaches, two answers. */
+const PIERCING_SHOT = {
+  id: 'piercing-shot',
+  cost: 1,
+  range: 4,
+  needsSight: true,
+  effect: { kind: 'damage' as const, amount: 6, radius: 0, ignoresCover: true },
+};
+
+/**
+ * The same state carrying the catalog the ability rules read. It travels with the state the way the
+ * board does (ADR 0016 §3), and this mirror of `PublicState` has not learned the field yet, so the
+ * catalog is handed past the type until the protocol carries it.
+ */
+function withCatalog(state: PublicState, catalog: readonly unknown[] = [FIREBALL]): PublicState {
+  return { ...state, catalog } as PublicState;
+}
+
 /** The board of a prototype map, built the way the server builds it: a gap in the ground is floor. */
-function boardOf(map: PrototypeMap): Board {
+function boardOf(map: PrototypeMap): BoardState {
   return {
     width: map.tiles[0].length,
     height: map.tiles.length,
     levels: map.heights.flatMap((row) => row.map((height) => (height === map.void ? 0 : height))),
+    props: [],
   };
 }
 
@@ -434,6 +466,80 @@ describe('the inspection of a unit that is not being played', () => {
   });
 });
 
+/**
+ * The reach of an armed ability (ADR 0016): while an ability is armed the board paints the cells it
+ * may be aimed at, the way Atacar paints the reach of a shot. The area is the definition's reach read
+ * in Chebyshev distance from the unit, and the tone is the ability's own.
+ */
+describe('the reach of an armed ability', () => {
+  /** In the open, so the board edge never clips the ring, and carrying one active ability. */
+  const CASTER = makeUnit({ id: 'A-sniper', team: 'A', at: { x: 3, y: 3 }, range: 1, ability: 'fireball' });
+  const ENEMY = makeUnit({ id: 'B-priest', team: 'B', at: { x: 7, y: 7 }, range: 1 });
+
+  it('draws the ability in a tone of its own', () => {
+    expect(highlightTone({ mode: 'ability' })).toBe('ability');
+    // The movement tone is a different answer, so the two can never be told apart by accident.
+    expect(highlightTone({ mode: 'ability' })).not.toBe(highlightTone({ mode: 'move' }));
+  });
+
+  it('paints every cell inside the ability reach, and none past it', () => {
+    const state = withCatalog(makeState([CASTER, ENEMY]));
+
+    const cells = keys(highlightedCells({ state, selectedId: 'A-sniper', mode: 'ability', humanTeam: 'A' }));
+
+    // Fireball reaches 3: the cells of the ring around the caster are the aim the ability offers.
+    expect(cells).toContain('6,3'); // distance 3, in the reach
+    expect(cells).toContain('3,0'); // distance 3, in the reach
+    expect(cells).toContain('5,5'); // distance 2, in the reach
+    expect(cells).not.toContain('7,3'); // distance 4, past the reach
+    expect(cells).not.toContain('3,7'); // distance 4, past the reach
+  });
+
+  it('paints nothing for a unit whose slots name no ability', () => {
+    // The catalog defines a fireball, but the sniper carries none: arming the ability shows no reach.
+    const bare = makeUnit({ id: 'A-sniper', team: 'A', at: { x: 3, y: 3 }, range: 1 });
+    const state = withCatalog(makeState([bare, ENEMY]));
+
+    expect(highlightedCells({ state, selectedId: 'A-sniper', mode: 'ability', humanTeam: 'A' })).toEqual([]);
+  });
+
+  it('paints the reach of the ability the menu armed, not the one the unit carries (EA-16)', () => {
+    // The unit carries a fireball (reaches 3) and the player picked the piercing shot (reaches 4): the
+    // wash answers the question that was asked, so the further ring is painted.
+    const state = withCatalog(makeState([CASTER, ENEMY]), [FIREBALL, PIERCING_SHOT]);
+
+    const carried = keys(highlightedCells({ state, selectedId: 'A-sniper', mode: 'ability', humanTeam: 'A' }));
+    const armed = keys(
+      highlightedCells({
+        state,
+        selectedId: 'A-sniper',
+        mode: 'ability',
+        humanTeam: 'A',
+        abilityId: 'piercing-shot',
+      }),
+    );
+
+    expect(carried).not.toContain('7,3'); // distance 4, past the fireball
+    expect(armed).toContain('7,3'); // distance 4, inside the piercing shot
+  });
+
+  it('paints nothing for an armed id the match does not define', () => {
+    // The menu only ever offers what the catalog carries, so this is a state that moved under the
+    // player: the aim would be refused with `ability-unknown`, and no cell is offered for it.
+    const state = withCatalog(makeState([CASTER, ENEMY]), [FIREBALL]);
+
+    expect(
+      highlightedCells({
+        state,
+        selectedId: 'A-sniper',
+        mode: 'ability',
+        humanTeam: 'A',
+        abilityId: 'time-stop',
+      }),
+    ).toEqual([]);
+  });
+});
+
 describe('the client and the engine agree on what a move reaches', () => {
   /** The street squad, on its own spawns and with the budgets the server gives it. */
   const SQUAD = [
@@ -442,7 +548,7 @@ describe('the client and the engine agree on what a move reaches', () => {
     { at: { x: 5, y: 9 }, movement: 4 },
   ];
 
-  function street(): Board {
+  function street(): BoardState {
     return boardOf(PROTOTYPE_MAPS.find((map) => map.id === 'street')!);
   }
 

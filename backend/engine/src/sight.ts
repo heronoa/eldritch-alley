@@ -10,8 +10,11 @@
 // level is on the line and not above it, so it does not block. Two adjacent cells have no cell between
 // them and are always visible.
 //
-// Props are not on the board, so nothing here reads them (decision D3).
-import { distance, levelAt } from './board';
+// A `wall` prop blocks the line the same way a tall cell does, and only a `wall`: a chest-high crate
+// does not stop the shot, it costs the shooter accuracy (`cover.ts`, ADR 0012). Only the cells strictly
+// between the two ends are read, so a wall on either end — under the shooter or under the target —
+// blocks nothing, which is the limit the height rule already had.
+import { distance, levelAt, propAt } from './board';
 import type { Board, Position } from './types';
 
 /** The eye height of a unit standing on a cell. Throws outside the board, like `levelAt`. */
@@ -59,10 +62,11 @@ function clearLine(board: Board, from: Position, to: Position): boolean {
   if (steps < 2) return true;
 
   // The sight line rises from the eye of `from` to the eye of `to`; a cell above it at its own step,
-  // and not on it, blocks the shot.
+  // and not on it, blocks the shot. A wall on the way blocks it however low the ground is.
   const cells = lineCells(from, to);
   for (let i = 1; i < cells.length - 1; i++) {
     if (levelAt(board, cells[i]) * steps > fromEye * steps + (toEye - fromEye) * i) return false;
+    if (propAt(board, cells[i], 'wall') !== undefined) return false;
   }
   return true;
 }

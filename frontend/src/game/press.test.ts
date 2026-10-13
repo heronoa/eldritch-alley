@@ -137,14 +137,28 @@ describe('the pinch', () => {
 });
 
 describe('a pointer that is not one of the fingers down', () => {
-  it('does nothing at all on a move, so a hover never pans the map', () => {
-    expect(new Gestures().move(pointer(away(40)))).toEqual({ kind: 'none' });
-  });
-
   it('does nothing on a lift', () => {
     const gestures = new Gestures();
 
     expect(gestures.up(pointer(away(40)))).toEqual({ kind: 'none' });
+  });
+
+  it('is never a pan: a mouse move with no finger down is read as a hover instead (EA-18)', () => {
+    const at = away(40);
+    expect(new Gestures().move(pointer(at))).toEqual({ kind: 'hover', at });
+  });
+
+  it('a touch move that is not one of the fingers down is still nothing at all', () => {
+    expect(new Gestures().move(finger(1, away(40)))).toEqual({ kind: 'none' });
+  });
+
+  it('never arms or disarms the long press, and never touches waiting()', () => {
+    const gestures = new Gestures();
+    expect(gestures.waiting()).toBe(false);
+
+    gestures.move(pointer(away(40)));
+
+    expect(gestures.waiting()).toBe(false);
   });
 });
 

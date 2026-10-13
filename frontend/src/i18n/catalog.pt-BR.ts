@@ -42,7 +42,18 @@ export const ptBR = {
   // The battle log. One sentence per event, and the placeholders are filled by `interpolate`.
   'log.event.moved': '{actor} moveu de {from} para {to}',
   'log.event.attacked': '{actor} acertou {target} por {damage}',
-  'log.event.missed': '{actor} errou',
+  // The same shot told with the crate one of the two ends was behind: the engine's word is cover, the
+  // screen's is the fiction's (ADR 0012 § D3). Which end it was is the whole difference between the
+  // four pairs, and the shooter's own cover is read on the board, because the event carries only the
+  // target's (ADR 0012 § D4, ADR 0013).
+  'log.event.attackedCover': '{actor} acertou {target} por {damage} em cobertura',
+  'log.event.missed': '{actor} errou {target}',
+  'log.event.missedCover': '{actor} errou {target} em cobertura',
+  'log.event.attackedFromCover': '{actor}, em cobertura, acertou {target} por {damage}',
+  'log.event.missedFromCover': '{actor}, em cobertura, errou {target}',
+  'log.event.attackedBothCover':
+    '{actor}, em cobertura, acertou {target} por {damage}, que também estava em cobertura',
+  'log.event.missedBothCover': '{actor}, em cobertura, errou {target}, que também estava em cobertura',
   'log.event.reloaded': '{actor} recarregou',
   // The same action for a magic class (ADR 0011 §3): the engine calls it a reload either way, and the
   // player reads the word of their own class.
@@ -50,6 +61,17 @@ export const ptBR = {
   'log.event.defeated': '{target} caiu',
   'log.event.corpseRemoved': 'Corpo de {target} removido',
   'log.event.turnEnded': 'Vez de {next}',
+  'log.event.regained': '{actor} recuperou {amount} de mana',
+  // The use of an ability (ADR 0016): the action names a cell, never a unit, so the sentence shows the
+  // position the same way every other event that names one does. The two outcomes of the use follow as
+  // events of their own: one `damaged` per body the effect reached, and one `healed` per body a heal
+  // covered.
+  'log.event.ability-used': '{actor} usou uma habilidade em {cell}',
+  // The same use with the ability named (EA-16): the sentence says what was cast, by the word the
+  // catalogs give the id. An id this build has no word for keeps the sentence above (D7).
+  'log.event.ability-used-named': '{actor} usou {ability} em {cell}',
+  'log.event.damaged': '{target} sofreu {damage} de dano',
+  'log.event.healed': '{target} recuperou {amount} de vida',
   'log.event.unknown': 'evento desconhecido',
 
   // One sentence per `RejectReason`, keyed by the code the server answers with. `unknown` is the
@@ -63,6 +85,8 @@ export const ptBR = {
   'log.rejection.target-out-of-range': 'Alvo fora de alcance',
   'log.rejection.no-line-of-sight': 'Sem linha de visão',
   'log.rejection.target-invalid': 'Alvo inválido',
+  // An ability the caster's own slots do not name, or the catalog has no definition for (ADR 0016 §7).
+  'log.rejection.ability-unknown': 'Habilidade desconhecida',
   'log.rejection.no-magazine': 'Sem carregador',
   // The pool of a basic attack is empty: a magazine to reload, or energy to meditate (ADR 0011). The
   // key keeps the engine's own word for the mechanism, mana; what the player reads is energy.
@@ -92,10 +116,30 @@ export const ptBR = {
   // floats above it (EA-5): they are not buttons of the bar, but they are read the same way.
   'action.move': 'Mover',
   'action.attack': 'Atacar',
+  // The one active ability of the class (ADR 0016). It is the class's own, so the button is named for
+  // what it does rather than for the ability. The menu it opens carries the same heading (EA-16).
+  'action.ability': 'Habilidade',
   'action.reload': 'Recarregar',
   'action.endTurn': 'Terminar turno',
   'action.confirmMove': 'Confirmar',
   'action.cancelMove': 'Cancelar',
+
+  // The abilities (EA-16): one word per id this build knows, and the fragments the menu composes the
+  // effect line from. The engine never learns a name (ADR 0016 §13) — the id is an opaque string and
+  // the words live here, which is the split ADR 0009 draws. An id with no word is named by itself in
+  // the menu and by the generic sentence in the log: the catalog travels with the match (ADR 0016 §3),
+  // so a newer server can ship an ability this build cannot name.
+  'ability.piercing-shot': 'Tiro Perfurante',
+  'ability.fireball': 'Bola de Fogo',
+  'ability.area-heal': 'Cura em Área',
+  'ability.detail.damage': 'Dano {amount}',
+  'ability.detail.heal': 'Cura {amount}',
+  'ability.detail.radius': 'raio {radius}',
+  // The cover of an area only means something to a roll, and only a damage effect rolls (ADR 0016 §9).
+  'ability.detail.ignoresCover': 'ignora cobertura',
+  // A damage effect that covers more than one cell hurts every body in it, the caster's own side
+  // included (ADR 0016 §12): the rule the player has to read before aiming.
+  'ability.detail.hitsAllies': 'atinge todos, inclusive aliados',
 
   // The rest of the HUD, and the lines the match shows over it: the two endings, the notice a
   // refused protocol version raises, and the two states of a dropped connection.
@@ -113,13 +157,37 @@ export const ptBR = {
   'hud.autoEndTurn.countdown': 'Turno encerrado em {seconds} s',
   'hud.autoEndTurn.link': 'Não passar automaticamente',
   'hud.autoEndTurn.hint': 'Nada mais a fazer: termine o turno',
-  // The settings panel the gear opens: the toggle of the automatic end of turn, and the stepper of the
-  // drag sensitivity (owner's request) with the value it reads between its two signs. The label of the
-  // second row is drawn beside that stepper, so it stays short: a longer one runs under the −.
+  // The settings panel the gear opens: the toggle of the automatic end of turn, the stepper of the
+  // drag sensitivity (owner's request) with the value it reads between its two signs, and the checkbox
+  // of the marks of the rules (owner's request, EA-15). The label of the second row is drawn beside
+  // that stepper, so it stays short: a longer one runs under the −.
   'hud.settings': 'Ajustes',
   'hud.settings.autoEndTurn': 'Passar o turno automaticamente',
   'hud.settings.panSensitivity': 'Arrasto do mapa',
   'hud.settings.panSensitivity.value': '{percent}%',
+  'hud.settings.highlightCovers': 'Realçar Coberturas',
+  // The battle report (EA-17): the modal that opens the moment a match ends, with the whole log, a
+  // scroll and a plain-text export — the dashboard's six lines are not the only view of a fight.
+  'hud.report.title': 'Registro da partida',
+  'hud.report.export': 'Baixar .txt',
+  'hud.report.reopen': 'Ver registro completo',
+  'hud.report.range': '{from}–{to} de {total}',
+  // The odds over a unit's head while it is being aimed at (EA-18). A bare number plus a sign still
+  // comes from the catalog, like every other word on the screen (ADR 0009).
+  'hud.target.chance': '{value}%',
+  // The badge a unit in cover wears over its head: the sentence, the conjunction that joins two sides,
+  // and the name of each of the eight. The sides are the board's own and the camera never renames one
+  // (m3-02, D1), so these are not the letters of the camera panel above.
+  'hud.cover.sides': 'Em cobertura a {sides}',
+  'hud.cover.and': ' e ',
+  'hud.cover.north': 'norte',
+  'hud.cover.northeast': 'nordeste',
+  'hud.cover.east': 'leste',
+  'hud.cover.southeast': 'sudeste',
+  'hud.cover.south': 'sul',
+  'hud.cover.southwest': 'sudoeste',
+  'hud.cover.west': 'oeste',
+  'hud.cover.northwest': 'noroeste',
   // The camera panel (EA-12): the view the camera looks from, the zoom step it is on, and the letter
   // each direction is written as — Norte, Leste, Sul, Oeste, as the prototype prints them.
   'hud.camera': 'Câmera',

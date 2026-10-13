@@ -37,7 +37,15 @@ export const enUS: Record<MessageKey, string> = {
   // The battle log. One sentence per event, and the placeholders are filled by `interpolate`.
   'log.event.moved': '{actor} moved from {from} to {to}',
   'log.event.attacked': '{actor} hit {target} for {damage}',
-  'log.event.missed': '{actor} missed',
+  // Which end of the shot the crate was on is the whole difference between the four pairs, and the
+  // shooter's own cover is read on the board (ADR 0012 § D4, ADR 0013).
+  'log.event.attackedCover': '{actor} hit {target} for {damage} in cover',
+  'log.event.missed': '{actor} missed {target}',
+  'log.event.missedCover': '{actor} missed {target} in cover',
+  'log.event.attackedFromCover': '{actor}, in cover, hit {target} for {damage}',
+  'log.event.missedFromCover': '{actor}, in cover, missed {target}',
+  'log.event.attackedBothCover': '{actor}, in cover, hit {target} for {damage}, who was in cover too',
+  'log.event.missedBothCover': '{actor}, in cover, missed {target}, who was in cover too',
   'log.event.reloaded': '{actor} reloaded',
   // The same action for a magic class (ADR 0011 §3): the engine calls it a reload either way, and the
   // player reads the word of their own class.
@@ -45,6 +53,13 @@ export const enUS: Record<MessageKey, string> = {
   'log.event.defeated': '{target} fell',
   'log.event.corpseRemoved': 'Body of {target} removed',
   'log.event.turnEnded': 'Turn of {next}',
+  'log.event.regained': '{actor} regained {amount} mana',
+  // The use of an ability (ADR 0016): the action names a cell, never a unit, and the two outcomes
+  // of the use follow as events of their own.
+  'log.event.ability-used': '{actor} used an ability on {cell}',
+  'log.event.ability-used-named': '{actor} used {ability} on {cell}',
+  'log.event.damaged': '{target} took {damage} damage',
+  'log.event.healed': '{target} recovered {amount} health',
   'log.event.unknown': 'unknown event',
 
   // One sentence per `RejectReason`, keyed by the code the server answers with. `unknown` is the
@@ -58,6 +73,7 @@ export const enUS: Record<MessageKey, string> = {
   'log.rejection.target-out-of-range': 'Target out of range',
   'log.rejection.no-line-of-sight': 'No line of sight',
   'log.rejection.target-invalid': 'Invalid target',
+  'log.rejection.ability-unknown': 'Unknown ability',
   'log.rejection.no-magazine': 'No magazine',
   // The pool of a basic attack is empty: a magazine to reload, or energy to meditate (ADR 0011). The
   // key keeps the engine's own word for the mechanism, mana; what the player reads is energy.
@@ -87,10 +103,21 @@ export const enUS: Record<MessageKey, string> = {
   // floats above it (EA-5): they are not buttons of the bar, but they are read the same way.
   'action.move': 'Move',
   'action.attack': 'Attack',
+  'action.ability': 'Ability',
   'action.reload': 'Reload',
   'action.endTurn': 'End turn',
   'action.confirmMove': 'Confirm',
   'action.cancelMove': 'Cancel',
+
+  // The abilities (EA-16): one word per id this build knows, and the fragments of the effect line.
+  'ability.piercing-shot': 'Piercing Shot',
+  'ability.fireball': 'Fireball',
+  'ability.area-heal': 'Area Heal',
+  'ability.detail.damage': 'Damage {amount}',
+  'ability.detail.heal': 'Heal {amount}',
+  'ability.detail.radius': 'radius {radius}',
+  'ability.detail.ignoresCover': 'ignores cover',
+  'ability.detail.hitsAllies': 'hits everyone, allies included',
 
   // The rest of the HUD, and the lines the match shows over it.
   'hud.legend':
@@ -112,6 +139,25 @@ export const enUS: Record<MessageKey, string> = {
   'hud.settings.autoEndTurn': 'Pass the turn automatically',
   'hud.settings.panSensitivity': 'Map drag',
   'hud.settings.panSensitivity.value': '{percent}%',
+  'hud.settings.highlightCovers': 'Highlight Covers',
+  // The battle report (EA-17): the modal that opens the moment a match ends.
+  'hud.report.title': 'Battle log',
+  'hud.report.export': 'Download .txt',
+  'hud.report.reopen': 'View full log',
+  'hud.report.range': '{from}-{to} of {total}',
+  // The odds over a unit's head while it is being aimed at (EA-18).
+  'hud.target.chance': '{value}%',
+  // The badge a unit in cover wears over its head. The sides are the board's own (m3-02, D1).
+  'hud.cover.sides': 'In cover for {sides}',
+  'hud.cover.and': ' and ',
+  'hud.cover.north': 'North',
+  'hud.cover.northeast': 'Northeast',
+  'hud.cover.east': 'East',
+  'hud.cover.southeast': 'Southeast',
+  'hud.cover.south': 'South',
+  'hud.cover.southwest': 'Southwest',
+  'hud.cover.west': 'West',
+  'hud.cover.northwest': 'Northwest',
   // The camera panel (EA-12): the view the camera looks from, the zoom step it is on, and the letter
   // each direction is written as.
   'hud.camera': 'Camera',

@@ -1,18 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import type { Board, PublicState, Team, UnitState } from '../protocol';
+import type { AbilityDefinition, BoardState, PublicState, Team, UnitState } from '../protocol';
 import { applyMode } from './actions';
-import { resolveClick, resolveInspect } from './selection';
+import { allowsIntent, resolveClick, resolveInspect, type Intent } from './selection';
 
-const BOARD: Board = { width: 8, height: 8, levels: new Array<number>(64).fill(0) };
+const BOARD: BoardState = { width: 8, height: 8, levels: new Array<number>(64).fill(0), props: [] };
 
 /** A flat board with the given cells raised, keyed by `x,y`. */
-function makeBoard(heights: Record<string, number>): Board {
+function makeBoard(heights: Record<string, number>): BoardState {
   const levels = new Array<number>(64).fill(0);
   for (const [key, level] of Object.entries(heights)) {
     const [x, y] = key.split(',').map(Number);
     levels[y * 8 + x] = level;
   }
-  return { width: 8, height: 8, levels };
+  return { width: 8, height: 8, levels, props: [] };
 }
 
 interface UnitSpec {
@@ -47,6 +47,7 @@ function makeUnit(spec: UnitSpec): UnitState {
     equipment: { armor: null, helmet: null, mainHand: null, offHand: null, accessory1: null, accessory2: null },
     abilities: { activeSets: [null, null], reaction: null, movement: null, support: null },
     movementProfile: { maxStepUp: 1, maxStepDown: 1, climbCost: 1 },
+    facing: 'E',
     // Filled the way `newMatch` fills it: a pool that exists is always of one kind.
     resourceKind: magazine === null ? null : (spec.resourceKind ?? 'ammo'),
     defeated: spec.defeated ?? false,
@@ -59,12 +60,13 @@ function makeUnit(spec: UnitSpec): UnitState {
 function makeState(
   units: readonly UnitState[],
   currentIndex = 0,
-  board: Board = BOARD,
+  board: BoardState = BOARD,
   movementLeft = 3,
 ): PublicState {
   return {
     seed: 1,
     board,
+    catalog: [],
     units: [...units],
     initiative: units.map((unit) => unit.id),
     currentIndex,
@@ -356,6 +358,160 @@ describe('resolveClick on a unit', () => {
 
     expect(portrait).toEqual({ kind: 'send', action: { type: 'attack', target: 'B-priest' } });
     expect(sprite).toEqual(portrait);
+  });
+});
+
+/**
+ * The aim of an armed ability (EA-16, ADR 0016 §5): the action names a cell, and the menu is what names
+ * the ability it is aimed with. The rules and the order they are asked in are the engine's own
+ * `validateUseAbility` (§7), so the sentence a refusal carries here is the one the server would answer.
+ */
+describe('the aim of an armed ability', () => {
+  const FIREBALL: AbilityDefinition = {
+    id: 'fireball',
+    cost: 2,
+    range: 3,
+    needsSight: true,
+    effect: { kind: 'damage', amount: 3, radius: 1, ignoresCover: true },
+  };
+  const PIERCING_SHOT: AbilityDefinition = {
+    id: 'piercing-shot',
+    cost: 1,
+    range: 4,
+    needsSight: true,
+    effect: { kind: 'damage', amount: 6, radius: 0, ignoresCover: true },
+  };
+  const CATALOG: readonly AbilityDefinition[] = [FIREBALL, PIERCING_SHOT];
+
+  /** The same state carrying the catalog the ability rules read, which travels with it (ADR 0016 §3). */
+  function withCatalog(state: PublicState, catalog: readonly AbilityDefinition[] = CATALOG): PublicState {
+    return { ...state, catalog };
+  }
+
+  /** A magic class of the roster: three points of mana, and a fireball in its first active set. */
+  const WIZARD = makeUnit({ id: 'A-wizard', team: 'A', at: { x: 1, y: 0 }, range: 1, ammo: 2, resourceKind: 'mana' });
+  const CASTER: UnitState = { ...WIZARD, abilities: { ...WIZARD.abilities, activeSets: ['fireball', null] } };
+  const ENEMY = makeUnit({ id: 'B-priest', team: 'B', at: { x: 7, y: 7 }, range: 1 });
+
+  it('sends the ability the unit carries when the menu armed none', () => {
+    // Every caller that never opened a menu means this: the first active set names the aim (ADR 0016 §6).
+    const state = withCatalog(makeState([CASTER, ENEMY]));
+
+    expect(
+      resolveClick({ state, selectedId: 'A-wizard', cell: { x: 2, y: 0 }, humanTeam: 'A', mode: 'ability' }),
+    ).toEqual({ kind: 'send', action: { type: 'useAbility', abilityId: 'fireball', to: { x: 2, y: 0 } } });
+  });
+
+  it('sends the ability the menu armed, whatever the unit carries by default', () => {
+    const state = withCatalog(makeState([CASTER, ENEMY]));
+
+    expect(
+      resolveClick({
+        state,
+        selectedId: 'A-wizard',
+        cell: { x: 2, y: 0 },
+        humanTeam: 'A',
+        mode: 'ability',
+        abilityId: 'piercing-shot',
+      }),
+    ).toEqual({ kind: 'send', action: { type: 'useAbility', abilityId: 'piercing-shot', to: { x: 2, y: 0 } } });
+  });
+
+  it('reads the reach and the cost of the armed ability, not of the one that was carried', () => {
+    // Distance 4 is past the fireball's reach of 3 and inside the piercing shot's reach of 4, and the
+    // piercing shot costs 1 of the 2 points of mana: the aim the player picked is the one judged.
+    const state = withCatalog(makeState([CASTER, ENEMY]));
+
+    expect(
+      resolveClick({ state, selectedId: 'A-wizard', cell: { x: 5, y: 0 }, humanTeam: 'A', mode: 'ability' }),
+    ).toEqual({ kind: 'refused', reason: 'target-out-of-range' });
+    expect(
+      resolveClick({
+        state,
+        selectedId: 'A-wizard',
+        cell: { x: 5, y: 0 },
+        humanTeam: 'A',
+        mode: 'ability',
+        abilityId: 'piercing-shot',
+      }),
+    ).toEqual({ kind: 'send', action: { type: 'useAbility', abilityId: 'piercing-shot', to: { x: 5, y: 0 } } });
+  });
+
+  it('refuses an armed id the match does not define, in the engine\'s own words', () => {
+    // The server answers `ability-unknown` for it (ADR 0016 §7), so the client says the same.
+    const state = withCatalog(makeState([CASTER, ENEMY]));
+
+    expect(
+      resolveClick({
+        state,
+        selectedId: 'A-wizard',
+        cell: { x: 2, y: 0 },
+        humanTeam: 'A',
+        mode: 'ability',
+        abilityId: 'time-stop',
+      }),
+    ).toEqual({ kind: 'refused', reason: 'ability-unknown' });
+  });
+
+  it('refuses the aim when the pool cannot pay the armed ability', () => {
+    // One point of mana against the fireball's cost of two: the row the menu dimmed is the one the
+    // engine turns down, and the sentence names the pool to refill (ADR 0011, ADR 0016 §7).
+    const poor: UnitState = { ...CASTER, ammo: 1 };
+    const state = withCatalog(makeState([poor, ENEMY]));
+
+    expect(
+      resolveClick({ state, selectedId: 'A-wizard', cell: { x: 2, y: 0 }, humanTeam: 'A', mode: 'ability' }),
+    ).toEqual({ kind: 'refused', reason: 'no-mana' });
+  });
+});
+
+/**
+ * The mode a button arms is the mode a click obeys (EA-7): `allowsIntent` is the one rule the action
+ * bar and the click share, so the ability the bar arms filters a click exactly the way Atacar does.
+ */
+describe('allowsIntent', () => {
+  const USE_ABILITY: Intent = {
+    kind: 'send',
+    action: { type: 'useAbility', abilityId: 'fireball', to: { x: 2, y: 0 } },
+  };
+  const MOVE: Intent = { kind: 'send', action: { type: 'move', to: { x: 1, y: 0 } } };
+  const ATTACK: Intent = { kind: 'send', action: { type: 'attack', target: 'B-priest' } };
+  // The `face` action is the engine's own (ADR 0014) and the client's union has not learned it yet:
+  // the mode still has to turn it down, so it is built past the type the way an unknown event is.
+  const FACE = { kind: 'send', action: { type: 'face', facing: 'N' } } as unknown as Intent;
+
+  it('lets an ability through only while the ability is armed', () => {
+    expect(allowsIntent('ability', USE_ABILITY)).toBe(true);
+
+    for (const mode of ['inspect', 'move', 'attack'] as const) {
+      expect(allowsIntent(mode, USE_ABILITY), mode).toBe(false);
+    }
+  });
+
+  it('keeps the ability mode to the ability alone, and sends nothing else', () => {
+    // The mode narrows to its own action type and invents nothing (EA-7): every other action the
+    // client can send is turned down while an ability is armed.
+    const others: [string, Intent][] = [
+      ['move', MOVE],
+      ['attack', ATTACK],
+      ['reload', { kind: 'send', action: { type: 'reload' } }],
+      ['endTurn', { kind: 'send', action: { type: 'endTurn', round: 1 } }],
+      ['cancelMove', { kind: 'send', action: { type: 'cancelMove' } }],
+      ['commitMove', { kind: 'send', action: { type: 'commitMove' } }],
+      ['face', FACE],
+    ];
+
+    for (const [what, intent] of others) {
+      expect(allowsIntent('ability', intent), what).toBe(false);
+    }
+  });
+
+  it('still lets a selection, an inspection and a refusal through while the ability is armed', () => {
+    // Looking at the board and being told why a press was turned down are not actions: they pass in
+    // every mode (EA-8), the ability mode included.
+    expect(allowsIntent('ability', { kind: 'select', unitId: 'A-wizard' })).toBe(true);
+    expect(allowsIntent('ability', { kind: 'inspect', unitId: 'B-priest' })).toBe(true);
+    expect(allowsIntent('ability', { kind: 'refused', reason: 'ability-unknown' })).toBe(true);
   });
 });
 

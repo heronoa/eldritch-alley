@@ -18,6 +18,10 @@ import {
   BUTTON_FILL,
   BUTTON_FILL_SELECTED,
   CORPSE_OUTLINE_COLOR,
+  COVER_BADGE_FILL,
+  COVER_BADGE_STROKE,
+  HIT_CHANCE_BADGE_FILL,
+  HIT_CHANCE_BADGE_STROKE,
   INK_COLOR,
   PANEL_FILL,
   PANEL_INNER_ALPHA,
@@ -120,6 +124,36 @@ describe('outline contrast', () => {
         `${letter} ${TILE_PALETTE[letter].top}`,
       ).toBeGreaterThanOrEqual(OUTLINE_FLOOR);
     }
+  });
+
+  // The badge a unit in cover wears is the first text drawn on the board itself, so it is measured
+  // against the same ground: the letters on every tile, and the outline that carries them there.
+  it('keeps the cover badge legible on every tile the three maps draw', () => {
+    for (const letter of LETTERS_IN_USE) {
+      expect(
+        contrastRatio(COVER_BADGE_FILL, topOf(letter)),
+        `${letter} ${TILE_PALETTE[letter].top}`,
+      ).toBeGreaterThanOrEqual(OUTLINE_FLOOR);
+    }
+  });
+
+  it('keeps the outline of the cover badge strong against its own fill', () => {
+    expect(contrastRatio(COVER_BADGE_FILL, COVER_BADGE_STROKE)).toBeGreaterThanOrEqual(BODY_FLOOR);
+  });
+
+  // The hit-chance badge (EA-18) is drawn over the board the same way the cover badge is, so it is
+  // held to the same floor.
+  it('keeps the hit-chance badge legible on every tile the three maps draw', () => {
+    for (const letter of LETTERS_IN_USE) {
+      expect(
+        contrastRatio(HIT_CHANCE_BADGE_FILL, topOf(letter)),
+        `${letter} ${TILE_PALETTE[letter].top}`,
+      ).toBeGreaterThanOrEqual(OUTLINE_FLOOR);
+    }
+  });
+
+  it('keeps the outline of the hit-chance badge strong against its own fill', () => {
+    expect(contrastRatio(HIT_CHANCE_BADGE_FILL, HIT_CHANCE_BADGE_STROKE)).toBeGreaterThanOrEqual(BODY_FLOOR);
   });
 });
 

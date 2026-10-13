@@ -18,6 +18,18 @@ export function isClientAction(value: unknown): value is ClientAction {
     }
     case 'attack':
       return typeof candidate.target === 'string';
+    case 'useAbility': {
+      // The aim is a cell, the way a move's destination is: the engine refuses a cell off the board and
+      // the shape only answers that the two numbers are there.
+      const to = candidate.to as Record<string, unknown> | null | undefined;
+      return (
+        typeof candidate.abilityId === 'string' &&
+        typeof to === 'object' &&
+        to !== null &&
+        isWholeNumber(to.x) &&
+        isWholeNumber(to.y)
+      );
+    }
     case 'reload':
       return true;
     // The two controls of a pending move carry no field at all, like `reload`: the run they act on

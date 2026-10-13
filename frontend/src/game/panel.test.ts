@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import type { Board, PublicState, Team, UnitId, UnitState } from '../protocol';
+import type { BoardState, PublicState, Team, UnitId, UnitState } from '../protocol';
 import { unitPanel, type PanelRow } from './panel';
 import { setLocale } from '../i18n/translate';
 
 // The cases below assert the Portuguese copy the game shipped with, so they read it on purpose.
 setLocale('pt-BR');
 
-const BOARD: Board = { width: 8, height: 8, levels: new Array<number>(64).fill(0) };
+const BOARD: BoardState = { width: 8, height: 8, levels: new Array<number>(64).fill(0), props: [] };
 
 interface UnitSpec {
   id: UnitId;
@@ -39,6 +39,7 @@ function makeUnit(spec: UnitSpec): UnitState {
     equipment: { armor: null, helmet: null, mainHand: null, offHand: null, accessory1: null, accessory2: null },
     abilities: { activeSets: [null, null], reaction: null, movement: null, support: null },
     movementProfile: { maxStepUp: 1, maxStepDown: 1, climbCost: 1 },
+    facing: 'E',
     // The pool a basic attack spends, filled the way `newMatch` fills it: a magazine implies a kind.
     resourceKind: magazine === null ? null : (spec.resourceKind ?? 'ammo'),
     defeated: false,
@@ -56,6 +57,7 @@ function makeState(
   return {
     seed: 1,
     board: BOARD,
+    catalog: [],
     units: [...units],
     initiative: units.map((unit) => unit.id),
     currentIndex,

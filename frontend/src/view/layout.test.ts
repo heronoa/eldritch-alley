@@ -4,9 +4,19 @@ import { PROTOTYPE_MAPS } from '../maps/prototype-maps';
 import type { Cell } from './grid';
 import { topFace } from './iso';
 import {
+  ABILITY_MENU_CLOSE_RECT,
+  ABILITY_MENU_RECT,
+  ABILITY_MENU_ROWS,
   ACTION_BAR_RECT,
   ACTION_BUTTON,
   ACTION_HINT_RECT,
+  BATTLE_REPORT_CLOSE_RECT,
+  BATTLE_REPORT_EXPORT_RECT,
+  BATTLE_REPORT_LIST_RECT,
+  BATTLE_REPORT_RECT,
+  BATTLE_REPORT_REOPEN_RECT,
+  BATTLE_REPORT_SCROLL_DOWN_RECT,
+  BATTLE_REPORT_SCROLL_UP_RECT,
   CANVAS_HEIGHT,
   CANVAS_WIDTH,
   CAROUSEL_RECT,
@@ -19,6 +29,7 @@ import {
   INSPECT_CLOSE_RECT,
   INSPECT_RECT,
   INSPECT_VALUE_X,
+  REPORT_LINES,
   CAMERA_RECT,
   LEGEND_RECT,
   LOG_HEADER_HEIGHT,
@@ -34,6 +45,7 @@ import {
   PANEL_ROW_HEIGHT,
   RESULT_BUTTON_RECT,
   SETTINGS_BUTTON_RECT,
+  SETTINGS_COVERS_ROW_RECT,
   SETTINGS_PANEL_RECT,
   SETTINGS_PAN_MINUS_RECT,
   SETTINGS_PAN_PLUS_RECT,
@@ -45,6 +57,8 @@ import {
   CAMERA_VIEW_RECT,
   CAMERA_ZOOM_RECT,
   boardBounds,
+  abilityMenuRowIndexAt,
+  abilityMenuRowRect,
   buttonIndexAt,
   buttonRect,
   cameraControlAt,
@@ -426,6 +440,17 @@ describe('the top edge', () => {
     expect(bottom(SETTINGS_PANEL_RECT)).toBeLessThanOrEqual(DASHBOARD_RECT.y);
   });
 
+  // The marks of the rules became a setting (owner's request), and its row took the third line of the
+  // panel, which grew with it.
+  it('gives the settings a third row for the cover marks, and the panel room for all three', () => {
+    expect(SETTINGS_COVERS_ROW_RECT.x).toBeGreaterThanOrEqual(SETTINGS_PANEL_RECT.x);
+    expect(right(SETTINGS_COVERS_ROW_RECT)).toBeLessThanOrEqual(right(SETTINGS_PANEL_RECT));
+    expect(SETTINGS_COVERS_ROW_RECT.y).toBeGreaterThanOrEqual(bottom(SETTINGS_PAN_ROW_RECT));
+    expect(bottom(SETTINGS_COVERS_ROW_RECT)).toBeLessThanOrEqual(bottom(SETTINGS_PANEL_RECT));
+    expect(bottom(SETTINGS_PANEL_RECT)).toBeLessThanOrEqual(DASHBOARD_RECT.y);
+    expect(bottom(SETTINGS_PANEL_RECT)).toBeLessThanOrEqual(CANVAS_HEIGHT);
+  });
+
   it('lays the stepper of the drag out as − value +, the three inside their row', () => {
     const pieces = [
       ['minus', SETTINGS_PAN_MINUS_RECT],
@@ -484,6 +509,66 @@ describe('the inspection window', () => {
   it('runs its values back to the right edge, inside the window', () => {
     expect(INSPECT_VALUE_X).toBeLessThanOrEqual(right(INSPECT_RECT));
     expect(INSPECT_VALUE_X).toBeGreaterThan(INSPECT_RECT.x + INSPECT_RECT.width / 2);
+  });
+});
+
+/**
+ * EA-16: the modal `Habilidade` opens before the aim. Its rectangle, its close button and the rows the
+ * scene hit-tests are laid out here, so a press on a drawn row is a press on that row.
+ */
+describe('the ability menu', () => {
+  it('fits inside the canvas, over the board', () => {
+    expect(ABILITY_MENU_RECT.x).toBeGreaterThanOrEqual(0);
+    expect(ABILITY_MENU_RECT.y).toBeGreaterThanOrEqual(0);
+    expect(right(ABILITY_MENU_RECT)).toBeLessThanOrEqual(CANVAS_WIDTH);
+    expect(bottom(ABILITY_MENU_RECT)).toBeLessThanOrEqual(CANVAS_HEIGHT);
+    expect(ABILITY_MENU_RECT.x).toBeLessThan(CANVAS_WIDTH / 2);
+    expect(right(ABILITY_MENU_RECT)).toBeGreaterThan(CANVAS_WIDTH / 2);
+  });
+
+  it('holds its close button inside itself, at its top right', () => {
+    expect(ABILITY_MENU_CLOSE_RECT.x).toBeGreaterThanOrEqual(ABILITY_MENU_RECT.x);
+    expect(ABILITY_MENU_CLOSE_RECT.y).toBeGreaterThanOrEqual(ABILITY_MENU_RECT.y);
+    expect(right(ABILITY_MENU_CLOSE_RECT)).toBeLessThanOrEqual(right(ABILITY_MENU_RECT));
+    expect(bottom(ABILITY_MENU_CLOSE_RECT)).toBeLessThanOrEqual(bottom(ABILITY_MENU_RECT));
+    expect(ABILITY_MENU_CLOSE_RECT.x).toBeGreaterThan(ABILITY_MENU_RECT.x + ABILITY_MENU_RECT.width / 2);
+  });
+
+  it('fits its rows under the close button and inside the panel', () => {
+    for (let index = 0; index < ABILITY_MENU_ROWS; index += 1) {
+      const row = abilityMenuRowRect(index);
+      expect(row.x, `row ${index}`).toBeGreaterThan(ABILITY_MENU_RECT.x);
+      expect(row.y, `row ${index}`).toBeGreaterThanOrEqual(bottom(ABILITY_MENU_CLOSE_RECT));
+      expect(right(row), `row ${index}`).toBeLessThan(right(ABILITY_MENU_RECT));
+      expect(bottom(row), `row ${index}`).toBeLessThanOrEqual(bottom(ABILITY_MENU_RECT));
+    }
+  });
+
+  it('never overlaps two rows, so the row under a press is never ambiguous', () => {
+    for (let i = 0; i < ABILITY_MENU_ROWS; i += 1) {
+      for (let j = i + 1; j < ABILITY_MENU_ROWS; j += 1) {
+        expect(overlaps(abilityMenuRowRect(i), abilityMenuRowRect(j)), `${i} over ${j}`).toBe(false);
+      }
+    }
+  });
+
+  it('names the row under a point, and nothing for the title, the close button or a gap', () => {
+    const centreOf = (index: number) => {
+      const row = abilityMenuRowRect(index);
+      return { x: row.x + row.width / 2, y: row.y + row.height / 2 };
+    };
+
+    for (let index = 0; index < ABILITY_MENU_ROWS; index += 1) {
+      expect(abilityMenuRowIndexAt(centreOf(index)), `row ${index}`).toBe(index);
+    }
+
+    // The title band and the close button are the panel's own: a press there arms nothing.
+    const title = { x: ABILITY_MENU_RECT.x + 8, y: ABILITY_MENU_RECT.y + 8 };
+    const close = { x: ABILITY_MENU_CLOSE_RECT.x + 1, y: ABILITY_MENU_CLOSE_RECT.y + 1 };
+    expect(abilityMenuRowIndexAt(title)).toBeNull();
+    expect(abilityMenuRowIndexAt(close)).toBeNull();
+    // And so is every point outside the panel, which is what closes it.
+    expect(abilityMenuRowIndexAt({ x: 0, y: 0 })).toBeNull();
   });
 });
 
@@ -579,5 +664,61 @@ describe('carouselSlotIndexAt', () => {
 
   it('answers nothing for a click on the board', () => {
     expect(carouselSlotIndexAt({ x: 640, y: 300 }, CAROUSEL_SLOTS)).toBeNull();
+  });
+});
+
+/**
+ * EA-17: the full match log, opened the moment the match ends. The same fixed-rectangle-plus-close-
+ * button shape the sheet and the ability menu already use, with a scrollable list, two chevrons and
+ * an export button besides.
+ */
+describe('the battle report', () => {
+  it('fits inside the canvas, over the board', () => {
+    expect(BATTLE_REPORT_RECT.x).toBeGreaterThanOrEqual(0);
+    expect(BATTLE_REPORT_RECT.y).toBeGreaterThanOrEqual(0);
+    expect(right(BATTLE_REPORT_RECT)).toBeLessThanOrEqual(CANVAS_WIDTH);
+    expect(bottom(BATTLE_REPORT_RECT)).toBeLessThanOrEqual(CANVAS_HEIGHT);
+    expect(BATTLE_REPORT_RECT.x).toBeLessThan(CANVAS_WIDTH / 2);
+    expect(right(BATTLE_REPORT_RECT)).toBeGreaterThan(CANVAS_WIDTH / 2);
+  });
+
+  it('holds its close button inside itself, at its top right', () => {
+    expect(BATTLE_REPORT_CLOSE_RECT.x).toBeGreaterThanOrEqual(BATTLE_REPORT_RECT.x);
+    expect(BATTLE_REPORT_CLOSE_RECT.y).toBeGreaterThanOrEqual(BATTLE_REPORT_RECT.y);
+    expect(right(BATTLE_REPORT_CLOSE_RECT)).toBeLessThanOrEqual(right(BATTLE_REPORT_RECT));
+    expect(bottom(BATTLE_REPORT_CLOSE_RECT)).toBeLessThanOrEqual(bottom(BATTLE_REPORT_RECT));
+    expect(BATTLE_REPORT_CLOSE_RECT.x).toBeGreaterThan(BATTLE_REPORT_RECT.x + BATTLE_REPORT_RECT.width / 2);
+  });
+
+  it('holds the list, both chevrons and the export button inside the panel, none of them overlapping', () => {
+    const pieces = [
+      BATTLE_REPORT_LIST_RECT,
+      BATTLE_REPORT_SCROLL_UP_RECT,
+      BATTLE_REPORT_SCROLL_DOWN_RECT,
+      BATTLE_REPORT_EXPORT_RECT,
+    ];
+
+    for (const piece of pieces) {
+      expect(piece.x).toBeGreaterThanOrEqual(BATTLE_REPORT_RECT.x);
+      expect(piece.y).toBeGreaterThanOrEqual(BATTLE_REPORT_RECT.y);
+      expect(right(piece)).toBeLessThanOrEqual(right(BATTLE_REPORT_RECT));
+      expect(bottom(piece)).toBeLessThanOrEqual(bottom(BATTLE_REPORT_RECT));
+    }
+    for (let i = 0; i < pieces.length; i += 1) {
+      for (let j = i + 1; j < pieces.length; j += 1) {
+        expect(overlaps(pieces[i]!, pieces[j]!), `${i} over ${j}`).toBe(false);
+      }
+    }
+  });
+
+  it('fits at least a dozen lines in the visible list', () => {
+    expect(REPORT_LINES).toBeGreaterThanOrEqual(12);
+  });
+
+  it('sits under the way-out button, so a finished match can still open it again', () => {
+    expect(BATTLE_REPORT_REOPEN_RECT.x).toBeGreaterThanOrEqual(0);
+    expect(right(BATTLE_REPORT_REOPEN_RECT)).toBeLessThanOrEqual(CANVAS_WIDTH);
+    expect(bottom(BATTLE_REPORT_REOPEN_RECT)).toBeLessThanOrEqual(CANVAS_HEIGHT);
+    expect(overlaps(BATTLE_REPORT_REOPEN_RECT, RESULT_BUTTON_RECT)).toBe(false);
   });
 });

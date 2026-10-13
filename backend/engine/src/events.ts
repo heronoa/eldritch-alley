@@ -2,6 +2,7 @@
 // sequence of events always rebuilds the same state (ADR 0005).
 import { corpseRounds } from './corpse';
 import { distance, inBounds } from './board';
+import { facingOf } from './facing';
 import { advanceIndex, removeFromInitiative, unitById } from './initiative';
 import { movementProfile, stepAllowed, stepCost } from './movement';
 import type { Board, Event, MatchState, MovementProfile, Position } from './types';
@@ -77,6 +78,9 @@ export function applyEvent(state: MatchState, event: Event): MatchState {
       let cost = 0;
       for (const step of steps) {
         cost += stepCost(profile, next.board, previous, step);
+        // The unit looks the way its last step went (ADR 0014), so a walk that turns a corner leaves
+        // it facing the corner and not the walk as a whole. The last pass is the one that stays.
+        actor.facing = facingOf(previous, step);
         previous = step;
       }
 
@@ -106,12 +110,56 @@ export function applyEvent(state: MatchState, event: Event): MatchState {
     }
 
     case 'attacked': {
+      const attacker = unitById(next, event.actor);
       const target = unitById(next, event.target);
       target.health = Math.max(0, target.health - event.damage);
-      if (event.resource !== null) unitById(next, event.actor).ammo -= 1;
+      if (event.resource !== null) attacker.ammo -= 1;
+      // The shot leaves the shooter looking at what it aimed at (ADR 0014), which is where the next
+      // shot of the match is read from.
+      attacker.facing = facingOf(attacker.position, target.position);
       next.hasActed = true;
       // Take the random source as the live roll left it, so the next roll matches the live match.
       next.rng = { state: event.rngState };
+      break;
+    }
+
+    case 'ability-used': {
+      const caster = unitById(next, event.actor);
+      const ability = next.catalog.find((definition) => definition.id === event.abilityId);
+      // The cost is the definition's, and the definition is in the state, so a replay pays exactly what
+      // the live match paid without the event carrying a number of its own (ADR 0016 §8.1).
+      if (!ability) {
+        throw new Error(`ability-used: the catalog has no definition for ${event.abilityId}`);
+      }
+      caster.ammo -= ability.cost;
+      // The cast leaves the caster looking at the cell it aimed at, the way a shot leaves it looking at
+      // its target (ADR 0014). An aim at its own cell turns nothing: there is no direction to read.
+      if (event.to.x !== caster.position.x || event.to.y !== caster.position.y) {
+        caster.facing = facingOf(caster.position, event.to);
+      }
+      next.hasActed = true;
+      next.rng = { state: event.rngState };
+      break;
+    }
+
+    case 'damaged': {
+      const target = unitById(next, event.target);
+      target.health = Math.max(0, target.health - event.damage);
+      break;
+    }
+
+    case 'healed': {
+      const target = unitById(next, event.target);
+      // A body is not healed back onto its feet (ADR 0016 §10). The builder already skips it, and a
+      // replay written by hand obeys the same rule rather than reviving it.
+      if (target.defeated) break;
+      target.health = Math.min(target.maxHealth, target.health + event.amount);
+      break;
+    }
+
+    case 'faced': {
+      // The turn the player asked for, which a walk and a shot would have written in their own event.
+      unitById(next, event.actor).facing = event.facing;
       break;
     }
 
@@ -139,6 +187,14 @@ export function applyEvent(state: MatchState, event: Event): MatchState {
       // The body is gone and the death is permanent. The tile is free because occupancy ignores
       // permanently dead units.
       unitById(next, event.target).permanentlyDead = true;
+      break;
+    }
+
+    case 'regained': {
+      // The point the rule handed the unit coming on turn (ADR 0017). The cap is the engine's own,
+      // so a replay of an event that would break it lands on the ceiling rather than above it.
+      const regaining = unitById(next, event.actor);
+      regaining.ammo = Math.min(regaining.ammo + event.amount, regaining.magazine ?? 0);
       break;
     }
 

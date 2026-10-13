@@ -8,13 +8,17 @@ import { DEFAULT_MOVEMENT_PROFILE } from './movement';
 import { createRng } from './rng';
 import type {
   Abilities,
+  AbilityDefinition,
   Action,
   ActionResult,
   Board,
+  BoardState,
   Equipment,
   Event,
+  Facing,
   MatchSetup,
   MatchState,
+  Position,
   MovementProfile,
   PublicState,
   Rng,
@@ -48,6 +52,23 @@ function validateBoard(board: Board): void {
   }
   board.levels.forEach((level, index) => {
     requireIntegerInRange(level, `map.levels[${index}]`, 0, 255);
+  });
+
+  // A prop is read by the rules as the cell it stands on, so the board must be able to answer "what
+  // stands here" without a second guess: one prop per cell, inside the board, of a known kind.
+  const occupied = new Set<number>();
+  (board.props ?? []).forEach((prop, index) => {
+    requireIntegerInRange(prop.position.x, `map.props[${index}].position.x`, 0, board.width - 1);
+    requireIntegerInRange(prop.position.y, `map.props[${index}].position.y`, 0, board.height - 1);
+    if (prop.kind !== 'wall' && prop.kind !== 'cover') {
+      throw new RangeError(`map.props[${index}].kind must be wall or cover`);
+    }
+
+    const cell = prop.position.y * board.width + prop.position.x;
+    if (occupied.has(cell)) {
+      throw new RangeError(`map.props[${index}] stands on a cell another prop already occupies`);
+    }
+    occupied.add(cell);
   });
 }
 
@@ -128,6 +149,48 @@ function validateUnit(unit: Unit, board: Board): void {
 }
 
 /**
+ * The catalog is authored data too, so a broken one is a programming error and fails at the door rather
+ * than mid-match (ADR 0016 §4): an empty id, a repeated id, a negative cost or radius, a range below
+ * zero, an unknown effect kind and an effect that is missing a field it needs are all refused here.
+ *
+ * A slot that names an id the catalog does not define is not refused: that is a rule violation read at
+ * the action that tries to use it, which answers `ability-unknown` and leaves the match playable.
+ */
+function validateCatalog(catalog: readonly AbilityDefinition[]): void {
+  if (!Array.isArray(catalog)) {
+    throw new RangeError('catalog must be a list of ability definitions');
+  }
+
+  const seen = new Set<string>();
+  catalog.forEach((ability, index) => {
+    if (!ability || typeof ability !== 'object') {
+      throw new RangeError(`catalog[${index}] must be an ability definition`);
+    }
+    if (typeof ability.id !== 'string' || ability.id.length === 0) {
+      throw new RangeError(`catalog[${index}].id must be a non-empty string`);
+    }
+    if (seen.has(ability.id)) throw new RangeError(`two definitions share the id ${ability.id}`);
+    seen.add(ability.id);
+
+    requireNonNegativeInteger(ability.cost, `catalog[${index}].cost`);
+    requireNonNegativeInteger(ability.range, `catalog[${index}].range`);
+    if (typeof ability.needsSight !== 'boolean') {
+      throw new RangeError(`catalog[${index}].needsSight must be a boolean`);
+    }
+
+    const effect = ability.effect;
+    if (!effect || (effect.kind !== 'damage' && effect.kind !== 'heal')) {
+      throw new RangeError(`catalog[${index}].effect.kind must be damage or heal`);
+    }
+    requireNonNegativeInteger(effect.amount, `catalog[${index}].effect.amount`);
+    requireNonNegativeInteger(effect.radius, `catalog[${index}].effect.radius`);
+    if (effect.kind === 'damage' && typeof effect.ignoresCover !== 'boolean') {
+      throw new RangeError(`catalog[${index}].effect.ignoresCover must be a boolean`);
+    }
+  });
+}
+
+/**
  * A malformed setup is a programming error, so it throws. A rule violation never throws: it comes
  * back as a rejected action.
  */
@@ -137,6 +200,7 @@ function validateSetup(setup: MatchSetup): void {
   }
 
   validateBoard(setup.map);
+  validateCatalog(setup.catalog ?? []);
 
   if (!Array.isArray(setup.teams) || setup.teams.length !== 2) {
     throw new RangeError('teams must hold exactly two squads');
@@ -157,7 +221,16 @@ function validateSetup(setup: MatchSetup): void {
   }
 }
 
-function toUnitState(unit: Unit): UnitState {
+/**
+ * A unit opens facing its own side of the map (ADR 0014, decision D1): the left half looks east,
+ * towards the middle, and the right half looks west. It is a pure function of the spawn, so a replay
+ * rebuilds it from the seed without carrying it in the setup.
+ */
+function openingFacing(board: Board, spawn: Position): Facing {
+  return spawn.x * 2 < board.width ? 'E' : 'W';
+}
+
+function toUnitState(unit: Unit, board: Board): UnitState {
   const activeSets: [string | null, string | null] = [
     unit.abilities.activeSets[0],
     unit.abilities.activeSets[1],
@@ -165,6 +238,7 @@ function toUnitState(unit: Unit): UnitState {
   return {
     ...unit,
     position: { x: unit.position.x, y: unit.position.y },
+    facing: openingFacing(board, unit.position),
     // The setup may author the profile; a unit that carries none plays by the default rule, which is
     // the rule the game had before the profile existed.
     movementProfile: { ...(unit.movementProfile ?? DEFAULT_MOVEMENT_PROFILE) },
@@ -186,18 +260,34 @@ function toUnitState(unit: Unit): UnitState {
 export function newMatch(setup: MatchSetup): MatchState {
   validateSetup(setup);
 
-  const board: Board = {
+  const board: BoardState = {
     width: setup.map.width,
     height: setup.map.height,
     levels: [...setup.map.levels],
+    // A setup may leave the props out, the way it may leave a unit's movement profile out; a board
+    // inside a match always carries them, so no rule has to ask whether they are there.
+    props: (setup.map.props ?? []).map((prop) => ({
+      position: { x: prop.position.x, y: prop.position.y },
+      kind: prop.kind,
+    })),
   };
-  const units = [...setup.teams[0], ...setup.teams[1]].map(toUnitState);
+  // The opening facing is read from the setup board, which is the one the spawns were authored on.
+  const units = [...setup.teams[0], ...setup.teams[1]].map((unit) => toUnitState(unit, board));
   const initiative = buildInitiativeQueue(units);
   const first = units.find((unit) => unit.id === initiative[0]);
 
   return {
     seed: setup.seed,
     board,
+    // A setup may leave the catalog out, the way it may leave the props out; a match always carries one,
+    // so no rule has to ask whether the abilities are there (ADR 0016 §3).
+    catalog: (setup.catalog ?? []).map((ability) => ({
+      id: ability.id,
+      cost: ability.cost,
+      range: ability.range,
+      needsSight: ability.needsSight,
+      effect: { ...ability.effect },
+    })),
     units,
     initiative,
     currentIndex: 0,

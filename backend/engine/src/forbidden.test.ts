@@ -7,10 +7,14 @@ const SRC_DIR = dirname(fileURLToPath(import.meta.url));
 
 /** Modules that must exist and be guarded. */
 const GUARDED_MODULES = [
+  'abilities.ts',
   'actions.ts',
   'board.ts',
+  'cover.ts',
   'events.ts',
+  'facing.ts',
   'hash.ts',
+  'height.ts',
   'index.ts',
   'initiative.ts',
   'match.ts',

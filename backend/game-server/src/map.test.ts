@@ -12,7 +12,7 @@
 // accepts a diagonal step, so the flood has to allow one too.
 import { describe, expect, it } from 'vitest';
 import { newMatch, type Board, type Position } from '@eldritch-alley/engine';
-import { MAPS, MATCH_SEED, boardOf, createMatchSetup, mapIndex, type MapId } from './map';
+import { MAPS, MATCH_SEED, PROP_EFFECTS, boardOf, createMatchSetup, mapIndex, type MapId } from './map';
 import { PROTOTYPE_MAPS, type PrototypeMap } from './maps/prototype-maps';
 
 /** How a cell is named in a failure message, and how a set of cells is keyed. */
@@ -253,6 +253,71 @@ describe('the map set', () => {
 
       expect(setup.teams[0].map((unit) => unit.position)).toEqual(map.spawns.A);
       expect(setup.teams[1].map((unit) => unit.position)).toEqual(map.spawns.B);
+    }
+  });
+});
+
+describe('the props of a map', () => {
+  /** The props of a map's prototype, in the order `data.js` lists them. */
+  function placedProps(map: MapId) {
+    return prototypeOf(map).props;
+  }
+
+  it('classifies every prop type the three maps place, and no type they do not', () => {
+    // The table is the map data's whole vocabulary (ADR 0012). A new prop type in `data.js` fails
+    // here, rather than quietly becoming a decoration the player walks through.
+    const placed = new Set(PROTOTYPE_MAPS.flatMap((map) => map.props.map((prop) => prop.t)));
+
+    expect([...placed].sort()).toEqual(Object.keys(PROP_EFFECTS).sort());
+  });
+
+  it('gives one real blocker and a chest-high set, and leaves the rest as decoration', () => {
+    expect(PROP_EFFECTS['tower']).toBe('wall');
+
+    for (const type of ['car', 'crates', 'dumpster', 'moto', 'ac', 'vent', 'fountain', 'bench']) {
+      expect(PROP_EFFECTS[type], type).toBe('cover');
+    }
+
+    // A lamp, a puddle and a manhole change nothing about a shot.
+    for (const type of ['lamp', 'puddle', 'manhole']) {
+      expect(PROP_EFFECTS[type], type).toBeNull();
+    }
+  });
+
+  it('puts on the board exactly the props of a classified type, at the same positions', () => {
+    for (const map of MAPS) {
+      const expected = placedProps(map.id)
+        .filter((prop) => PROP_EFFECTS[prop.t] !== null)
+        .map((prop) => ({ position: { x: prop.x, y: prop.y }, kind: PROP_EFFECTS[prop.t] }));
+
+      expect(map.board.props, map.id).toEqual(expected);
+    }
+  });
+
+  it('leaves no prop of a classified type out of the board', () => {
+    // The other reading of the same rule, so a filter that dropped everything would still fail.
+    for (const map of MAPS) {
+      const classified = placedProps(map.id).filter((prop) => PROP_EFFECTS[prop.t] !== null);
+      expect(map.board.props, map.id).toHaveLength(classified.length);
+      expect(classified.length, map.id).toBeGreaterThan(0);
+    }
+  });
+
+  it('places every prop inside the board, and never two on the same cell', () => {
+    // `newMatch` refuses a prop off the board and two props on one cell, so a map that broke either
+    // would fail at the first match rather than at review time.
+    for (const map of MAPS) {
+      expect(map.board.props, map.id).toBeDefined();
+
+      const props = map.board.props ?? [];
+
+      for (const prop of props) {
+        expect(inside(map.board, prop.position), `${map.id} ${key(prop.position)}`).toBe(true);
+      }
+
+      const cells = props.map((prop) => key(prop.position));
+      expect(new Set(cells).size, map.id).toBe(cells.length);
+      expect(() => newMatch(createMatchSetup(MAPS.indexOf(map))), map.id).not.toThrow();
     }
   });
 });

@@ -65,6 +65,26 @@ export const CORPSE_COLOR = 0x4a4a4a;
 /** The outline of a fallen unit, so its silhouette reads on every height. */
 export const CORPSE_OUTLINE_COLOR = PAPER_COLOR;
 
+/**
+ * The badge a unit in cover wears over its head (EA-15): the paper of the identity, on the ink that
+ * carries every other line of the game. It is the first text drawn on the board itself, so it is
+ * measured against the tiles by the contrast test the paper marker already passes.
+ */
+export const COVER_BADGE_FILL = PAPER_COLOR;
+export const COVER_BADGE_STROKE = INK_COLOR;
+
+/**
+ * The odds a unit is shown while it is being aimed at (EA-18): a vivid spring green, on ink — the
+ * owner's own request for a colour that reads as "the number that matters right now" rather than as
+ * ambient information. Chosen at HSL(140°, 85%, 70%) and nudged to a round hex: it clears the same
+ * outline floor the cover badge is held to (7.8:1 against the lightest tile the three maps actually
+ * draw, `q`, `#3f4152`) with more margin than the paper-on-ink pair it replaces, and 15:1 against ink.
+ * The attack highlight's red was tried first and measured under 4:1 against both paper and ink — a
+ * warning nobody could actually read — which is why this is a colour of its own rather than a reuse.
+ */
+export const HIT_CHANCE_BADGE_FILL = 0x66ff99;
+export const HIT_CHANCE_BADGE_STROKE = INK_COLOR;
+
 /** The pips of a basic attack: warm for the rounds of a magazine, cyan for mana (ADR 0011). */
 export const WARM_COLOR = 0xf0d9a0;
 export const MANA_COLOR = 0x3de9ff;

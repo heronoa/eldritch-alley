@@ -47,7 +47,12 @@ export type PressOutcome =
   /** A second finger landed: the zoom is measured from these two, and the scene keeps them. */
   | { kind: 'pinchBegin'; pinch: Pinch }
   /** The fingers moved: the zoom is read again from where they are now. */
-  | { kind: 'pinch'; pinch: Pinch };
+  | { kind: 'pinch'; pinch: Pinch }
+  /**
+   * A mouse moving with no button down (EA-18): the touch answer to a hover is the long press, so
+   * only a mouse ever reads this, never a finger.
+   */
+  | { kind: 'hover'; at: Pixel };
 
 /**
  * The gestures of one match: the pointers that are down, the press that is waiting on its own lift,
@@ -97,11 +102,14 @@ export class Gestures {
    * is no longer a tap — which is also when the press waiting under it is taken down, so a click never
    * nudges the map and panning never picks a cell by accident (EA-12).
    *
-   * A pointer that is not one of the fingers down is no gesture: a mouse hovering over the canvas
-   * reports moves, and they belong to nothing.
+   * A pointer that is not one of the fingers down is no gesture of the camera's — but a mouse
+   * reporting one with no button held is a hover, which is what lets the odds of a shot be read
+   * before it is taken (EA-18); a stray report from a finger that is not down is still nothing.
    */
   move(pointer: PressPointer): PressOutcome {
-    if (!this.fingers.has(pointer.id)) return { kind: 'none' };
+    if (!this.fingers.has(pointer.id)) {
+      return pointer.touch ? { kind: 'none' } : { kind: 'hover', at: pointer.at };
+    }
     this.fingers.set(pointer.id, pointer.at);
 
     if (this.fingers.size === 2) return { kind: 'pinch', pinch: this.pinch() };

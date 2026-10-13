@@ -13,6 +13,7 @@
 import Phaser from 'phaser';
 import type { PropSpec } from '../../maps/prototype-maps';
 import { propsAt, type Terrain } from '../../maps/terrain';
+import type { Prop } from '../../protocol';
 import type { Cell, Pixel } from '../../view/grid';
 import { NO_FLOOR } from '../../view/grid';
 import { LAYER } from '../../view/depth';
@@ -21,6 +22,7 @@ import { CANVAS_HEIGHT, CANVAS_WIDTH } from '../../view/layout';
 import { COVERED_ALPHA } from '../../view/cutaway';
 import { drawBackdrop } from './backdrop';
 import { cellBox, context2d, depthOf, drawCell, drawCellAnimation, drawnLevel, movesOverTime, px } from './cell';
+import { drawMark } from './marks';
 import { drawProp, isAnimatedProp, propsInPaintOrder } from './props';
 
 /** How far a wire hangs over the street, and a clothesline over the gap, in the prototype's pixels. */
@@ -61,18 +63,30 @@ let views = 0;
 export class MapView {
   private readonly scene: Phaser.Scene;
   private readonly terrain: Terrain;
+  /** The cells the state's board marks, by cell, so a cell can be drawn with its own badge. */
+  private readonly marks: ReadonlyMap<string, Prop>;
   private readonly layers: Layer[] = [];
   private readonly moving: MovingCell[] = [];
   /** The clotheslines, painted every frame: they sway. Null on a map without one. */
   private readonly lines: Layer | null;
   /** One cell's canvases by the cell they draw, so a cell can be drawn translucent on its own. */
   private readonly cellLayers = new Map<string, Layer[]>();
+  /** The canvases that carry the marks of the rules, on their own so they can be hidden at once. */
+  private readonly markLayers: Layer[] = [];
+  /** Whether those marks are drawn. The scene sets it from the player's setting. */
+  private marksVisible = true;
   /** The cells drawn translucent now, so the next call can put them back to solid. */
   private covered: Cell[] = [];
 
-  constructor(scene: Phaser.Scene, terrain: Terrain) {
+  /**
+   * `marks` are the cells the state's board calls cover or wall (ADR 0012). They are read from the state
+   * and not from the map the view draws with: the map says what a cell looks like, the state says what a
+   * shot at it costs, and the two answers come from different places on purpose.
+   */
+  constructor(scene: Phaser.Scene, terrain: Terrain, marks: readonly Prop[] = []) {
     this.scene = scene;
     this.terrain = terrain;
+    this.marks = new Map(marks.map((mark) => [`${mark.position.x},${mark.position.y}`, mark]));
 
     const prefix = `ea-map-${(views += 1)}`;
 
@@ -115,6 +129,16 @@ export class MapView {
     for (const cell of this.covered) this.setCellAlpha(cell, COVERED_ALPHA);
   }
 
+  /**
+   * Shows or hides the marks of the rules (ADR 0012) — the diamonds that say which cells carry cover.
+   * They are a debugging aid the player can switch off from the settings, so this is a `setVisible`
+   * over the canvases that carry them: nothing is repainted, and the props themselves stay drawn.
+   */
+  setMarksVisible(visible: boolean): void {
+    this.marksVisible = visible;
+    for (const layer of this.markLayers) layer.image.setVisible(visible);
+  }
+
   /** Repaints what moves: the cells with an animated prop, the water, and the clotheslines. */
   update(timeMs: number): void {
     const seconds = timeMs / 1000;
@@ -137,6 +161,7 @@ export class MapView {
 
     this.layers.length = 0;
     this.moving.length = 0;
+    this.markLayers.length = 0;
     this.cellLayers.clear();
     this.covered = [];
   }
@@ -161,12 +186,26 @@ export class MapView {
     const moving = props.filter((prop) => isAnimatedProp(prop.t));
     const tileMoves = movesOverTime(terrain, cell);
 
+    const mark = this.marks.get(`${cell.x},${cell.y}`);
+
     const canvases: Layer[] = [
       this.layer(`${key}-still`, box.width, box.height, depth, at, anchor, (ctx) => {
         drawCell({ ctx, terrain, cell, at: anchor, time: 0 });
         for (const prop of still) drawProp(ctx, prop, anchor, 0);
       }),
     ];
+
+    // The badge of the rules goes over the art, because what it says is what a shot at this cell costs
+    // — the one thing about the cell the player cannot read off the drawing itself. It keeps a canvas
+    // of its own so hiding it is a `setVisible` and never a repaint (EA-15, D6).
+    if (mark !== undefined) {
+      const badge = this.layer(`${key}-mark`, box.width, box.height, LAYER.highlight(cell), at, anchor, (ctx) =>
+        drawMark(ctx, mark.kind, anchor),
+      );
+      badge.image.setVisible(this.marksVisible);
+      this.markLayers.push(badge);
+      canvases.push(badge);
+    }
 
     if (moving.length > 0 || tileMoves) {
       const layer = this.layer(`${key}-moving`, box.width, box.height, depth, at, anchor, () => {});

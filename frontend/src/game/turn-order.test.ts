@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import type { Board, PublicState, Team, UnitId, UnitState } from '../protocol';
+import type { BoardState, PublicState, Team, UnitId, UnitState } from '../protocol';
 import { activeSlot, isHumanTurn, turnOrder } from './turn-order';
 
-const BOARD: Board = { width: 8, height: 8, levels: new Array<number>(64).fill(0) };
+const BOARD: BoardState = { width: 8, height: 8, levels: new Array<number>(64).fill(0), props: [] };
 
 interface UnitSpec {
   id: UnitId;
@@ -29,6 +29,7 @@ function makeUnit(spec: UnitSpec): UnitState {
     equipment: { armor: null, helmet: null, mainHand: null, offHand: null, accessory1: null, accessory2: null },
     abilities: { activeSets: [null, null], reaction: null, movement: null, support: null },
     movementProfile: { maxStepUp: 1, maxStepDown: 1, climbCost: 1 },
+    facing: 'E',
     resourceKind: 'ammo',
     defeated: spec.defeated ?? false,
     ammo: 3,
@@ -42,6 +43,7 @@ function makeState(units: readonly UnitState[], currentIndex = 0): PublicState {
   return {
     seed: 1,
     board: BOARD,
+    catalog: [],
     units: [...units],
     initiative: units.filter((unit) => !unit.defeated).map((unit) => unit.id),
     currentIndex,
