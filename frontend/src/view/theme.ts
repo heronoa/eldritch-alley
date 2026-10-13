@@ -74,12 +74,15 @@ export const COVER_BADGE_FILL = PAPER_COLOR;
 export const COVER_BADGE_STROKE = INK_COLOR;
 
 /**
- * The odds a unit is shown while it is being aimed at (EA-18): the same paper-on-ink pair as the cover
- * badge, which is the one combination already proven at the outline floor against every tile the
- * three maps draw. The plan's own first choice — the attack highlight's red — measures under 4:1
- * against both paper and ink and would read as a warning nobody can actually read.
+ * The odds a unit is shown while it is being aimed at (EA-18): a vivid spring green, on ink — the
+ * owner's own request for a colour that reads as "the number that matters right now" rather than as
+ * ambient information. Chosen at HSL(140°, 85%, 70%) and nudged to a round hex: it clears the same
+ * outline floor the cover badge is held to (7.8:1 against the lightest tile the three maps actually
+ * draw, `q`, `#3f4152`) with more margin than the paper-on-ink pair it replaces, and 15:1 against ink.
+ * The attack highlight's red was tried first and measured under 4:1 against both paper and ink — a
+ * warning nobody could actually read — which is why this is a colour of its own rather than a reuse.
  */
-export const HIT_CHANCE_BADGE_FILL = PAPER_COLOR;
+export const HIT_CHANCE_BADGE_FILL = 0x66ff99;
 export const HIT_CHANCE_BADGE_STROKE = INK_COLOR;
 
 /** The pips of a basic attack: warm for the rounds of a magazine, cyan for mana (ADR 0011). */

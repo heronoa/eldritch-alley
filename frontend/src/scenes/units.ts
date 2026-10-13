@@ -87,17 +87,17 @@ const HEALTH_BAR = { width: 32, height: 4, gapAboveBody: 6 };
 const PIP = { size: 4, gap: 3, gapAboveBar: 6 };
 
 /**
- * The badge a unit in cover wears (EA-15), over everything else the sprite raises: its bottom sits
- * above the tip of the turn arrow (-72) so the two never share a line, and it grows upwards from
- * there. The arrow is the highest of the other marks, so the badge clears all of them.
+ * The odds a unit is shown while it is being aimed at (EA-18): the first line above the head, closest
+ * of the two badges, because it is the one the player is actively reading while aiming — bigger and
+ * bolder than the cover badge, so it reads as the answer to the question being asked right now.
  */
-const COVER_BADGE = { gapAboveArrow: 6, strokeThickness: 4 };
+const HIT_CHANCE_BADGE = { gapAboveArrow: 6, strokeThickness: 5 };
 
 /**
- * The odds a unit is shown while it is being aimed at (EA-18): a second line, over the cover badge's
- * own, so a target that is both covered and aimed at reads both without either replacing the other.
+ * The badge a unit in cover wears (EA-15), over the odds badge: it is ambient information, true
+ * whether or not anyone is aiming, so it takes the second line rather than the closer one.
  */
-const HIT_CHANCE_BADGE = { gapAboveCover: 18, strokeThickness: 4 };
+const COVER_BADGE = { gapAboveHitChance: 18, strokeThickness: 4 };
 
 /** What the sprite is busy with, and when it started. Only one action runs at a time. */
 type Action =
@@ -179,24 +179,24 @@ export class UnitSprite extends Phaser.GameObjects.Container {
     this.bars = scene.add.graphics();
     this.arrow = scene.add.graphics();
     this.ring = scene.add.graphics();
+    const hitChanceY = TURN_ARROW_POINT.y - TURN_ARROW.height - HIT_CHANCE_BADGE.gapAboveArrow;
+    this.hitChanceBadge = scene.add
+      .text(0, hitChanceY, '', {
+        fontFamily: FONT_BODY,
+        fontSize: `${FONT_SIZE.unit}px`,
+        color: cssColor(HIT_CHANCE_BADGE_FILL),
+      })
+      .setOrigin(0.5, 1)
+      .setStroke(cssColor(HIT_CHANCE_BADGE_STROKE), HIT_CHANCE_BADGE.strokeThickness)
+      .setVisible(false);
     this.coverBadge = scene.add
-      .text(0, TURN_ARROW_POINT.y - TURN_ARROW.height - COVER_BADGE.gapAboveArrow, '', {
+      .text(0, hitChanceY - COVER_BADGE.gapAboveHitChance, '', {
         fontFamily: FONT_BODY,
         fontSize: `${FONT_SIZE.log}px`,
         color: cssColor(COVER_BADGE_FILL),
       })
       .setOrigin(0.5, 1)
       .setStroke(cssColor(COVER_BADGE_STROKE), COVER_BADGE.strokeThickness)
-      .setVisible(false);
-    this.hitChanceBadge = scene.add
-      .text(
-        0,
-        TURN_ARROW_POINT.y - TURN_ARROW.height - COVER_BADGE.gapAboveArrow - HIT_CHANCE_BADGE.gapAboveCover,
-        '',
-        { fontFamily: FONT_BODY, fontSize: `${FONT_SIZE.log}px`, color: cssColor(HIT_CHANCE_BADGE_FILL) },
-      )
-      .setOrigin(0.5, 1)
-      .setStroke(cssColor(HIT_CHANCE_BADGE_STROKE), HIT_CHANCE_BADGE.strokeThickness)
       .setVisible(false);
     this.add([
       this.marker,
