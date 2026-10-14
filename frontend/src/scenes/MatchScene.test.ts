@@ -293,6 +293,29 @@ describe('the match scene', () => {
     expect(view.humanTeam).toBe('A');
   });
 
+  it('plays the first of a burst of actions at once, and holds the next back (M4 playtest fix, P2)', () => {
+    const { session, render } = startMatch();
+    session.emit.state(message(stateFor({ onTurn: 'A', spent: false })));
+
+    const first = { ...stateFor({ onTurn: 'B', spent: false }), round: 5 };
+    const second = { ...stateFor({ onTurn: 'A', spent: false }), round: 6 };
+
+    // Two accepted actions landing back to back, each with its own events-then-state pair, exactly as
+    // `playBotTurns` broadcasts a bot's whole turn with no pacing of its own (battle-room.ts).
+    session.emit.events([{ type: 'turn-ended', actor: 'A-sniper', next: 'B-priest', round: 4 }]);
+    session.emit.state(message(first));
+    session.emit.events([{ type: 'turn-ended', actor: 'B-priest', next: 'A-sniper', round: 5 }]);
+    session.emit.state(message(second));
+
+    // The first step played at once, since the queue was idle: the HUD already reads its state.
+    expect(lastView(render).state).toBe(first);
+
+    // The second is still queued behind it — nothing fires its timer in this test — so the HUD has not
+    // moved on to it yet, which is what stops a burst from showing its last action before the first
+    // has had the time its own cues need.
+    expect(lastView(render).state).not.toBe(second);
+  });
+
   it('sends the end of the turn with the round the state is on, when the player presses it', () => {
     const { scene, session } = startMatch();
     session.emit.state(message(stateFor({ onTurn: 'A', spent: false })));
@@ -509,6 +532,9 @@ describe('the match scene', () => {
     session.emit.events([
       { type: 'ability-used', actor: 'A-sniper', abilityId: 'fireball', to: { x: 2, y: 0 }, rngState: 7, resource: 'mana' },
     ]);
+    // The server always sends the state right behind the events it caused (M4 playtest fix, P2): the
+    // scene reads the two as one step, and plays the cues only once they are paired.
+    session.emit.state(message(casterState()));
 
     // The event names the ability and the cell: the catalog says what it does there, and the engine
     // says which cells it covers, so the scene is asked to draw the blast and not a bare flash.
@@ -825,6 +851,8 @@ describe('the match scene', () => {
       const { session, render } = startMatch();
       session.emit.state(message(stateFor({ onTurn: 'A', spent: false })));
       session.emit.events(Array.from({ length: 8 }, (_, i) => turnEnded(i + 1, 'B-priest')));
+      // Paired right behind the events, as the server always sends it (M4 playtest fix, P2).
+      session.emit.state(message(stateFor({ onTurn: 'A', spent: false })));
 
       session.emit.ended('A');
 
@@ -839,6 +867,8 @@ describe('the match scene', () => {
       session.emit.events(
         Array.from({ length: 20 }, (_, i) => turnEnded(i + 1, i % 2 === 0 ? 'B-priest' : 'A-sniper')),
       );
+      // Paired right behind the events, as the server always sends it (M4 playtest fix, P2).
+      session.emit.state(message(stateFor({ onTurn: 'A', spent: false })));
       session.emit.ended('A');
 
       const scene_ = scene as unknown as {
@@ -891,6 +921,8 @@ describe('the match scene', () => {
         const { scene, session } = startMatch();
         session.emit.state(message(stateFor({ onTurn: 'A', spent: false })));
         session.emit.events([turnEnded(1, 'B-priest')]);
+        // Paired right behind the events, as the server always sends it (M4 playtest fix, P2).
+        session.emit.state(message(stateFor({ onTurn: 'A', spent: false })));
         session.emit.ended('A');
 
         const scene_ = scene as unknown as {

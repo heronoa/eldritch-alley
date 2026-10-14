@@ -15,7 +15,9 @@ import {
   type MoveChip,
 } from '../game/actions';
 import { abilityOptions, type AbilityOption } from '../game/ability-menu';
+import { advance, emptyQueue, enqueue, isIdle, type AnimationQueue } from '../game/animationQueue';
 import { abilityChances, attackChance } from '../game/targetPreview';
+import { stepDurationMs } from '../game/cueTiming';
 import {
   endTurnAction,
   initialAutoEndTurn,
@@ -194,6 +196,12 @@ interface Turn {
   readonly view: RotationView;
 }
 
+/** One accepted action, waiting its turn in the animation queue (M4 playtest fix, P2). */
+interface QueuedStep {
+  readonly events: Event[];
+  readonly message: StateMessage;
+}
+
 export class MatchScene extends Phaser.Scene {
   private session!: Session;
   private state: PublicState | null = null;
@@ -264,8 +272,16 @@ export class MatchScene extends Phaser.Scene {
 
   /** One sprite per unit, kept for the whole match so an animation is never cut by a redraw. */
   private sprites = new Map<string, UnitSprite>();
-  /** What the client knew of each unit when the last events arrived, for `presentationOf`. */
+  /** What the client knew of each unit when the last played step arrived, for `presentationOf`. */
   private snapshot = new Map<string, Snapshot>();
+  /**
+   * The events of an accepted action, held until the `state` they caused arrives right behind them
+   * (M4 playtest fix, P2): null while nothing is waiting to be paired, which is also how a join or a
+   * reconnect's resync — a `state` with no events of its own — is told apart from a normal action.
+   */
+  private pendingEvents: Event[] | null = null;
+  /** One accepted action waiting its turn to play, so a burst of them never overwrites one another. */
+  private animationQueue: AnimationQueue<QueuedStep> = emptyQueue();
 
   /** Built from the first state the map id names: the map is not known before it arrives. */
   private map: Terrain | null = null;
@@ -332,6 +348,8 @@ export class MatchScene extends Phaser.Scene {
     this.mapView = null;
     this.sprites = new Map();
     this.snapshot = new Map();
+    this.pendingEvents = null;
+    this.animationQueue = emptyQueue();
   }
 
   create(): void {
@@ -996,11 +1014,68 @@ export class MatchScene extends Phaser.Scene {
     return actor === null ? [] : abilityOptions(this.state, actor.unit);
   }
 
+  /**
+   * A `state` message on its own, with no `events` paired to it, is nothing an action caused: the
+   * join, or the resync after a reconnect. There is no board to pace it against, so the queue is
+   * cleared — whatever it was mid-way through no longer matches what the server just sent — and the
+   * state is applied at once (M4 playtest fix, P2).
+   */
   private handleState(message: StateMessage): void {
     if (message.version !== PROTOCOL_VERSION) {
       this.statusText = t('match.versionMismatch');
       this.pushHud();
       return;
+    }
+
+    const events = this.pendingEvents;
+    this.pendingEvents = null;
+
+    if (events === null) {
+      this.animationQueue = emptyQueue();
+      this.applyStep([], message);
+      return;
+    }
+
+    this.enqueueStep({ events, message });
+  }
+
+  /**
+   * Adds a step to the animation queue (P2): it plays at once if the queue was idle, or waits behind
+   * whatever is already playing, in the order the server sent it.
+   */
+  private enqueueStep(step: QueuedStep): void {
+    const wasIdle = isIdle(this.animationQueue);
+    this.animationQueue = enqueue(this.animationQueue, step);
+    if (wasIdle) this.playStep(step);
+  }
+
+  /** Plays one queued step and, once its own cues have had time to finish, moves on to the next. */
+  private playStep(step: QueuedStep): void {
+    const cues = this.applyStep(step.events, step.message);
+    this.time.delayedCall(stepDurationMs(cues), () => this.advanceQueue());
+  }
+
+  private advanceQueue(): void {
+    this.animationQueue = advance(this.animationQueue);
+    if (this.animationQueue.current !== null) this.playStep(this.animationQueue.current);
+  }
+
+  /**
+   * Everything one accepted action does to the board: its cues, its log line, the state it leaves
+   * behind and the redraw that shows it — in that order, exactly as a single action always played
+   * before the queue existed. `playStep` paces calls to this against the cues it returns; the message
+   * with nothing to pace against (`handleState` above) calls it directly instead.
+   */
+  private applyStep(events: Event[], message: StateMessage): Cue[] {
+    // Each event is read against the board it found, before the state that follows it moves `this.
+    // snapshot` on, which is also what the log is handed (EA-15): a shot says where both ends stood.
+    const cues: Cue[] = [];
+    for (const event of events) {
+      const eventCues = presentationOf(event, this.snapshot, message.state);
+      eventCues.forEach((cue) => this.play(cue));
+      cues.push(...eventCues);
+      this.appendLog(describeEvent(event, UNIT_NAMES, this.battlefield()));
+      this.advanceSnapshot(event);
     }
 
     this.state = message.state;
@@ -1028,6 +1103,8 @@ export class MatchScene extends Phaser.Scene {
       this.statusText = '';
       this.pushHud();
     }
+
+    return cues;
   }
 
   /**
@@ -1170,18 +1247,11 @@ export class MatchScene extends Phaser.Scene {
   }
 
   /**
-   * Plays the events of one accepted action, then writes them into the log. The snapshot is read
-   * for the cues and moved forward after them, so each event is read against the board it found —
-   * and that is also what the log is handed, because a shot says where both ends stood (EA-15).
+   * Remembers the events of one accepted action until the `state` they caused arrives right behind
+   * them, so the two are read together as one step of the animation queue (M4 playtest fix, P2).
    */
   private handleEvents(events: Event[]): void {
-    for (const event of events) {
-      // The state is handed along as well, because the cells an ability covers are the engine's own
-      // answer about the board: it is the state the events are read against, not the one after them.
-      for (const cue of presentationOf(event, this.snapshot, this.state ?? undefined)) this.play(cue);
-      this.appendLog(describeEvent(event, UNIT_NAMES, this.battlefield()));
-      this.advanceSnapshot(event);
-    }
+    this.pendingEvents = events;
   }
 
   /**

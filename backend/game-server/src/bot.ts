@@ -32,6 +32,12 @@ const NEIGHBOUR_OFFSETS: readonly Position[] = [
  * scores, so the bot shoots whenever it can and closes in only when it cannot. An attack that would
  * defeat its target takes `kill` on top, which is what makes finishing a wounded enemy beat chipping
  * a healthy one whenever that bonus outweighs the difference in expected damage between the two.
+ *
+ * `endTurn` is built first (M4 playtest fix): while an enemy still stands, it scores
+ * `endTurnWhileEngaged`, below every move, so a move that goes nowhere useful — it neither gets
+ * closer nor climbs — still beats passing, instead of tying with `endTurn` and losing the tie-break
+ * to it. `endTurn` keeps its own zero once every enemy is down, and it is always a candidate
+ * (`applyAction` never refuses it), so a turn with nothing else legal still has somewhere to fall back to.
  */
 const SCORE = {
   kill: 100,
@@ -40,6 +46,7 @@ const SCORE = {
   retreat: 20,
   emptyPoolReload: 15,
   endTurn: 0,
+  endTurnWhileEngaged: -1,
 } as const;
 
 function chebyshev(a: Position, b: Position): number {
@@ -127,7 +134,10 @@ export function chooseBotAction(state: MatchState, team: Team): Action {
   const candidates: { action: Action; score: number }[] = [];
 
   const endTurn: Action = { type: 'endTurn', actor: actor.id, round: state.round };
-  if (applyAction(state, endTurn).ok) candidates.push({ action: endTurn, score: SCORE.endTurn });
+  if (applyAction(state, endTurn).ok) {
+    const engaged = currentDistance !== Infinity;
+    candidates.push({ action: endTurn, score: engaged ? SCORE.endTurnWhileEngaged : SCORE.endTurn });
+  }
 
   for (const offset of NEIGHBOUR_OFFSETS) {
     const to = { x: actor.position.x + offset.x, y: actor.position.y + offset.y };

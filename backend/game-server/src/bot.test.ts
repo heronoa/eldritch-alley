@@ -129,6 +129,50 @@ function craftedKillState(): MatchState {
   };
 }
 
+/**
+ * The bot's sniper boxed into a corner with only one distant enemy left alive, its own wizard parked on
+ * the one cell that would have brought it closer, nothing wounded, nothing in range, and no ability or
+ * empty pool to weigh instead (M4 playtest fix). Both legal moves tie at exactly the distance the sniper
+ * already stands at, which used to be where `endTurn`'s own zero score won the tie-break by default.
+ */
+function craftedCorneredState(): MatchState {
+  const setup: MatchSetup = {
+    seed: 1,
+    map: flatBoard(),
+    catalog: ABILITY_CATALOG,
+    teams: rosterFor({
+      // Sniper, wizard, priest, in the order the roster builds them.
+      A: [{ x: 7, y: 7 }, { x: 7, y: 6 }, { x: 6, y: 7 }],
+      B: [{ x: 0, y: 0 }, { x: 1, y: 1 }, { x: 7, y: 0 }],
+    }),
+  };
+  const base = newMatch(setup);
+  const units = base.units.map((unit) => ({ ...unit, position: { ...unit.position } }));
+
+  const marksman = units.find((candidate) => candidate.id === 'B-sniper');
+  if (!marksman) throw new Error('unknown unit: B-sniper');
+  // No ability candidate and no reload candidate: only the moves and endTurn are on the table.
+  marksman.abilities = { ...marksman.abilities, activeSets: [null, null] };
+  marksman.ammo = marksman.magazine ?? 0;
+
+  // Only `A-sniper`, at the far corner, is left standing: the other two never factor into the nearest-
+  // enemy distance the move scoring reads.
+  for (const id of ['A-wizard', 'A-priest']) {
+    const enemy = units.find((candidate) => candidate.id === id);
+    if (!enemy) throw new Error(`unknown unit: ${id}`);
+    enemy.defeated = true;
+  }
+
+  return {
+    ...base,
+    units,
+    initiative: ['B-sniper', 'A-sniper', 'B-wizard', 'A-wizard', 'B-priest', 'A-priest'],
+    currentIndex: 0,
+    movementLeft: 1,
+    hasActed: false,
+  };
+}
+
 describe('chooseBotAction', () => {
   it('returns an action the engine accepts, for 100 generated states', () => {
     const states = collectBotTurnStates(100);
@@ -178,6 +222,23 @@ describe('chooseBotAction', () => {
       // A move leaves the run open; anything else is what closes it.
       if (result.ok && action.type !== 'move') expect(result.state.pendingMove).toBeNull();
     }
+  });
+
+  it('moves instead of ending the turn by default once every move only ties with it (M4 playtest fix)', () => {
+    const state = craftedCorneredState();
+
+    // The whole candidate list: two legal moves that neither get closer nor climb, no attack reaches
+    // the one enemy left standing, no ability is armed, and the magazine is full.
+    expect(applyAction(state, { type: 'move', actor: 'B-sniper', to: { x: 1, y: 0 } }).ok).toBe(true);
+    expect(applyAction(state, { type: 'move', actor: 'B-sniper', to: { x: 0, y: 1 } }).ok).toBe(true);
+    expect(applyAction(state, { type: 'move', actor: 'B-sniper', to: { x: 1, y: 1 } }).ok).toBe(false);
+    expect(applyAction(state, { type: 'attack', actor: 'B-sniper', target: 'A-sniper' }).ok).toBe(false);
+
+    expect(chooseBotAction(state, 'B')).toEqual({
+      type: 'move',
+      actor: 'B-sniper',
+      to: { x: 1, y: 0 },
+    });
   });
 });
 
