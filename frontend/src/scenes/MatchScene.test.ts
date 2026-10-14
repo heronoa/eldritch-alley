@@ -39,6 +39,7 @@ import {
 import { MatchScene } from './MatchScene';
 import { UnitSprite } from './units';
 import { EFFECTS } from '../view/effects';
+import { ATTACK_TIMELINE } from '../view/animation';
 import { download } from './download';
 import { exportFileName, exportText } from '../game/battle-report';
 
@@ -314,6 +315,30 @@ describe('the match scene', () => {
     // moved on to it yet, which is what stops a burst from showing its last action before the first
     // has had the time its own cues need.
     expect(lastView(render).state).not.toBe(second);
+  });
+
+  it('tells the target to hold its result until the swing lands, not at the start of it (M4 playtest fix, P2)', () => {
+    const { session } = startMatch();
+    const initial = stateFor({ onTurn: 'A', spent: false });
+    session.emit.state(message(initial));
+
+    const spy = vi.spyOn(UnitSprite.prototype, 'expectImpact');
+
+    // A-sniper (0,0) to B-priest (7,7) is well past melee reach, so the shot travels (`attackStyle`,
+    // `view/effects.ts`): the result must wait for the tracer to arrive, not show at the first frame.
+    session.emit.events([
+      { type: 'attacked', actor: 'A-sniper', target: 'B-priest', hit: true, damage: 4, rngState: 1, resource: 'ammo', cover: false },
+    ]);
+    session.emit.state(
+      message({
+        ...initial,
+        units: initial.units.map((unit) => (unit.id === 'B-priest' ? { ...unit, health: 8 } : unit)),
+      }),
+    );
+
+    expect(spy).toHaveBeenCalledTimes(1);
+    const delayMs = spy.mock.calls[0]![1];
+    expect(delayMs).toBe(ATTACK_TIMELINE.travelStart + EFFECTS.sniper.ranged.travelMs);
   });
 
   it('sends the end of the turn with the round the state is on, when the player presses it', () => {

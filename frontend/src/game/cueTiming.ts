@@ -2,7 +2,9 @@
 // next accepted action's cues before this one has had time to show. The scene plays the cue; this
 // only says how long it takes, reusing the timings `view/animation.ts` already defines.
 import { ATTACK_TIMELINE, RELOAD_TIMELINE, movementDuration } from '../view/animation';
+import { BANNER_DURATION_MS } from './banner';
 import type { Cue } from './presentation';
+import type { Team } from '../protocol';
 
 function cueDurationMs(cue: Cue): number {
   switch (cue.kind) {
@@ -29,4 +31,19 @@ function cueDurationMs(cue: Cue): number {
 /** How long a whole step takes: the slowest of its own cues, or none at all for an empty step. */
 export function stepDurationMs(cues: readonly Cue[]): number {
   return cues.reduce((longest, cue) => Math.max(longest, cueDurationMs(cue)), 0);
+}
+
+/**
+ * How long to wait before the queue (P2) moves on to the next step: the ordinary cue duration, unless
+ * this step is the bot ending a turn with nothing else to show for it — a pure skip, which would
+ * otherwise last zero milliseconds and read as nothing having happened at all. Held instead for as
+ * long as the turn banner itself (M4 playtest fix): a hand-over that changes nothing but the unit on
+ * turn still raises one, and this is what gives a player the time to read it.
+ *
+ * The human's own `endTurn` is exempt — passing on purpose stays the single click it always was — and
+ * so is a step with nothing on turn at all, such as the join or a reconnect's resync.
+ */
+export function stepWaitMs(cues: readonly Cue[], actingTeam: Team | null, humanTeam: Team): number {
+  const isSilentBotSkip = cues.length === 0 && actingTeam !== null && actingTeam !== humanTeam;
+  return isSilentBotSkip ? BANNER_DURATION_MS : stepDurationMs(cues);
 }

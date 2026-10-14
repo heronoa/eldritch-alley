@@ -17,7 +17,7 @@ import {
 import { abilityOptions, type AbilityOption } from '../game/ability-menu';
 import { advance, emptyQueue, enqueue, isIdle, type AnimationQueue } from '../game/animationQueue';
 import { abilityChances, attackChance } from '../game/targetPreview';
-import { stepDurationMs } from '../game/cueTiming';
+import { stepWaitMs } from '../game/cueTiming';
 import {
   endTurnAction,
   initialAutoEndTurn,
@@ -1051,8 +1051,12 @@ export class MatchScene extends Phaser.Scene {
 
   /** Plays one queued step and, once its own cues have had time to finish, moves on to the next. */
   private playStep(step: QueuedStep): void {
+    // Read before `applyStep` moves `this.state` on: whoever was on turn when this step was accepted,
+    // which is the team `stepWaitMs` asks about — a pure bot skip still gets a wait, a human's own
+    // deliberate end of turn never does (M4 playtest fix, P2).
+    const actingTeam = this.state === null ? null : (activeSlot(this.state)?.unit.team ?? null);
     const cues = this.applyStep(step.events, step.message);
-    this.time.delayedCall(stepDurationMs(cues), () => this.advanceQueue());
+    this.time.delayedCall(stepWaitMs(cues, actingTeam, HUMAN_TEAM), () => this.advanceQueue());
   }
 
   private advanceQueue(): void {
@@ -1282,11 +1286,14 @@ export class MatchScene extends Phaser.Scene {
         // The effect is thrown from where the two units are drawn, so it reads even mid-move.
         const from = this.effectPoint(actor, false);
         const to = this.effectPoint(target, cue.effect.kind === 'sky-column');
-        actor.playAttack(
+        const delay = actor.playAttack(
           { style: cue.style, hit: cue.hit, travelMs: cue.effect.travelMs },
           this.time.now,
           () => playEffect(this, cue.effect, from, to),
         );
+        // The target's own result waits for the same impact the visual effect does, so the HP bar
+        // never changes before the swing that caused it (M4 playtest fix, P2).
+        target.expectImpact(this.time.now, delay);
         break;
       }
 

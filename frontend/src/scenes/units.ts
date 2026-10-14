@@ -16,6 +16,7 @@ import {
   walkFrame,
 } from '../view/animation';
 import type { Cell, Pixel } from '../view/grid';
+import { nextHealthDisplay, revealHealth, type HealthDisplay } from '../view/healthHold';
 import { TILE_H, TILE_W, depthOfUnit } from '../view/iso';
 import { TURN_ARROW, TURN_ARROW_POINT } from '../view/layout';
 import {
@@ -156,7 +157,10 @@ export class UnitSprite extends Phaser.GameObjects.Container {
   private selected = false;
   /** True only while this unit is the one the turn is on, which is what raises its arrow. */
   private onTurn = false;
-  private health = { health: 0, maxHealth: 0 };
+  /** What the health bar shows, and the value an attack in flight is holding back (M4 playtest fix, P2). */
+  private healthDisplay: HealthDisplay = { shown: { health: 0, maxHealth: 0 }, pending: null };
+  /** Set while an attack against this unit is still swinging, so its result waits for the impact. */
+  private healthHoldUntil: number | null = null;
   private pips: Pips | null = null;
   private action: Action | null = null;
   private moving: { start: number } | null = null;
@@ -228,7 +232,12 @@ export class UnitSprite extends Phaser.GameObjects.Container {
     this.onTurn = look.arrow;
     // The units that are not acting step back, so the one that is reads at a glance (EA-3).
     this.setAlpha(look.alpha);
-    this.health = { health: unit.health, maxHealth: unit.maxHealth };
+    this.healthDisplay = nextHealthDisplay(
+      this.healthDisplay,
+      { health: unit.health, maxHealth: unit.maxHealth },
+      this.scene.time.now,
+      this.healthHoldUntil,
+    );
     this.pips = pipsFor(unit);
 
     this.figure.setTexture(`unit-${spriteSheetOf(unit.team)}`);
@@ -322,9 +331,11 @@ export class UnitSprite extends Phaser.GameObjects.Container {
 
   /**
    * Plays the attack. The effect of the impact is the scene's business, so it is handed over as a
-   * callback and fired at the moment the attack reaches the target.
+   * callback and fired at the moment the attack reaches the target. Returns that same delay, so the
+   * scene can also hold the target's own health back until the swing actually lands (M4 playtest fix,
+   * P2) — the two sprites are never the same object, so this cannot do that part by itself.
    */
-  playAttack(plan: AttackPlan, now: number, onImpact: () => void): void {
+  playAttack(plan: AttackPlan, now: number, onImpact: () => void): number {
     const delay = impactDelay(plan.style, plan.travelMs);
 
     this.action = {
@@ -336,6 +347,20 @@ export class UnitSprite extends Phaser.GameObjects.Container {
       impactUntil: now + delay + ATTACK_TIMELINE.impactLength,
     };
     this.scene.time.delayedCall(delay, onImpact);
+    return delay;
+  }
+
+  /**
+   * Holds the drawn health at its current value until an incoming attack would land, so a result is
+   * never shown before the animation that caused it (M4 playtest fix, P2).
+   */
+  expectImpact(now: number, delayMs: number): void {
+    this.healthHoldUntil = now + delayMs;
+    this.scene.time.delayedCall(delayMs, () => {
+      this.healthDisplay = revealHealth(this.healthDisplay);
+      this.healthHoldUntil = null;
+      this.drawBars(this.scene.time.now);
+    });
   }
 
   /** Refills the magazine frame by frame, the pips following `filledPipsAt`. */
@@ -487,7 +512,12 @@ export class UnitSprite extends Phaser.GameObjects.Container {
     this.bars.fillStyle(PANEL_STROKE, 1);
     this.bars.fillRect(left, top, HEALTH_BAR.width, HEALTH_BAR.height);
     this.bars.fillStyle(TEAM_COLOR[this.team], 1);
-    this.bars.fillRect(left, top, HEALTH_BAR.width * healthFraction(this.health), HEALTH_BAR.height);
+    this.bars.fillRect(
+      left,
+      top,
+      HEALTH_BAR.width * healthFraction(this.healthDisplay.shown),
+      HEALTH_BAR.height,
+    );
 
     if (this.pips === null) return;
 
