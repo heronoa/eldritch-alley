@@ -108,6 +108,9 @@ export const enUS: Record<MessageKey, string> = {
   'action.endTurn': 'End turn',
   'action.confirmMove': 'Confirm',
   'action.cancelMove': 'Cancel',
+  // Shown instead, in place of the label above, while the turn still has something left to do and
+  // End Turn is asking once before it is sent (M4 playtest fix, P3).
+  'action.confirmEndTurn': 'Sure?',
 
   // The abilities (EA-16): one word per id this build knows, and the fragments of the effect line.
   'ability.piercing-shot': 'Piercing Shot',

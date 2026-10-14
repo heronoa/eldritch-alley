@@ -20,13 +20,6 @@ Order follows the roadmap: [ROADMAP.md](../../ROADMAP.md).
 - **Trigger:** implementing resurrection (M3).
 - **Evidence:** `docs/adr/0003-permanent-death.md` addendum; `backend/engine/src/corpses.test.ts`.
 
-### DT-15 · Balance values are fixtures only
-- **Category:** Design
-- **Risk if untreated:** movement budgets, attack and hit values exist only in tests. Real values come with M3 balancing.
-- **Effort:** M
-- **Trigger:** M3 balancing.
-- **Evidence:** `backend/engine/src/*.test.ts` fixtures.
-
 ### DT-17 · Reaction windows, slots and counter-attacks in the engine
 - **Category:** Rules
 - **Risk if untreated:** reactions (counterspell, counter-attack) are decided (ADR 0007) but cannot be played yet. The engine has no reaction window, no reaction slots and no pending-response state.

@@ -5,11 +5,13 @@ import {
   actionButtons,
   applyMode,
   availableActions,
+  hasArmedAim,
   moveChips,
+  presentButtons,
   settleMode,
   type AvailableActions,
 } from './actions';
-import { setLocale } from '../i18n/translate';
+import { setLocale, t } from '../i18n/translate';
 
 // The cases below assert the Portuguese copy the game shipped with, so they read it on purpose.
 setLocale('pt-BR');
@@ -360,6 +362,27 @@ describe('settleMode', () => {
   });
 });
 
+/**
+ * Whether an escape/cancel gesture has anything to put down (P1 of the M4 playtest fixes): an armed
+ * mode, or the ability menu left open before a row was picked (EA-16), which an armed mode alone does
+ * not cover.
+ */
+describe('hasArmedAim', () => {
+  it('has nothing to cancel while inspecting with the menu closed', () => {
+    expect(hasArmedAim('inspect', false)).toBe(false);
+  });
+
+  it('has something to cancel for every armed mode', () => {
+    expect(hasArmedAim('move', false)).toBe(true);
+    expect(hasArmedAim('attack', false)).toBe(true);
+    expect(hasArmedAim('ability', false)).toBe(true);
+  });
+
+  it('has something to cancel while the ability menu is open, even before a row is picked', () => {
+    expect(hasArmedAim('inspect', true)).toBe(true);
+  });
+});
+
 describe('applyMode', () => {
   const SELECT: Intent = { kind: 'select', unitId: 'A-sniper' };
   const MOVE: Intent = { kind: 'send', action: { type: 'move', to: { x: 1, y: 0 } } };
@@ -444,6 +467,42 @@ describe('actionButtons', () => {
     const enabled = actionButtons(makeState([SNIPER, ENEMY], 1), 'A').map((button) => button.enabled);
 
     expect(enabled).toEqual([false, false, false, false, false]);
+  });
+});
+
+/**
+ * The action bar as the player actually presses it (M4 playtest fix, P3): solid while a transition is
+ * still on screen, and End Turn asking once before it is sent whenever the unit on turn still has
+ * something it could do instead.
+ */
+describe('presentButtons', () => {
+  const BUTTONS = actionButtons(makeState([SNIPER, ENEMY]), 'A');
+
+  it('changes nothing while there is no transition and nothing pending', () => {
+    expect(presentButtons(BUTTONS, { locked: false, confirmEndTurn: false })).toEqual(BUTTONS);
+  });
+
+  it('disables every button, End Turn included, while a transition is still playing', () => {
+    const presented = presentButtons(BUTTONS, { locked: true, confirmEndTurn: false });
+
+    expect(presented.every((button) => !button.enabled)).toBe(true);
+    expect(presented).toHaveLength(BUTTONS.length);
+  });
+
+  it('relabels only End Turn to ask once, and leaves every other button exactly as it was', () => {
+    const presented = presentButtons(BUTTONS, { locked: false, confirmEndTurn: true });
+
+    expect(presented.find((button) => button.id === 'endTurn')?.label).toBe(t('action.confirmEndTurn'));
+    expect(presented.filter((button) => button.id !== 'endTurn')).toEqual(
+      BUTTONS.filter((button) => button.id !== 'endTurn'),
+    );
+  });
+
+  it('a lock wins over the confirm label: a locked bar never asks anything, it only refuses', () => {
+    const presented = presentButtons(BUTTONS, { locked: true, confirmEndTurn: true });
+
+    expect(presented.find((button) => button.id === 'endTurn')?.label).toBe(t('action.endTurn'));
+    expect(presented.every((button) => !button.enabled)).toBe(true);
   });
 });
 

@@ -7,14 +7,19 @@ import {
   actionButtons,
   applyMode,
   availableActions,
+  hasArmedAim,
   moveChips,
+  presentButtons,
   settleMode,
   type ActionButton,
   type ActionMode,
   type MoveChip,
 } from '../game/actions';
 import { abilityOptions, type AbilityOption } from '../game/ability-menu';
+import { advance, emptyQueue, enqueue, isIdle, type AnimationQueue } from '../game/animationQueue';
+import { bannerFor } from '../game/banner';
 import { abilityChances, attackChance } from '../game/targetPreview';
+import { stepWaitMs } from '../game/cueTiming';
 import {
   endTurnAction,
   initialAutoEndTurn,
@@ -44,7 +49,7 @@ import { describeEvent, describeRejection, type Battlefield, type UnitNames } fr
 import { presentationOf, type Cue, type Snapshot } from '../game/presentation';
 import { Gestures, LONG_PRESS_MS, type Pinch, type PressPointer } from '../game/press';
 import { resolveClick, resolveInspect } from '../game/selection';
-import { activeSlot, isHumanTurn, turnOrder } from '../game/turn-order';
+import { activeSlot, isHumanTurn, turnOrder, type TurnSlot } from '../game/turn-order';
 import { t } from '../i18n';
 import { terrainOf, type Terrain } from '../maps/terrain';
 import { Session } from '../net/session';
@@ -193,6 +198,12 @@ interface Turn {
   readonly view: RotationView;
 }
 
+/** One accepted action, waiting its turn in the animation queue (M4 playtest fix, P2). */
+interface QueuedStep {
+  readonly events: Event[];
+  readonly message: StateMessage;
+}
+
 export class MatchScene extends Phaser.Scene {
   private session!: Session;
   private state: PublicState | null = null;
@@ -263,8 +274,30 @@ export class MatchScene extends Phaser.Scene {
 
   /** One sprite per unit, kept for the whole match so an animation is never cut by a redraw. */
   private sprites = new Map<string, UnitSprite>();
-  /** What the client knew of each unit when the last events arrived, for `presentationOf`. */
+  /** What the client knew of each unit when the last played step arrived, for `presentationOf`. */
   private snapshot = new Map<string, Snapshot>();
+  /**
+   * The events of an accepted action, held until the `state` they caused arrives right behind them
+   * (M4 playtest fix, P2): null while nothing is waiting to be paired, which is also how a join or a
+   * reconnect's resync — a `state` with no events of its own — is told apart from a normal action.
+   */
+  private pendingEvents: Event[] | null = null;
+  /** One accepted action waiting its turn to play, so a burst of them never overwrites one another. */
+  private animationQueue: AnimationQueue<QueuedStep> = emptyQueue();
+  /** The unit this scene itself last saw on turn, the same question `bannerFor` asks (M4 playtest fix,
+   * P3): read here too, because locking input on a hand-over is this scene's job, not the HUD's. */
+  private lastActiveSlot: TurnSlot | null = null;
+  /** Set until this moment while a turn-change banner is still on screen: the action bar refuses every
+   * press until then, on top of refusing them while the animation queue is not idle (M4 playtest fix,
+   * P3). */
+  private inputLockedUntil: number | null = null;
+  /** Whether End Turn is asking once before it is sent, because the unit on turn still has something
+   * it could do instead (M4 playtest fix, P3). Any other press puts the question down unanswered. */
+  private pendingEndTurnConfirm = false;
+  /** Whether the bar was locked the last time this was checked, so `update` can tell the moment a lock
+   * clears and push the HUD right then — otherwise nothing redraws it once the last queued step's own
+   * timer fires with nothing left to play (critical fix, P3). */
+  private wasInputLocked = false;
 
   /** Built from the first state the map id names: the map is not known before it arrives. */
   private map: Terrain | null = null;
@@ -331,6 +364,12 @@ export class MatchScene extends Phaser.Scene {
     this.mapView = null;
     this.sprites = new Map();
     this.snapshot = new Map();
+    this.pendingEvents = null;
+    this.animationQueue = emptyQueue();
+    this.lastActiveSlot = null;
+    this.inputLockedUntil = null;
+    this.pendingEndTurnConfirm = false;
+    this.wasInputLocked = false;
   }
 
   create(): void {
@@ -368,6 +407,9 @@ export class MatchScene extends Phaser.Scene {
       // arrows are, for a desktop with no pinch and no room for a panel (EA-12).
       if (event.key.toLowerCase() === 'q') this.rotateView(-1);
       if (event.key.toLowerCase() === 'e') this.rotateView(1);
+      // The emergency exit (P1 of the M4 playtest fixes): whatever is armed, Escape puts it down, so
+      // the player is never stuck behind a preview or a menu with no way back to the action bar.
+      if (event.key === 'Escape') this.cancelAim();
     });
 
     // The map's canvases are textures of the game, not objects of this scene: leaving without taking
@@ -521,12 +563,27 @@ export class MatchScene extends Phaser.Scene {
   }
 
   /**
+   * `computeTargetPreview`'s own answer, or none at all if working it out throws (critical fix): a
+   * badge is decoration over whatever event just arrived, and losing it must never also lose that
+   * event — the same "a failure loses the feature, not the match" rule the auto-end-turn setting's
+   * own storage read already follows (EA-4).
+   */
+  private targetPreviewChances(state: PublicState): ReadonlyMap<string, number> {
+    try {
+      return this.computeTargetPreview(state);
+    } catch (error) {
+      console.error('MatchScene: failed to work out the target preview', error);
+      return new Map();
+    }
+  }
+
+  /**
    * The odds the preview cell asks about, read fresh every time: a basic attack against whoever stands
    * there, or every living body an armed ability would reach from it (EA-18). Never a cell the current
    * highlight would not legally offer — the badge is a readout of a shot the player could take, not a
    * hint about one they could not.
    */
-  private targetPreviewChances(state: PublicState): ReadonlyMap<string, number> {
+  private computeTargetPreview(state: PublicState): ReadonlyMap<string, number> {
     const previewCell = this.previewCell;
     if (previewCell === null || (this.mode !== 'attack' && this.mode !== 'ability')) return new Map();
 
@@ -880,9 +937,24 @@ export class MatchScene extends Phaser.Scene {
     if (state !== null) this.redraw(state);
   }
 
+  /** Whether the action bar refuses every press right now: a transition still on screen (M4 playtest
+   * fix, P3), either the animation queue still playing a burst of actions, or the banner it raised
+   * still fading — whichever of the two outlasts the other. */
+  private isInputLocked(): boolean {
+    if (!isIdle(this.animationQueue)) return true;
+    return this.inputLockedUntil !== null && this.time.now < this.inputLockedUntil;
+  }
+
   /** Arms the button's mode, or cancels it when it is already armed, so the bar is its own undo. */
   private pressAction(id: ActionButton['id'], mode: ActionMode | null): void {
     if (this.finished || this.state === null) return;
+    // Nothing reaches the server while a transition is still on screen (M4 playtest fix, P3): the
+    // press is refused exactly where the HUD already shows the bar as locked, not silently elsewhere.
+    if (this.isInputLocked()) return;
+
+    // Any press but a second one on End Turn itself answers the question with nothing (M4 playtest
+    // fix, P3): the player went on to do something else, so there is nothing left to confirm.
+    if (id !== 'endTurn' && this.pendingEndTurnConfirm) this.pendingEndTurnConfirm = false;
 
     if (mode !== null) {
       // `Habilidade` asks before it arms (EA-16): the menu names what the unit carries, what it costs
@@ -897,6 +969,17 @@ export class MatchScene extends Phaser.Scene {
       this.redraw(this.state);
       return;
     }
+
+    if (id === 'endTurn' && !this.pendingEndTurnConfirm && !availableActions(this.state, HUMAN_TEAM).nothingLeft) {
+      // Something is still available, so the first press only asks: a player who meant to pass with
+      // options open still can, one press later, and one who did not never loses the turn by accident
+      // (M4 playtest fix, P3). Nothing left to do skips the question — auto end of turn is about to
+      // ask the same thing on its own.
+      this.pendingEndTurnConfirm = true;
+      this.pushHud();
+      return;
+    }
+    this.pendingEndTurnConfirm = false;
 
     const action = immediateAction(id, this.state.round);
     if (action === null) return;
@@ -941,6 +1024,21 @@ export class MatchScene extends Phaser.Scene {
     this.menuOpen = false;
   }
 
+  /**
+   * The emergency exit (P1 of the M4 playtest fixes): whatever aim is armed falls back to inspection,
+   * so the player is never stuck with no way back to the action bar, whatever the cause. A press with
+   * nothing armed does nothing, so Escape is safe to send at any time.
+   */
+  private cancelAim(): void {
+    if (!hasArmedAim(this.mode, this.menuOpen)) return;
+
+    this.closeAbilityMenu();
+    this.mode = 'inspect';
+    this.armedAbilityId = null;
+    this.setPreviewCell(null);
+    if (this.state !== null) this.redraw(this.state);
+  }
+
   /** A press while the menu is open: its X and its rows are its own, and a press outside closes it. */
   private pressAbilityMenu(point: Pixel): void {
     if (!containsPoint(ABILITY_MENU_RECT, point) || containsPoint(ABILITY_MENU_CLOSE_RECT, point)) {
@@ -977,11 +1075,82 @@ export class MatchScene extends Phaser.Scene {
     return actor === null ? [] : abilityOptions(this.state, actor.unit);
   }
 
+  /**
+   * A `state` message on its own, with no `events` paired to it, is nothing an action caused: the
+   * join, or the resync after a reconnect. There is no board to pace it against, so the queue is
+   * cleared — whatever it was mid-way through no longer matches what the server just sent — and the
+   * state is applied at once (M4 playtest fix, P2).
+   */
   private handleState(message: StateMessage): void {
     if (message.version !== PROTOCOL_VERSION) {
       this.statusText = t('match.versionMismatch');
       this.pushHud();
       return;
+    }
+
+    const events = this.pendingEvents;
+    this.pendingEvents = null;
+
+    if (events === null) {
+      this.animationQueue = emptyQueue();
+      this.applyStep([], message);
+      return;
+    }
+
+    this.enqueueStep({ events, message });
+  }
+
+  /**
+   * Adds a step to the animation queue (P2): it plays at once if the queue was idle, or waits behind
+   * whatever is already playing, in the order the server sent it.
+   */
+  private enqueueStep(step: QueuedStep): void {
+    const wasIdle = isIdle(this.animationQueue);
+    this.animationQueue = enqueue(this.animationQueue, step);
+    if (wasIdle) this.playStep(step);
+  }
+
+  /**
+   * Plays one queued step and, once its own cues have had time to finish, moves on to the next. A
+   * step that fails to apply — a presentation bug, anything — must still hand the queue on: the only
+   * thing standing between a thrown error and every future action landing on a bar stuck locked for
+   * the rest of the match is this catch (critical fix). The failure is lost; the match is not.
+   */
+  private playStep(step: QueuedStep): void {
+    // Read before `applyStep` moves `this.state` on: whoever was on turn when this step was accepted,
+    // which is the team `stepWaitMs` asks about — a pure bot skip still gets a wait, a human's own
+    // deliberate end of turn never does (M4 playtest fix, P2).
+    const actingTeam = this.state === null ? null : (activeSlot(this.state)?.unit.team ?? null);
+    let cues: Cue[] = [];
+    try {
+      cues = this.applyStep(step.events, step.message);
+    } catch (error) {
+      console.error('MatchScene: a queued step failed to apply; moving on to the next one', error);
+    }
+    this.time.delayedCall(stepWaitMs(cues, actingTeam, HUMAN_TEAM), () => this.advanceQueue());
+  }
+
+  private advanceQueue(): void {
+    this.animationQueue = advance(this.animationQueue);
+    if (this.animationQueue.current !== null) this.playStep(this.animationQueue.current);
+  }
+
+  /**
+   * Everything one accepted action does to the board: its cues, its log line, the state it leaves
+   * behind and the redraw that shows it — in that order, exactly as a single action always played
+   * before the queue existed. `playStep` paces calls to this against the cues it returns; the message
+   * with nothing to pace against (`handleState` above) calls it directly instead.
+   */
+  private applyStep(events: Event[], message: StateMessage): Cue[] {
+    // Each event is read against the board it found, before the state that follows it moves `this.
+    // snapshot` on, which is also what the log is handed (EA-15): a shot says where both ends stood.
+    const cues: Cue[] = [];
+    for (const event of events) {
+      const eventCues = presentationOf(event, this.snapshot, message.state);
+      eventCues.forEach((cue) => this.play(cue));
+      cues.push(...eventCues);
+      this.appendLog(describeEvent(event, UNIT_NAMES, this.battlefield()));
+      this.advanceSnapshot(event);
     }
 
     this.state = message.state;
@@ -1002,6 +1171,17 @@ export class MatchScene extends Phaser.Scene {
     if (!available.canUseAbility) this.closeAbilityMenu();
     this.syncAutoEndTurn();
 
+    // The same hand-over the banner itself reads (EA-3): the action bar is locked for as long as the
+    // banner it raises would be on screen, so a press never lands in the instant control changes hands
+    // (M4 playtest fix, P3). A state that leaves the unit on turn alone — a move, a shot — locks
+    // nothing, and neither does the match's own opening state: nobody has had the turn taken from them
+    // yet, so there is nothing a first press could skip by accident.
+    const banner = this.lastActiveSlot === null ? null : bannerFor(this.lastActiveSlot, actor, HUMAN_TEAM);
+    if (banner !== null) this.inputLockedUntil = this.time.now + banner.durationMs;
+    this.lastActiveSlot = actor;
+    // Whatever was pending no longer applies to whatever the turn looks like now (M4 playtest fix, P3).
+    this.pendingEndTurnConfirm = false;
+
     this.redraw(message.state);
 
     if (this.reconnecting) {
@@ -1009,6 +1189,8 @@ export class MatchScene extends Phaser.Scene {
       this.statusText = '';
       this.pushHud();
     }
+
+    return cues;
   }
 
   /**
@@ -1086,6 +1268,11 @@ export class MatchScene extends Phaser.Scene {
     // one it replaces did.
     this.buildMap(turn.from.id, this.state?.board ?? null);
     if (this.state !== null) this.redraw(this.state);
+    // The hover preview was held down for the turn (DT-86) and nothing but a pointer move brings it
+    // back on its own; a player who rotated by pressing a panel button or Q/E never moves the pointer
+    // afterwards, so the aim is read again right here, against wherever it already is (P1 of the M4
+    // playtest fixes).
+    this.updatePreview(this.input.activePointer);
   }
 
   /**
@@ -1146,18 +1333,11 @@ export class MatchScene extends Phaser.Scene {
   }
 
   /**
-   * Plays the events of one accepted action, then writes them into the log. The snapshot is read
-   * for the cues and moved forward after them, so each event is read against the board it found —
-   * and that is also what the log is handed, because a shot says where both ends stood (EA-15).
+   * Remembers the events of one accepted action until the `state` they caused arrives right behind
+   * them, so the two are read together as one step of the animation queue (M4 playtest fix, P2).
    */
   private handleEvents(events: Event[]): void {
-    for (const event of events) {
-      // The state is handed along as well, because the cells an ability covers are the engine's own
-      // answer about the board: it is the state the events are read against, not the one after them.
-      for (const cue of presentationOf(event, this.snapshot, this.state ?? undefined)) this.play(cue);
-      this.appendLog(describeEvent(event, UNIT_NAMES, this.battlefield()));
-      this.advanceSnapshot(event);
-    }
+    this.pendingEvents = events;
   }
 
   /**
@@ -1188,11 +1368,14 @@ export class MatchScene extends Phaser.Scene {
         // The effect is thrown from where the two units are drawn, so it reads even mid-move.
         const from = this.effectPoint(actor, false);
         const to = this.effectPoint(target, cue.effect.kind === 'sky-column');
-        actor.playAttack(
+        const delay = actor.playAttack(
           { style: cue.style, hit: cue.hit, travelMs: cue.effect.travelMs },
           this.time.now,
           () => playEffect(this, cue.effect, from, to),
         );
+        // The target's own result waits for the same impact the visual effect does, so the HP bar
+        // never changes before the swing that caused it (M4 playtest fix, P2).
+        target.expectImpact(this.time.now, delay);
         break;
       }
 
@@ -1499,7 +1682,16 @@ export class MatchScene extends Phaser.Scene {
 
   /** Hands the HUD what it shows now, and keeps the model of its buttons for the clicks. */
   private pushHud(): void {
-    this.buttonModel = this.state ? actionButtons(this.state, HUMAN_TEAM) : [];
+    // Remembered so `advanceInputLock` can tell a lock that cleared since this last render from one
+    // it already drew locked — never from whatever `update` last happened to see (critical fix, P3).
+    const locked = this.isInputLocked();
+    this.wasInputLocked = locked;
+    this.buttonModel = this.state
+      ? presentButtons(actionButtons(this.state, HUMAN_TEAM), {
+          locked,
+          confirmEndTurn: this.pendingEndTurnConfirm,
+        })
+      : [];
     this.chipModel = this.state ? moveChips(this.state, HUMAN_TEAM) : [];
     // The rows are read here, with the rest of the models, and only while the question is on the screen:
     // a list nobody can see is not worth building (EA-16).
@@ -1757,6 +1949,23 @@ export class MatchScene extends Phaser.Scene {
     this.mapView?.update(time);
     for (const sprite of this.sprites.values()) sprite.tick(time);
     this.advanceAutoEndTurn(time);
+    this.advanceInputLock();
+  }
+
+  /**
+   * Notices the moment a lock on the action bar clears on its own — the animation queue's own timer
+   * firing with nothing left to play, or the banner's own deadline passing — and pushes the HUD right
+   * then (critical fix, P3). Nothing else does: the queue advancing calls nothing that redraws the
+   * bar, and a deadline is not a message that arrives and triggers one either. Without this, a player
+   * is stuck looking at a disabled panel until something unrelated happens to redraw it, such as
+   * moving the camera.
+   */
+  private advanceInputLock(): void {
+    const locked = this.isInputLocked();
+    if (locked === this.wasInputLocked) return;
+
+    this.wasInputLocked = locked;
+    this.pushHud();
   }
 
   /**

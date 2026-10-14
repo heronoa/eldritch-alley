@@ -15,7 +15,7 @@ import {
   type UnitState,
 } from '../protocol';
 import type { Session } from '../net/session';
-import { setLocale } from '../i18n/translate';
+import { setLocale, t } from '../i18n/translate';
 import {
   ABILITY_MENU_RECT,
   BATTLE_REPORT_CLOSE_RECT,
@@ -39,6 +39,7 @@ import {
 import { MatchScene } from './MatchScene';
 import { UnitSprite } from './units';
 import { EFFECTS } from '../view/effects';
+import { ATTACK_TIMELINE } from '../view/animation';
 import { download } from './download';
 import { exportFileName, exportText } from '../game/battle-report';
 
@@ -293,13 +294,199 @@ describe('the match scene', () => {
     expect(view.humanTeam).toBe('A');
   });
 
-  it('sends the end of the turn with the round the state is on, when the player presses it', () => {
+  it('plays the first of a burst of actions at once, and holds the next back (M4 playtest fix, P2)', () => {
+    const { session, render } = startMatch();
+    session.emit.state(message(stateFor({ onTurn: 'A', spent: false })));
+
+    const first = { ...stateFor({ onTurn: 'B', spent: false }), round: 5 };
+    const second = { ...stateFor({ onTurn: 'A', spent: false }), round: 6 };
+
+    // Two accepted actions landing back to back, each with its own events-then-state pair, exactly as
+    // `playBotTurns` broadcasts a bot's whole turn with no pacing of its own (battle-room.ts).
+    session.emit.events([{ type: 'turn-ended', actor: 'A-sniper', next: 'B-priest', round: 4 }]);
+    session.emit.state(message(first));
+    session.emit.events([{ type: 'turn-ended', actor: 'B-priest', next: 'A-sniper', round: 5 }]);
+    session.emit.state(message(second));
+
+    // The first step played at once, since the queue was idle: the HUD already reads its state.
+    expect(lastView(render).state).toBe(first);
+
+    // The second is still queued behind it — nothing fires its timer in this test — so the HUD has not
+    // moved on to it yet, which is what stops a burst from showing its last action before the first
+    // has had the time its own cues need.
+    expect(lastView(render).state).not.toBe(second);
+  });
+
+  it('tells the target to hold its result until the swing lands, not at the start of it (M4 playtest fix, P2)', () => {
+    const { session } = startMatch();
+    const initial = stateFor({ onTurn: 'A', spent: false });
+    session.emit.state(message(initial));
+
+    const spy = vi.spyOn(UnitSprite.prototype, 'expectImpact');
+
+    // A-sniper (0,0) to B-priest (7,7) is well past melee reach, so the shot travels (`attackStyle`,
+    // `view/effects.ts`): the result must wait for the tracer to arrive, not show at the first frame.
+    session.emit.events([
+      { type: 'attacked', actor: 'A-sniper', target: 'B-priest', hit: true, damage: 4, rngState: 1, resource: 'ammo', cover: false },
+    ]);
+    session.emit.state(
+      message({
+        ...initial,
+        units: initial.units.map((unit) => (unit.id === 'B-priest' ? { ...unit, health: 8 } : unit)),
+      }),
+    );
+
+    expect(spy).toHaveBeenCalledTimes(1);
+    const delayMs = spy.mock.calls[0]![1];
+    expect(delayMs).toBe(ATTACK_TIMELINE.travelStart + EFFECTS.sniper.ranged.travelMs);
+  });
+
+  it('refuses every press the instant control changes hands, before the banner has had time to fade (M4 playtest fix, P3)', () => {
+    const { scene, session } = startMatch();
+    // The bot has the turn first, so the hand-over below is a real one and not the match's own
+    // opening state, which raises a banner too but locks nothing (nobody has had a turn taken yet).
+    session.emit.state(message(stateFor({ onTurn: 'B', spent: false })));
+    session.emit.state(message(stateFor({ onTurn: 'A', spent: true })));
+
+    (scene as unknown as { pressAction(id: string, mode: null): void }).pressAction('endTurn', null);
+
+    expect(session.send).not.toHaveBeenCalled();
+  });
+
+  it('re-renders the bar on its own the instant a lock clears, with no other press needed (critical fix, P3)', () => {
+    const { scene, session, render } = startMatch();
+    const scene_ = scene as unknown as {
+      advanceQueue(): void;
+      update(time: number): void;
+    };
+
+    // The human's own turn throughout, so no hand-over banner ever enters into it: only the queue's
+    // own pacing is what locks the bar below, which is the half a camera move was papering over.
+    session.emit.state(message(stateFor({ onTurn: 'A', spent: false })));
+
+    // One accepted action lands — a move that leaves the same unit on turn, exactly as the first of
+    // several actions in one turn would. The bar locks while it plays: the HUD is pushed showing it
+    // locked, the same every actual action already does.
+    session.emit.events([{ type: 'moved', actor: 'A-sniper', from: { x: 0, y: 0 }, to: { x: 1, y: 0 }, path: [{ x: 1, y: 0 }] }]);
+    session.emit.state(message({ ...stateFor({ onTurn: 'A', spent: false }), round: 5 }));
+    expect(
+      (lastView(render).buttons as { enabled: boolean }[]).every((button) => !button.enabled),
+    ).toBe(true);
+
+    // The step's own wait elapses and the queue goes idle — the only thing that happened is a timer
+    // firing with nothing left to play, which today calls nothing that redraws the HUD at all.
+    scene_.advanceQueue();
+
+    // A frame passing on its own, with no press and no camera move, must be enough on its own to show
+    // the bar as usable again: the player must never have to touch something unrelated, like the
+    // camera, to get the panel to notice the lock is already gone.
+    scene_.update(0);
+
+    expect(
+      (lastView(render).buttons as { enabled: boolean }[]).some((button) => button.enabled),
+    ).toBe(true);
+  });
+
+  it('never leaves the queue stuck forever when applying a step throws (critical fix)', () => {
+    const { scene, session, render } = startMatch();
+    const scene_ = scene as unknown as { advanceQueue(): void };
+    session.emit.state(message(stateFor({ onTurn: 'A', spent: false })));
+
+    // Something inside this step's own presentation breaks — a bad import, a stale build, anything —
+    // the same shape as the real incident this guards: a thrown error reaching all the way out of
+    // `applyStep`. The player must never be stuck on a dead turn for the rest of the match over it.
+    const spy = vi
+      .spyOn(MatchScene.prototype as unknown as { applyStep: () => unknown }, 'applyStep')
+      .mockImplementationOnce(() => {
+        throw new TypeError('hitChanceFor is not a function');
+      });
+
+    session.emit.events([{ type: 'turn-ended', actor: 'A-sniper', next: 'B-priest', round: 4 }]);
+    expect(() =>
+      session.emit.state(message({ ...stateFor({ onTurn: 'B', spent: false }), round: 5 })),
+    ).not.toThrow();
+    spy.mockRestore();
+
+    // The step's own timer still gets scheduled even though applying it failed, which this harness
+    // never fires on its own (it never fires Phaser's own timers at all) — simulated here, since it is
+    // exactly what lets the queue move past a step that blew up instead of dying stuck behind it.
+    scene_.advanceQueue();
+
+    // A second, healthy action now proves the queue is not stuck: it plays normally, on its own.
+    session.emit.events([{ type: 'turn-ended', actor: 'B-priest', next: 'A-sniper', round: 5 }]);
+    const recovered = { ...stateFor({ onTurn: 'A', spent: false }), round: 6 };
+    session.emit.state(message(recovered));
+
+    expect(lastView(render).state).toBe(recovered);
+  });
+
+  it('loses the preview badge, not the game, if working out its odds throws (critical fix)', () => {
     const { scene, session } = startMatch();
     session.emit.state(message(stateFor({ onTurn: 'A', spent: false })));
+
+    // The exact shape of the real incident: the player is aiming — the mode armed, a cell previewed —
+    // when the HUD is pushed and the preview is asked about again.
+    const scene_ = scene as unknown as {
+      mode: string;
+      previewCell: { x: number; y: number } | null;
+      pushHud(): void;
+    };
+    scene_.mode = 'attack';
+    scene_.previewCell = { x: 7, y: 0 };
+
+    const spy = vi
+      .spyOn(MatchScene.prototype as unknown as { computeTargetPreview: () => unknown }, 'computeTargetPreview')
+      .mockImplementation(() => {
+        throw new TypeError('hitChanceFor is not a function');
+      });
+
+    try {
+      expect(() => scene_.pushHud()).not.toThrow();
+      expect(spy).toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('sends the end of the turn at once when nothing is left to do (M4 playtest fix, P3)', () => {
+    const { scene, session } = startMatch();
+    session.emit.state(message(stateFor({ onTurn: 'A', spent: true })));
 
     (scene as unknown as { pressAction(id: string, mode: null): void }).pressAction('endTurn', null);
 
     expect(session.send).toHaveBeenCalledWith({ type: 'endTurn', round: 4 });
+  });
+
+  it('asks once before ending a turn that still has something left, and sends it on the second press (M4 playtest fix, P3)', () => {
+    const { scene, session, render } = startMatch();
+    session.emit.state(message(stateFor({ onTurn: 'A', spent: false })));
+
+    const scene_ = scene as unknown as { pressAction(id: string, mode: null): void };
+    scene_.pressAction('endTurn', null);
+
+    expect(session.send).not.toHaveBeenCalled();
+    expect(lastView(render).buttons).toContainEqual(
+      expect.objectContaining({ id: 'endTurn', label: t('action.confirmEndTurn') }),
+    );
+
+    scene_.pressAction('endTurn', null);
+    expect(session.send).toHaveBeenCalledWith({ type: 'endTurn', round: 4 });
+  });
+
+  it('puts the question down unanswered the moment the player presses anything else (M4 playtest fix, P3)', () => {
+    const { scene, session, render } = startMatch();
+    session.emit.state(message(stateFor({ onTurn: 'A', spent: false })));
+
+    const scene_ = scene as unknown as { pressAction(id: string, mode: string | null): void };
+    scene_.pressAction('endTurn', null);
+    scene_.pressAction('move', 'move');
+
+    expect(lastView(render).buttons).toContainEqual(
+      expect.objectContaining({ id: 'endTurn', label: t('action.endTurn') }),
+    );
+
+    scene_.pressAction('endTurn', null);
+    expect(session.send).not.toHaveBeenCalled();
   });
 
   it('counts down a turn with nothing left, sends the end once, and hands the turn back when refused', () => {
@@ -509,6 +696,9 @@ describe('the match scene', () => {
     session.emit.events([
       { type: 'ability-used', actor: 'A-sniper', abilityId: 'fireball', to: { x: 2, y: 0 }, rngState: 7, resource: 'mana' },
     ]);
+    // The server always sends the state right behind the events it caused (M4 playtest fix, P2): the
+    // scene reads the two as one step, and plays the cues only once they are paired.
+    session.emit.state(message(casterState()));
 
     // The event names the ability and the cell: the catalog says what it does there, and the engine
     // says which cells it covers, so the scene is asked to draw the blast and not a bare flash.
@@ -825,6 +1015,8 @@ describe('the match scene', () => {
       const { session, render } = startMatch();
       session.emit.state(message(stateFor({ onTurn: 'A', spent: false })));
       session.emit.events(Array.from({ length: 8 }, (_, i) => turnEnded(i + 1, 'B-priest')));
+      // Paired right behind the events, as the server always sends it (M4 playtest fix, P2).
+      session.emit.state(message(stateFor({ onTurn: 'A', spent: false })));
 
       session.emit.ended('A');
 
@@ -839,6 +1031,8 @@ describe('the match scene', () => {
       session.emit.events(
         Array.from({ length: 20 }, (_, i) => turnEnded(i + 1, i % 2 === 0 ? 'B-priest' : 'A-sniper')),
       );
+      // Paired right behind the events, as the server always sends it (M4 playtest fix, P2).
+      session.emit.state(message(stateFor({ onTurn: 'A', spent: false })));
       session.emit.ended('A');
 
       const scene_ = scene as unknown as {
@@ -891,6 +1085,8 @@ describe('the match scene', () => {
         const { scene, session } = startMatch();
         session.emit.state(message(stateFor({ onTurn: 'A', spent: false })));
         session.emit.events([turnEnded(1, 'B-priest')]);
+        // Paired right behind the events, as the server always sends it (M4 playtest fix, P2).
+        session.emit.state(message(stateFor({ onTurn: 'A', spent: false })));
         session.emit.ended('A');
 
         const scene_ = scene as unknown as {
