@@ -14,7 +14,7 @@ Squads of soldiers, initiates and adepts fight for the city, block by block. Eac
 
 ## Setting
 
-A contemporary city where magic is real and contested. It may share the universe of the Magia Urbana project (a secret society of hunters, with magic as part of reality), as a parallel game in that world. This is an open decision.
+A contemporary city where magic is real and contested. Its own universe, not shared with the Magia Urbana project (resolved 2026-10-07, see `.ia_context/plans/m3-rules-and-content.index.md` § Decisions, B2). The game's opening battle is the player's admission test for the Agência de Controle do Sobrenatural, the body that licenses and polices magic in the city; the title screen's in-fiction framing ("Secretaria de Assuntos Ocultos") is the office that processes that test's case file.
 
 ## Loop
 
@@ -222,7 +222,7 @@ Resurrection has two steps: first the caster selects the defeated character, the
 
 ## Open questions
 
-- Shared universe with Magia Urbana, or its own? *Still open.*
+- Shared universe with Magia Urbana, or its own? *Resolved: its own, see § Setting.*
 - Ammunition and mana as separate resources, or one resource per class? *Resolved: one resource per class, see [ADR 0002](docs/adr/0002-one-resource-per-class.md).*
 - Initiative per unit (each unit takes its own turn) or per team (the whole team acts and then passes)? *Resolved: per unit, see [ADR 0001](docs/adr/0001-individual-initiative.md).*
 - Turn timer in PvP matches? How long? *Proposed: 30 seconds, to be revised after playtest, see [ADR 0004](docs/adr/0004-pvp-turn-timer.md).*

@@ -27,7 +27,8 @@ graph LR
   M0[M0 Foundation] --> M1[M1 Minimal engine]
   M1 --> M2[M2 Playable match vs bot]
   M2 -->|comparison point| M3[M3 Rules and content]
-  M3 --> M4[M4 Accounts and persistence]
+  M3 --> M35[M3.5 Onboarding]
+  M35 --> M4[M4 Accounts and persistence]
   M4 --> M5[M5 Ranked PvP]
   M5 --> M6[M6 Release]
 ```
@@ -47,7 +48,7 @@ The decisions below are recorded as ADRs in [docs/adr/](docs/adr/).
 | Deterministic engine with integer math | M1 | [0005](docs/adr/0005-deterministic-integer-engine.md) (Accepted) |
 | NestJS 11 instead of 12 | M4 | [0006](docs/adr/0006-nestjs-11.md) (Accepted) |
 
-Open, with no ADR yet: whether the setting shares the Magia Urbana universe. It does not affect code. It affects names, tone and art, and must be decided before M3 (content).
+Resolved, with no ADR needed (it does not affect code): the setting is its own universe, not shared with Magia Urbana (owner, 2026-10-07, see `.ia_context/plans/m3-rules-and-content.index.md` § Decisions, B2). See `pitch.md` § Setting.
 
 ## Milestones
 
@@ -131,6 +132,18 @@ Every cloud resource needs its own approval before it is created.
 
 **Done when:** playtest matches end with varied winners, not one dominant strategy, and the playtest is documented.
 
+### M3.5. Onboarding (P)
+
+Motivated by playtest feedback: players did not understand the game's concept or how to play. One static sequence, shown before the title's call to action is usable:
+
+- A story gate: two or three cards framing the opening battle as the player's admission test for the Agência de Controle do Sobrenatural, the setting `pitch.md` now names (§ Setting).
+- A how-to-play sequence right after: the grid and height, the initiative queue, move and attack, resources and reload, cover/facing/height advantage and the hit-chance badge, abilities. Explanatory cards only — no forced action, no live board.
+- Skippable at any point, and replayable on demand from a "Como jogar" link in the title's footer.
+- Remembered per browser (`localStorage`), not per account: this ships before M4's login exists.
+- Both locales (`en-US`, `pt-BR`), consistent with ADR 0009.
+
+**Done when:** a first-time visitor sees the sequence before the title's call to action is usable, a returning visitor does not, the footer link reopens it at any time, and every card passes the client's own contrast floor (see the `visual-identity` lesson).
+
 ### M4. Accounts and persistence (G)
 
 - `platform-api` with MikroORM and PostgreSQL: players, matches and events.
@@ -174,4 +187,4 @@ Everything in the MVP's out-of-scope list in [pitch.md](pitch.md), including pro
 - **Isometric client.** It can take longer than expected. Mitigation: placeholder art until M3.
 - **Balancing.** It needs playtests, and the time they take is often underestimated. Mitigation: time reserved in M3.
 - **Tunnel and WebSockets.** Cloudflare Tunnel and long-lived connections may behave differently than expected. Mitigation: the verification listed in M2 comes before the milestone is closed.
-- **Universe.** A late decision causes rework in names and art, not code. Mitigation: decide before M3.
+- **Universe.** Resolved before M3, own universe (see § Decisions). No rework followed.
