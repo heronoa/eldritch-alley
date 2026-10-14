@@ -294,6 +294,10 @@ export class MatchScene extends Phaser.Scene {
   /** Whether End Turn is asking once before it is sent, because the unit on turn still has something
    * it could do instead (M4 playtest fix, P3). Any other press puts the question down unanswered. */
   private pendingEndTurnConfirm = false;
+  /** Whether the bar was locked the last time this was checked, so `update` can tell the moment a lock
+   * clears and push the HUD right then — otherwise nothing redraws it once the last queued step's own
+   * timer fires with nothing left to play (critical fix, P3). */
+  private wasInputLocked = false;
 
   /** Built from the first state the map id names: the map is not known before it arrives. */
   private map: Terrain | null = null;
@@ -365,6 +369,7 @@ export class MatchScene extends Phaser.Scene {
     this.lastActiveSlot = null;
     this.inputLockedUntil = null;
     this.pendingEndTurnConfirm = false;
+    this.wasInputLocked = false;
   }
 
   create(): void {
@@ -1652,9 +1657,13 @@ export class MatchScene extends Phaser.Scene {
 
   /** Hands the HUD what it shows now, and keeps the model of its buttons for the clicks. */
   private pushHud(): void {
+    // Remembered so `advanceInputLock` can tell a lock that cleared since this last render from one
+    // it already drew locked — never from whatever `update` last happened to see (critical fix, P3).
+    const locked = this.isInputLocked();
+    this.wasInputLocked = locked;
     this.buttonModel = this.state
       ? presentButtons(actionButtons(this.state, HUMAN_TEAM), {
-          locked: this.isInputLocked(),
+          locked,
           confirmEndTurn: this.pendingEndTurnConfirm,
         })
       : [];
@@ -1915,6 +1924,23 @@ export class MatchScene extends Phaser.Scene {
     this.mapView?.update(time);
     for (const sprite of this.sprites.values()) sprite.tick(time);
     this.advanceAutoEndTurn(time);
+    this.advanceInputLock();
+  }
+
+  /**
+   * Notices the moment a lock on the action bar clears on its own — the animation queue's own timer
+   * firing with nothing left to play, or the banner's own deadline passing — and pushes the HUD right
+   * then (critical fix, P3). Nothing else does: the queue advancing calls nothing that redraws the
+   * bar, and a deadline is not a message that arrives and triggers one either. Without this, a player
+   * is stuck looking at a disabled panel until something unrelated happens to redraw it, such as
+   * moving the camera.
+   */
+  private advanceInputLock(): void {
+    const locked = this.isInputLocked();
+    if (locked === this.wasInputLocked) return;
+
+    this.wasInputLocked = locked;
+    this.pushHud();
   }
 
   /**

@@ -353,6 +353,40 @@ describe('the match scene', () => {
     expect(session.send).not.toHaveBeenCalled();
   });
 
+  it('re-renders the bar on its own the instant a lock clears, with no other press needed (critical fix, P3)', () => {
+    const { scene, session, render } = startMatch();
+    const scene_ = scene as unknown as {
+      advanceQueue(): void;
+      update(time: number): void;
+    };
+
+    // The human's own turn throughout, so no hand-over banner ever enters into it: only the queue's
+    // own pacing is what locks the bar below, which is the half a camera move was papering over.
+    session.emit.state(message(stateFor({ onTurn: 'A', spent: false })));
+
+    // One accepted action lands — a move that leaves the same unit on turn, exactly as the first of
+    // several actions in one turn would. The bar locks while it plays: the HUD is pushed showing it
+    // locked, the same every actual action already does.
+    session.emit.events([{ type: 'moved', actor: 'A-sniper', from: { x: 0, y: 0 }, to: { x: 1, y: 0 }, path: [{ x: 1, y: 0 }] }]);
+    session.emit.state(message({ ...stateFor({ onTurn: 'A', spent: false }), round: 5 }));
+    expect(
+      (lastView(render).buttons as { enabled: boolean }[]).every((button) => !button.enabled),
+    ).toBe(true);
+
+    // The step's own wait elapses and the queue goes idle — the only thing that happened is a timer
+    // firing with nothing left to play, which today calls nothing that redraws the HUD at all.
+    scene_.advanceQueue();
+
+    // A frame passing on its own, with no press and no camera move, must be enough on its own to show
+    // the bar as usable again: the player must never have to touch something unrelated, like the
+    // camera, to get the panel to notice the lock is already gone.
+    scene_.update(0);
+
+    expect(
+      (lastView(render).buttons as { enabled: boolean }[]).some((button) => button.enabled),
+    ).toBe(true);
+  });
+
   it('sends the end of the turn at once when nothing is left to do (M4 playtest fix, P3)', () => {
     const { scene, session } = startMatch();
     session.emit.state(message(stateFor({ onTurn: 'A', spent: true })));
