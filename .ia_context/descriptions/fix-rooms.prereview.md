@@ -1,4 +1,4 @@
-# Pre-review — One room per human player, with the same-tab guard it broke restored client-side
+# Pre-review — One room per human player, a process-wide cap on how many, and the same-tab guard restored client-side
 
 **Branch:** `fix/rooms`
 **Gerado em:** 2026-10-14
@@ -21,7 +21,9 @@ Rode `npm run dev:game-server` e `npm run dev:frontend` a partir da raiz, exceto
 
 **6. `localStorage` bloqueado ou indisponível.** Em uma janela anônima com cookies/armazenamento bloqueados nas configurações do navegador (ou via DevTools, "Block all storage"), clique em "Iniciar partida": esperado, conecta normalmente, sem exceção no console. A trava simplesmente não funciona nesse caso, mas o jogo não trava por causa disso — é a mesma política que `panSensitivity.ts` já usa.
 
-**7. Suítes e build, como proxy para o que não dá para clicar.** `npm test -w @eldritch-alley/game-server` (precisa de Node 22 — o próprio `vitest.config.mts` do pacote barra Node 18, e o ambiente local pode ter um `npm`/`npx` resolvendo para Node 18 por engano; se dois `node -v` seguidos derem versões diferentes, invoque o binário do Node 22 diretamente em vez de via `npm run`/`npx`); `npm test -w @eldritch-alley/frontend`; `npm run typecheck`; `npx tsc -p frontend/tsconfig.json --noEmit`; `npm run build -w @eldritch-alley/frontend`.
+**7. O teto de partidas simultâneas.** Mais difícil de testar manualmente (exigiria 30 jogadores reais), então a cobertura real está no teste automatizado de `battle-room.test.ts` (item 8). Para uma checagem rápida manual: suba o game-server com `GAME_SERVER_MAX_MATCHES=1`, abra uma partida numa janela anônima, depois tente abrir outra em outra janela anônima (storage isolado, então não é a trava de aba) — esperado, a segunda recusa com "Servidor indisponível". Feche a primeira e tente de novo: conecta.
+
+**8. Suítes e build, como proxy para o que não dá para clicar.** `npm test -w @eldritch-alley/game-server` (precisa de Node 22 — o próprio `vitest.config.mts` do pacote barra Node 18, e o ambiente local pode ter um `npm`/`npx` resolvendo para Node 18 por engano; se dois `node -v` seguidos derem versões diferentes, invoque o binário do Node 22 diretamente em vez de via `npm run`/`npx`); `npm test -w @eldritch-alley/frontend`; `npm run typecheck`; `npx tsc -p frontend/tsconfig.json --noEmit`; `npm run build -w @eldritch-alley/frontend`.
 
 ---
 
@@ -34,7 +36,9 @@ Rode `npm run dev:game-server` e `npm run dev:frontend` a partir da raiz, exceto
 - [ ] `frontend/src/title/title.ts`: `window.setInterval`/`window.clearInterval` explícitos (não a versão bare), porque o ambiente Node do monorepo sombreia o tipo de retorno do `setInterval` global.
 - [ ] Nenhuma mudança em `frontend/src/title/connect-flow.ts`, `notice.ts`, `net/join-failure.ts` ou nos catálogos de i18n — a cópia `'occupied'` já existia e não precisou mudar.
 - [ ] `backend/game-server/src/battle-room.test.ts`: o comentário acima do teste não afirma mais que a string é um contrato cruzando o boundary cliente/servidor.
-- [ ] `npm test -w @eldritch-alley/game-server` 81/81; `npm test -w @eldritch-alley/frontend` 793/793 em 58 arquivos.
+- [ ] `backend/game-server/src/battle-room.ts`: `activeMatches += 1` é a última linha de um `onCreate` bem-sucedido, não a primeira — qualquer coisa que falhar antes dela nunca conta a sala.
+- [ ] `backend/game-server/src/main.ts`: `maxConcurrentMatches` vai como terceiro argumento de `gameServer.define`, não dentro de `onCreate` nem lido direto de `process.env` ali — é isso que impede o cliente de sobrescrever.
+- [ ] `npm test -w @eldritch-alley/game-server` 85/85; `npm test -w @eldritch-alley/frontend` 793/793 em 58 arquivos.
 - [ ] `npm run typecheck` e `npx tsc -p frontend/tsconfig.json --noEmit` limpos.
 - [ ] Nada no diff fora do escopo: sem mudança em `.ia_context/inputs/technical-debt*.md` (deixado fora de propósito, ver notas da description).
 
@@ -47,3 +51,4 @@ Rode `npm run dev:game-server` e `npm run dev:frontend` a partir da raiz, exceto
 - [ ] Fechar a primeira aba libera a segunda imediatamente; um crash sem `pagehide` libera em até ~15 s.
 - [ ] Um F5 no meio da partida ainda resume a mesma partida, sem passar pelo aviso.
 - [ ] Com storage bloqueado, o jogo ainda conecta normalmente.
+- [ ] Com `GAME_SERVER_MAX_MATCHES=1`, uma segunda partida de um jogador "diferente" (storage isolado) é recusada com "Servidor indisponível"; liberar a primeira libera a vaga para a próxima.
