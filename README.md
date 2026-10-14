@@ -40,6 +40,7 @@ The backend services read the root `.env` (copied from `.env.example`). The fron
 | Variable | Read by | Default | Notes |
 |---|---|---|---|
 | `GAME_SERVER_PORT` | game-server | `2567` | Must be 1–65535 |
+| `GAME_SERVER_MAX_MATCHES` | game-server | `30` | Matches this process has open at once; must be a positive integer. Per process — see the note in `backend/game-server/src/config.ts` |
 | `PLATFORM_API_PORT` | platform-api | `3000` | Must be 1–65535 |
 | `VITE_GAME_SERVER` | frontend | `ws://localhost:2567` under `vite dev` | Required in builds. Production value is in `frontend/.env.production` |
 | `JWT_SECRET` | docker compose | none | Required by `docker compose up`. A secret: never give it the `VITE_` prefix, or it reaches the bundle |
