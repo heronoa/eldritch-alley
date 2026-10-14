@@ -75,29 +75,42 @@ describe('resolveHumanAction', () => {
 });
 
 describe('BattleRoom', () => {
-  // The text below is a contract with the client, not just a message: `onJoin` throwing `room full`
-  // is how the client learns that another session holds the seat, and `frontend/src/net/join-failure.ts`
-  // is the one place that reads it. Rewording the `throw` here without rewording it there makes a
-  // second tab report "server unavailable" again, with no test failing on either side. This case is
-  // the server half of that pin.
-  it('refuses a second human with "room full"', async () => {
+  // `maxClients = 1` (set in `onCreate`) is what actually refuses a second human now: Colyseus locks
+  // the room once the first one joins, and rejects a further `joinById` before `BattleRoom.onJoin`
+  // ever runs, with its own `ServerError` ("room ... is locked"). The client no longer reads this
+  // exact wording for the same-browser case — that is now decided before the server is even asked,
+  // client-side, by `frontend/src/net/tab-lock.ts` — nor for a second real player, who now gets a
+  // room of their own instead of this rejection. The `onJoin` guard below (`humanSessionId`) stays
+  // as cheap defense in depth, but is not exercised by this test: it is unreachable through either
+  // real join path once `maxClients` is doing its job.
+  it('refuses a second human because the room is locked', async () => {
     const room = await server.createRoom<BattleRoom>(ROOM_NAME);
     const first = await server.connectTo(room);
     first.reconnection.enabled = false;
 
-    // Colyseus prints the refused join's stack. The refusal is expected, so the output is held here
-    // and the test checks that the server did log the reason.
-    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
-    try {
-      await expect(server.sdk.joinById(room.roomId)).rejects.toThrow(/room full/);
-      // The server logs the refusal after the client has already been told, so wait for the line.
-      await vi.waitFor(() => expect(logged.mock.calls.flat().map(String).join('\n')).toContain('room full'));
-    } finally {
-      logged.mockRestore();
-    }
+    await expect(server.sdk.joinById(room.roomId)).rejects.toThrow(/is locked/);
     expect(room.clients).toHaveLength(1);
 
     await first.leave(true);
+  }, 20_000);
+
+  it('refuses a new match once the process-wide cap is reached, and accepts one again once a slot frees up', async () => {
+    // `maxConcurrentMatches` here plays the role `main.ts` has `gameServer.define`'s default options
+    // play in production: in a real deploy a client cannot raise this, because the server's default
+    // always wins the merge (see the comment in `main.ts`). The test harness has no such default, so
+    // passing it as "client" options is how a single test keeps the cap small enough to hit.
+    const atCapacity = await server.createRoom<BattleRoom>(ROOM_NAME, { maxConcurrentMatches: 1 });
+
+    await expect(server.createRoom<BattleRoom>(ROOM_NAME, { maxConcurrentMatches: 1 })).rejects.toThrow(
+      /1 matches open/,
+    );
+
+    // Disposing the one open match frees its slot: this is `onDispose` decrementing the module-level
+    // counter `onCreate` increments, not a config change, so the cap itself is still 1.
+    await atCapacity.disconnect();
+
+    const afterASlotFrees = await server.createRoom<BattleRoom>(ROOM_NAME, { maxConcurrentMatches: 1 });
+    expect(afterASlotFrees.roomId).not.toBe(atCapacity.roomId);
   }, 20_000);
 
   it('lets the bot play until it is the human turn again', async () => {

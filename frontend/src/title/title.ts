@@ -10,12 +10,13 @@ import { buildEnv, gameServerEndpoint } from '../config';
 import { getLocale, saveLocale, setLocale, type Locale } from '../i18n';
 import { joinFailure } from '../net/join-failure';
 import { Session } from '../net/session';
+import { claim, HEARTBEAT_MS, release, tryClaim } from '../net/tab-lock';
 import { createCity, type CityView } from './city-render';
 import { canTransition, failureReason, next, type Flow } from './connect-flow';
 import { titleCopy, type TitleCopy } from './copy';
 import { LANGUAGE_OPTIONS, switchesTo } from './language';
 import { motionPolicy, type MotionPolicy } from './motion';
-import { noticeFor } from './notice';
+import { noticeFor, type FailureReason } from './notice';
 import { loadSheets } from './sheet';
 import { stampAt } from './stamp';
 
@@ -161,6 +162,12 @@ function switchLanguage(locale: Locale): void {
 const endpoint = gameServerEndpoint(buildEnv());
 
 /**
+ * This page load's own identity for the same-tab lock. One per load: a reload gets a new id, which
+ * is fine because the old page's `pagehide` already released its claim before the new one can ask.
+ */
+const tabId = crypto.randomUUID();
+
+/**
  * The call to action as the page loads it: nothing pressed, nothing announced. Kept as one value so
  * the title can be put back in this state when a match ends and the title owns the screen again.
  */
@@ -187,6 +194,9 @@ let city: CityView | null = null;
 
 /** The stamp's own frame loop, running only while there is a stamp to place. */
 let stampLoop = 0;
+
+/** The same-tab lock's heartbeat, running only while this tab holds the lock. */
+let heartbeat = 0;
 
 const reducedMotion = window.matchMedia(REDUCED_MOTION);
 
@@ -221,6 +231,27 @@ function stopStamp(): void {
   if (stampLoop === 0) return;
   cancelAnimationFrame(stampLoop);
   stampLoop = 0;
+}
+
+/** Starts refreshing this tab's lock. Calling it twice is the same as calling it once. */
+function startHeartbeat(): void {
+  if (heartbeat !== 0) return;
+  // `window.setInterval`, not the bare global: Node's ambient types shadow it with one that
+  // returns a `Timeout` instead of the browser's `number`, which is what `heartbeat` holds.
+  heartbeat = window.setInterval(() => claim(tabId, Date.now()), HEARTBEAT_MS);
+}
+
+/** Stops refreshing the lock. Does not release it: a release says the match is over, not just quiet. */
+function stopHeartbeat(): void {
+  if (heartbeat === 0) return;
+  window.clearInterval(heartbeat);
+  heartbeat = 0;
+}
+
+/** The lock is this tab's business alone from here: stop the heartbeat and give it up. */
+function endLock(): void {
+  stopHeartbeat();
+  release(tabId);
 }
 
 /**
@@ -262,6 +293,7 @@ function handOver(): void {
       // The match could not be downloaded: the session is released and the title is usable again.
       // The flow is set by hand, because `next` answers nothing from `ready`.
       confirmed.close();
+      endLock();
       // The seat was granted — the server answered — so this is the download's own failure and not a
       // refusal. Naming it is what keeps the card from blaming a server that did its part.
       flow = { state: 'failed', stampStartedAt: null, failure: 'load-failed' };
@@ -273,14 +305,20 @@ function handOver(): void {
 }
 
 /**
- * The session did not open: the stamp goes, the reason shows, and the button comes back. The reason
- * is read from the error, so a seat another tab holds is told apart from a server that did not
- * answer.
+ * The flow fails with a known reason: the stamp goes, the card shows it, and the button comes back.
  */
-function fail(error: unknown): void {
-  flow = next(flow, 'failed', performance.now(), joinFailure(error));
+function failWith(reason: FailureReason): void {
+  flow = next(flow, 'failed', performance.now(), reason);
   stopStamp();
   renderControls();
+}
+
+/**
+ * The session did not open: the reason is read from the error, so a seat another tab holds is told
+ * apart from a server that did not answer.
+ */
+function fail(error: unknown): void {
+  failWith(joinFailure(error));
 }
 
 /**
@@ -301,6 +339,7 @@ function renderControls(): void {
 function resume(): void {
   onScreen = true;
   flow = IDLE;
+  endLock();
   renderControls();
   city?.start();
 }
@@ -322,6 +361,14 @@ async function press(): Promise<void> {
   renderControls();
   startStamp();
 
+  // Checked client-side, before the server is ever asked: another tab of this same browser, not
+  // another player, is what this guards against (see `net/tab-lock.ts`).
+  if (!tryClaim(tabId, Date.now())) {
+    failWith('occupied');
+    return;
+  }
+  startHeartbeat();
+
   const opening = new Session(endpoint);
   try {
     // Resumes the match this page was in before a reload, when there is one to resume.
@@ -329,6 +376,7 @@ async function press(): Promise<void> {
   } catch (error) {
     // A session that never reached a room is worth dropping, so a retry starts from nothing.
     opening.close();
+    endLock();
     fail(error);
     return;
   }
@@ -336,6 +384,7 @@ async function press(): Promise<void> {
   // The screen may have been given up while the server was answering; then this session is spare.
   if (flow.state !== 'connecting') {
     opening.close();
+    endLock();
     return;
   }
 
@@ -379,8 +428,13 @@ window.addEventListener('keydown', (event) => {
   void press();
 });
 
-// A reload, a closed tab or a navigation: a session nobody has taken over is released.
-window.addEventListener('pagehide', () => session?.close());
+// A reload, a closed tab or a navigation: a session nobody has taken over is released, and so is
+// this tab's claim on the lock, so the next page (this one reloading, or another tab) is not kept
+// waiting for staleness.
+window.addEventListener('pagehide', () => {
+  session?.close();
+  endLock();
+});
 
 // The setting can change while the page is open, and the city follows it.
 reducedMotion.addEventListener('change', (event) => {

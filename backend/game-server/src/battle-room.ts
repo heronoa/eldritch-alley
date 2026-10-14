@@ -85,6 +85,21 @@ export function resolveHumanAction(
   return result.ok ? { ok: true, state: result.state, events: result.events } : result;
 }
 
+/** How many matches a process opens at once, unless `main.ts` hands a different one in. */
+export const DEFAULT_MAX_CONCURRENT_MATCHES = 30;
+
+/**
+ * Matches open on this process right now. Module-level, not per instance: a room counts itself in
+ * only once its own `onCreate` has fully succeeded, and counts itself out in `onDispose` — never the
+ * other way round, so a room that fails to even construct never holds a slot open forever.
+ */
+let activeMatches = 0;
+
+interface BattleRoomOptions {
+  /** Set by `main.ts` via `gameServer.define`'s default options, which always win over a client's own. */
+  maxConcurrentMatches?: number;
+}
+
 export class BattleRoom extends Room {
   /** Set once a side has no unit left. A finished room refuses every further action. */
   ended = false;
@@ -95,7 +110,12 @@ export class BattleRoom extends Room {
   private mapId!: MapId;
   private humanSessionId: string | null = null;
 
-  onCreate(): void {
+  onCreate(options: BattleRoomOptions = {}): void {
+    const limit = options.maxConcurrentMatches ?? DEFAULT_MAX_CONCURRENT_MATCHES;
+    if (activeMatches >= limit) {
+      throw new Error(`the server already has ${limit} matches open`);
+    }
+
     // One human per room. Without this, Colyseus's default (Infinity) never locks the room, so
     // `joinOrCreate` keeps routing every new player worldwide into whichever room already exists
     // instead of starting a fresh one, and the second player gets refused as if it were a stale tab.
@@ -104,6 +124,12 @@ export class BattleRoom extends Room {
     this.match = newMatch(setup);
     this.mapId = mapFor(setup.seed).id;
     this.onMessage<ClientAction>(MESSAGE.action, (client, action) => this.handleAction(client, action));
+
+    activeMatches += 1;
+  }
+
+  onDispose(): void {
+    activeMatches -= 1;
   }
 
   onJoin(client: Client): void {
