@@ -5,6 +5,7 @@ import {
   actionButtons,
   applyMode,
   availableActions,
+  hasArmedAim,
   moveChips,
   settleMode,
   type AvailableActions,
@@ -357,6 +358,27 @@ describe('settleMode', () => {
 
   it('drops the ability mode once the pool cannot pay for it', () => {
     expect(settleMode('ability', { ...ALL, canUseAbility: false })).toBe('inspect');
+  });
+});
+
+/**
+ * Whether an escape/cancel gesture has anything to put down (P1 of the M4 playtest fixes): an armed
+ * mode, or the ability menu left open before a row was picked (EA-16), which an armed mode alone does
+ * not cover.
+ */
+describe('hasArmedAim', () => {
+  it('has nothing to cancel while inspecting with the menu closed', () => {
+    expect(hasArmedAim('inspect', false)).toBe(false);
+  });
+
+  it('has something to cancel for every armed mode', () => {
+    expect(hasArmedAim('move', false)).toBe(true);
+    expect(hasArmedAim('attack', false)).toBe(true);
+    expect(hasArmedAim('ability', false)).toBe(true);
+  });
+
+  it('has something to cancel while the ability menu is open, even before a row is picked', () => {
+    expect(hasArmedAim('inspect', true)).toBe(true);
   });
 });
 

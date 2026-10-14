@@ -7,6 +7,7 @@ import {
   actionButtons,
   applyMode,
   availableActions,
+  hasArmedAim,
   moveChips,
   settleMode,
   type ActionButton,
@@ -368,6 +369,9 @@ export class MatchScene extends Phaser.Scene {
       // arrows are, for a desktop with no pinch and no room for a panel (EA-12).
       if (event.key.toLowerCase() === 'q') this.rotateView(-1);
       if (event.key.toLowerCase() === 'e') this.rotateView(1);
+      // The emergency exit (P1 of the M4 playtest fixes): whatever is armed, Escape puts it down, so
+      // the player is never stuck behind a preview or a menu with no way back to the action bar.
+      if (event.key === 'Escape') this.cancelAim();
     });
 
     // The map's canvases are textures of the game, not objects of this scene: leaving without taking
@@ -941,6 +945,21 @@ export class MatchScene extends Phaser.Scene {
     this.menuOpen = false;
   }
 
+  /**
+   * The emergency exit (P1 of the M4 playtest fixes): whatever aim is armed falls back to inspection,
+   * so the player is never stuck with no way back to the action bar, whatever the cause. A press with
+   * nothing armed does nothing, so Escape is safe to send at any time.
+   */
+  private cancelAim(): void {
+    if (!hasArmedAim(this.mode, this.menuOpen)) return;
+
+    this.closeAbilityMenu();
+    this.mode = 'inspect';
+    this.armedAbilityId = null;
+    this.setPreviewCell(null);
+    if (this.state !== null) this.redraw(this.state);
+  }
+
   /** A press while the menu is open: its X and its rows are its own, and a press outside closes it. */
   private pressAbilityMenu(point: Pixel): void {
     if (!containsPoint(ABILITY_MENU_RECT, point) || containsPoint(ABILITY_MENU_CLOSE_RECT, point)) {
@@ -1086,6 +1105,11 @@ export class MatchScene extends Phaser.Scene {
     // one it replaces did.
     this.buildMap(turn.from.id, this.state?.board ?? null);
     if (this.state !== null) this.redraw(this.state);
+    // The hover preview was held down for the turn (DT-86) and nothing but a pointer move brings it
+    // back on its own; a player who rotated by pressing a panel button or Q/E never moves the pointer
+    // afterwards, so the aim is read again right here, against wherever it already is (P1 of the M4
+    // playtest fixes).
+    this.updatePreview(this.input.activePointer);
   }
 
   /**

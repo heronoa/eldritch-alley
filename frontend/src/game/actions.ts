@@ -72,6 +72,15 @@ export function applyMode(mode: ActionMode, intent: Intent): Intent {
   return allowsIntent(mode, intent) ? intent : { kind: 'none' };
 }
 
+/**
+ * Whether an escape/cancel gesture has anything to put down: an armed mode, or the ability menu left
+ * open before a row was picked (EA-16) — which an armed mode alone does not cover, since the menu
+ * opens before `mode` becomes `'ability'`.
+ */
+export function hasArmedAim(mode: ActionMode, menuOpen: boolean): boolean {
+  return mode !== 'inspect' || menuOpen;
+}
+
 /** The answers already given for each state and team, by the state's identity (see `highlight.ts`). */
 const answeredActions = new WeakMap<PublicState, Map<Team, AvailableActions>>();
 
