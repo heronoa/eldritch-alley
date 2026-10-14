@@ -158,6 +158,26 @@ export function actionButtons(state: PublicState, humanTeam: Team): ActionButton
   ];
 }
 
+/**
+ * The action bar as the player actually presses it (M4 playtest fix, P3): `actionButtons` answers
+ * what the rules allow, and this answers what a press does right now, on top of the rules. Locked
+ * solid while a transition is still on screen — the whole bar, End Turn included, since nothing the
+ * rules allow is safe to act on before the player has actually seen the turn it would act on. Short
+ * of that, End Turn alone is relabelled to ask once whenever the unit on turn still has something it
+ * could do instead, so a player is never one accidental click away from giving it up.
+ */
+export function presentButtons(
+  buttons: readonly ActionButton[],
+  options: { locked: boolean; confirmEndTurn: boolean },
+): ActionButton[] {
+  if (options.locked) return buttons.map((button) => ({ ...button, enabled: false }));
+  if (!options.confirmEndTurn) return [...buttons];
+
+  return buttons.map((button) =>
+    button.id === 'endTurn' ? { ...button, label: t('action.confirmEndTurn') } : button,
+  );
+}
+
 /** One of the two controls of a pending move: what it says, and the action it sends at once. */
 export interface MoveChip {
   id: 'confirmMove' | 'cancelMove';

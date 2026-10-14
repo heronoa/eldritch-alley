@@ -123,6 +123,9 @@ export const ptBR = {
   'action.endTurn': 'Terminar turno',
   'action.confirmMove': 'Confirmar',
   'action.cancelMove': 'Cancelar',
+  // Shown instead, in place of the label above, while the turn still has something left to do and
+  // End Turn is asking once before it is sent (M4 playtest fix, P3).
+  'action.confirmEndTurn': 'Confirma?',
 
   // The abilities (EA-16): one word per id this build knows, and the fragments the menu composes the
   // effect line from. The engine never learns a name (ADR 0016 §13) — the id is an opaque string and

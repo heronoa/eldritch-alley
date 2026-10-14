@@ -15,7 +15,7 @@ import {
   type UnitState,
 } from '../protocol';
 import type { Session } from '../net/session';
-import { setLocale } from '../i18n/translate';
+import { setLocale, t } from '../i18n/translate';
 import {
   ABILITY_MENU_RECT,
   BATTLE_REPORT_CLOSE_RECT,
@@ -341,13 +341,57 @@ describe('the match scene', () => {
     expect(delayMs).toBe(ATTACK_TIMELINE.travelStart + EFFECTS.sniper.ranged.travelMs);
   });
 
-  it('sends the end of the turn with the round the state is on, when the player presses it', () => {
+  it('refuses every press the instant control changes hands, before the banner has had time to fade (M4 playtest fix, P3)', () => {
     const { scene, session } = startMatch();
-    session.emit.state(message(stateFor({ onTurn: 'A', spent: false })));
+    // The bot has the turn first, so the hand-over below is a real one and not the match's own
+    // opening state, which raises a banner too but locks nothing (nobody has had a turn taken yet).
+    session.emit.state(message(stateFor({ onTurn: 'B', spent: false })));
+    session.emit.state(message(stateFor({ onTurn: 'A', spent: true })));
+
+    (scene as unknown as { pressAction(id: string, mode: null): void }).pressAction('endTurn', null);
+
+    expect(session.send).not.toHaveBeenCalled();
+  });
+
+  it('sends the end of the turn at once when nothing is left to do (M4 playtest fix, P3)', () => {
+    const { scene, session } = startMatch();
+    session.emit.state(message(stateFor({ onTurn: 'A', spent: true })));
 
     (scene as unknown as { pressAction(id: string, mode: null): void }).pressAction('endTurn', null);
 
     expect(session.send).toHaveBeenCalledWith({ type: 'endTurn', round: 4 });
+  });
+
+  it('asks once before ending a turn that still has something left, and sends it on the second press (M4 playtest fix, P3)', () => {
+    const { scene, session, render } = startMatch();
+    session.emit.state(message(stateFor({ onTurn: 'A', spent: false })));
+
+    const scene_ = scene as unknown as { pressAction(id: string, mode: null): void };
+    scene_.pressAction('endTurn', null);
+
+    expect(session.send).not.toHaveBeenCalled();
+    expect(lastView(render).buttons).toContainEqual(
+      expect.objectContaining({ id: 'endTurn', label: t('action.confirmEndTurn') }),
+    );
+
+    scene_.pressAction('endTurn', null);
+    expect(session.send).toHaveBeenCalledWith({ type: 'endTurn', round: 4 });
+  });
+
+  it('puts the question down unanswered the moment the player presses anything else (M4 playtest fix, P3)', () => {
+    const { scene, session, render } = startMatch();
+    session.emit.state(message(stateFor({ onTurn: 'A', spent: false })));
+
+    const scene_ = scene as unknown as { pressAction(id: string, mode: string | null): void };
+    scene_.pressAction('endTurn', null);
+    scene_.pressAction('move', 'move');
+
+    expect(lastView(render).buttons).toContainEqual(
+      expect.objectContaining({ id: 'endTurn', label: t('action.endTurn') }),
+    );
+
+    scene_.pressAction('endTurn', null);
+    expect(session.send).not.toHaveBeenCalled();
   });
 
   it('counts down a turn with nothing left, sends the end once, and hands the turn back when refused', () => {

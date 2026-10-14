@@ -9,6 +9,7 @@ import {
   availableActions,
   hasArmedAim,
   moveChips,
+  presentButtons,
   settleMode,
   type ActionButton,
   type ActionMode,
@@ -16,6 +17,7 @@ import {
 } from '../game/actions';
 import { abilityOptions, type AbilityOption } from '../game/ability-menu';
 import { advance, emptyQueue, enqueue, isIdle, type AnimationQueue } from '../game/animationQueue';
+import { bannerFor } from '../game/banner';
 import { abilityChances, attackChance } from '../game/targetPreview';
 import { stepWaitMs } from '../game/cueTiming';
 import {
@@ -47,7 +49,7 @@ import { describeEvent, describeRejection, type Battlefield, type UnitNames } fr
 import { presentationOf, type Cue, type Snapshot } from '../game/presentation';
 import { Gestures, LONG_PRESS_MS, type Pinch, type PressPointer } from '../game/press';
 import { resolveClick, resolveInspect } from '../game/selection';
-import { activeSlot, isHumanTurn, turnOrder } from '../game/turn-order';
+import { activeSlot, isHumanTurn, turnOrder, type TurnSlot } from '../game/turn-order';
 import { t } from '../i18n';
 import { terrainOf, type Terrain } from '../maps/terrain';
 import { Session } from '../net/session';
@@ -282,6 +284,16 @@ export class MatchScene extends Phaser.Scene {
   private pendingEvents: Event[] | null = null;
   /** One accepted action waiting its turn to play, so a burst of them never overwrites one another. */
   private animationQueue: AnimationQueue<QueuedStep> = emptyQueue();
+  /** The unit this scene itself last saw on turn, the same question `bannerFor` asks (M4 playtest fix,
+   * P3): read here too, because locking input on a hand-over is this scene's job, not the HUD's. */
+  private lastActiveSlot: TurnSlot | null = null;
+  /** Set until this moment while a turn-change banner is still on screen: the action bar refuses every
+   * press until then, on top of refusing them while the animation queue is not idle (M4 playtest fix,
+   * P3). */
+  private inputLockedUntil: number | null = null;
+  /** Whether End Turn is asking once before it is sent, because the unit on turn still has something
+   * it could do instead (M4 playtest fix, P3). Any other press puts the question down unanswered. */
+  private pendingEndTurnConfirm = false;
 
   /** Built from the first state the map id names: the map is not known before it arrives. */
   private map: Terrain | null = null;
@@ -350,6 +362,9 @@ export class MatchScene extends Phaser.Scene {
     this.snapshot = new Map();
     this.pendingEvents = null;
     this.animationQueue = emptyQueue();
+    this.lastActiveSlot = null;
+    this.inputLockedUntil = null;
+    this.pendingEndTurnConfirm = false;
   }
 
   create(): void {
@@ -902,9 +917,24 @@ export class MatchScene extends Phaser.Scene {
     if (state !== null) this.redraw(state);
   }
 
+  /** Whether the action bar refuses every press right now: a transition still on screen (M4 playtest
+   * fix, P3), either the animation queue still playing a burst of actions, or the banner it raised
+   * still fading — whichever of the two outlasts the other. */
+  private isInputLocked(): boolean {
+    if (!isIdle(this.animationQueue)) return true;
+    return this.inputLockedUntil !== null && this.time.now < this.inputLockedUntil;
+  }
+
   /** Arms the button's mode, or cancels it when it is already armed, so the bar is its own undo. */
   private pressAction(id: ActionButton['id'], mode: ActionMode | null): void {
     if (this.finished || this.state === null) return;
+    // Nothing reaches the server while a transition is still on screen (M4 playtest fix, P3): the
+    // press is refused exactly where the HUD already shows the bar as locked, not silently elsewhere.
+    if (this.isInputLocked()) return;
+
+    // Any press but a second one on End Turn itself answers the question with nothing (M4 playtest
+    // fix, P3): the player went on to do something else, so there is nothing left to confirm.
+    if (id !== 'endTurn' && this.pendingEndTurnConfirm) this.pendingEndTurnConfirm = false;
 
     if (mode !== null) {
       // `Habilidade` asks before it arms (EA-16): the menu names what the unit carries, what it costs
@@ -919,6 +949,17 @@ export class MatchScene extends Phaser.Scene {
       this.redraw(this.state);
       return;
     }
+
+    if (id === 'endTurn' && !this.pendingEndTurnConfirm && !availableActions(this.state, HUMAN_TEAM).nothingLeft) {
+      // Something is still available, so the first press only asks: a player who meant to pass with
+      // options open still can, one press later, and one who did not never loses the turn by accident
+      // (M4 playtest fix, P3). Nothing left to do skips the question — auto end of turn is about to
+      // ask the same thing on its own.
+      this.pendingEndTurnConfirm = true;
+      this.pushHud();
+      return;
+    }
+    this.pendingEndTurnConfirm = false;
 
     const action = immediateAction(id, this.state.round);
     if (action === null) return;
@@ -1099,6 +1140,17 @@ export class MatchScene extends Phaser.Scene {
     if (this.mode !== 'ability') this.armedAbilityId = null;
     if (!available.canUseAbility) this.closeAbilityMenu();
     this.syncAutoEndTurn();
+
+    // The same hand-over the banner itself reads (EA-3): the action bar is locked for as long as the
+    // banner it raises would be on screen, so a press never lands in the instant control changes hands
+    // (M4 playtest fix, P3). A state that leaves the unit on turn alone — a move, a shot — locks
+    // nothing, and neither does the match's own opening state: nobody has had the turn taken from them
+    // yet, so there is nothing a first press could skip by accident.
+    const banner = this.lastActiveSlot === null ? null : bannerFor(this.lastActiveSlot, actor, HUMAN_TEAM);
+    if (banner !== null) this.inputLockedUntil = this.time.now + banner.durationMs;
+    this.lastActiveSlot = actor;
+    // Whatever was pending no longer applies to whatever the turn looks like now (M4 playtest fix, P3).
+    this.pendingEndTurnConfirm = false;
 
     this.redraw(message.state);
 
@@ -1600,7 +1652,12 @@ export class MatchScene extends Phaser.Scene {
 
   /** Hands the HUD what it shows now, and keeps the model of its buttons for the clicks. */
   private pushHud(): void {
-    this.buttonModel = this.state ? actionButtons(this.state, HUMAN_TEAM) : [];
+    this.buttonModel = this.state
+      ? presentButtons(actionButtons(this.state, HUMAN_TEAM), {
+          locked: this.isInputLocked(),
+          confirmEndTurn: this.pendingEndTurnConfirm,
+        })
+      : [];
     this.chipModel = this.state ? moveChips(this.state, HUMAN_TEAM) : [];
     // The rows are read here, with the rest of the models, and only while the question is on the screen:
     // a list nobody can see is not worth building (EA-16).
