@@ -96,6 +96,10 @@ export class BattleRoom extends Room {
   private humanSessionId: string | null = null;
 
   onCreate(): void {
+    // One human per room. Without this, Colyseus's default (Infinity) never locks the room, so
+    // `joinOrCreate` keeps routing every new player worldwide into whichever room already exists
+    // instead of starting a fresh one, and the second player gets refused as if it were a stale tab.
+    this.maxClients = 1;
     const setup = createMatchSetup(randomSeed());
     this.match = newMatch(setup);
     this.mapId = mapFor(setup.seed).id;
