@@ -387,6 +387,67 @@ describe('the match scene', () => {
     ).toBe(true);
   });
 
+  it('never leaves the queue stuck forever when applying a step throws (critical fix)', () => {
+    const { scene, session, render } = startMatch();
+    const scene_ = scene as unknown as { advanceQueue(): void };
+    session.emit.state(message(stateFor({ onTurn: 'A', spent: false })));
+
+    // Something inside this step's own presentation breaks — a bad import, a stale build, anything —
+    // the same shape as the real incident this guards: a thrown error reaching all the way out of
+    // `applyStep`. The player must never be stuck on a dead turn for the rest of the match over it.
+    const spy = vi
+      .spyOn(MatchScene.prototype as unknown as { applyStep: () => unknown }, 'applyStep')
+      .mockImplementationOnce(() => {
+        throw new TypeError('hitChanceFor is not a function');
+      });
+
+    session.emit.events([{ type: 'turn-ended', actor: 'A-sniper', next: 'B-priest', round: 4 }]);
+    expect(() =>
+      session.emit.state(message({ ...stateFor({ onTurn: 'B', spent: false }), round: 5 })),
+    ).not.toThrow();
+    spy.mockRestore();
+
+    // The step's own timer still gets scheduled even though applying it failed, which this harness
+    // never fires on its own (it never fires Phaser's own timers at all) — simulated here, since it is
+    // exactly what lets the queue move past a step that blew up instead of dying stuck behind it.
+    scene_.advanceQueue();
+
+    // A second, healthy action now proves the queue is not stuck: it plays normally, on its own.
+    session.emit.events([{ type: 'turn-ended', actor: 'B-priest', next: 'A-sniper', round: 5 }]);
+    const recovered = { ...stateFor({ onTurn: 'A', spent: false }), round: 6 };
+    session.emit.state(message(recovered));
+
+    expect(lastView(render).state).toBe(recovered);
+  });
+
+  it('loses the preview badge, not the game, if working out its odds throws (critical fix)', () => {
+    const { scene, session } = startMatch();
+    session.emit.state(message(stateFor({ onTurn: 'A', spent: false })));
+
+    // The exact shape of the real incident: the player is aiming — the mode armed, a cell previewed —
+    // when the HUD is pushed and the preview is asked about again.
+    const scene_ = scene as unknown as {
+      mode: string;
+      previewCell: { x: number; y: number } | null;
+      pushHud(): void;
+    };
+    scene_.mode = 'attack';
+    scene_.previewCell = { x: 7, y: 0 };
+
+    const spy = vi
+      .spyOn(MatchScene.prototype as unknown as { computeTargetPreview: () => unknown }, 'computeTargetPreview')
+      .mockImplementation(() => {
+        throw new TypeError('hitChanceFor is not a function');
+      });
+
+    try {
+      expect(() => scene_.pushHud()).not.toThrow();
+      expect(spy).toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it('sends the end of the turn at once when nothing is left to do (M4 playtest fix, P3)', () => {
     const { scene, session } = startMatch();
     session.emit.state(message(stateFor({ onTurn: 'A', spent: true })));

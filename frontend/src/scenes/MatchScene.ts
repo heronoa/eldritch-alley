@@ -563,12 +563,27 @@ export class MatchScene extends Phaser.Scene {
   }
 
   /**
+   * `computeTargetPreview`'s own answer, or none at all if working it out throws (critical fix): a
+   * badge is decoration over whatever event just arrived, and losing it must never also lose that
+   * event — the same "a failure loses the feature, not the match" rule the auto-end-turn setting's
+   * own storage read already follows (EA-4).
+   */
+  private targetPreviewChances(state: PublicState): ReadonlyMap<string, number> {
+    try {
+      return this.computeTargetPreview(state);
+    } catch (error) {
+      console.error('MatchScene: failed to work out the target preview', error);
+      return new Map();
+    }
+  }
+
+  /**
    * The odds the preview cell asks about, read fresh every time: a basic attack against whoever stands
    * there, or every living body an armed ability would reach from it (EA-18). Never a cell the current
    * highlight would not legally offer — the badge is a readout of a shot the player could take, not a
    * hint about one they could not.
    */
-  private targetPreviewChances(state: PublicState): ReadonlyMap<string, number> {
+  private computeTargetPreview(state: PublicState): ReadonlyMap<string, number> {
     const previewCell = this.previewCell;
     if (previewCell === null || (this.mode !== 'attack' && this.mode !== 'ability')) return new Map();
 
@@ -1095,13 +1110,23 @@ export class MatchScene extends Phaser.Scene {
     if (wasIdle) this.playStep(step);
   }
 
-  /** Plays one queued step and, once its own cues have had time to finish, moves on to the next. */
+  /**
+   * Plays one queued step and, once its own cues have had time to finish, moves on to the next. A
+   * step that fails to apply — a presentation bug, anything — must still hand the queue on: the only
+   * thing standing between a thrown error and every future action landing on a bar stuck locked for
+   * the rest of the match is this catch (critical fix). The failure is lost; the match is not.
+   */
   private playStep(step: QueuedStep): void {
     // Read before `applyStep` moves `this.state` on: whoever was on turn when this step was accepted,
     // which is the team `stepWaitMs` asks about — a pure bot skip still gets a wait, a human's own
     // deliberate end of turn never does (M4 playtest fix, P2).
     const actingTeam = this.state === null ? null : (activeSlot(this.state)?.unit.team ?? null);
-    const cues = this.applyStep(step.events, step.message);
+    let cues: Cue[] = [];
+    try {
+      cues = this.applyStep(step.events, step.message);
+    } catch (error) {
+      console.error('MatchScene: a queued step failed to apply; moving on to the next one', error);
+    }
     this.time.delayedCall(stepWaitMs(cues, actingTeam, HUMAN_TEAM), () => this.advanceQueue());
   }
 
