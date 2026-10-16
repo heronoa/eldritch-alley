@@ -161,6 +161,54 @@ describe.skipIf(!hasDatabase)('the OAuth routes', () => {
     });
   });
 
+  // Which providers exist is a question only the server can answer: the client is published as static
+  // assets and cannot read the server's environment, so it asks (§ 8, D8).
+  describe('the provider list', () => {
+    it('is both providers, in a fixed order, when both are configured', async () => {
+      const response = await fetch(`${app.url}/auth/providers`);
+
+      // The 200 is also the assertion that this route is declared before `GET /auth/:provider`:
+      // declared after it, `providers` would be read as a provider called `providers` and answer 404.
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ providers: ['github', 'google'] });
+    });
+
+    it('is only the provider that is configured', async () => {
+      const only = await startTestApp({
+        databaseUrl,
+        providers: { github: new FakeProvider('github', () => PLAYER) },
+      });
+      started.push(only);
+
+      expect(await (await fetch(`${only.url}/auth/providers`)).json()).toEqual({ providers: ['github'] });
+    });
+
+    it('is empty when no provider is configured, and the platform answers everything else', async () => {
+      const none = await startTestApp({ databaseUrl, oauth: false });
+      started.push(none);
+
+      expect(await (await fetch(`${none.url}/auth/providers`)).json()).toEqual({ providers: [] });
+
+      expect((await fetch(`${none.url}/health`)).status).toBe(200);
+      expect((await fetch(`${none.url}/me`)).status).toBe(401);
+      expect((await fetch(`${none.url}/auth/game-ticket`, { method: 'POST' })).status).toBe(401);
+    });
+
+    it('refuses to start a flow for a provider that is not configured', async () => {
+      const none = await startTestApp({ databaseUrl, oauth: false });
+      started.push(none);
+
+      // The route dispatch refuses before the handler body runs, so there is no account written and
+      // nothing to roll back — the same refusal an unknown provider has always had.
+      const response = await fetch(`${none.url}/auth/github`, { redirect: 'manual' });
+      expect(response.status).toBe(404);
+      expect(await response.json()).toEqual({
+        code: 'unknown_provider',
+        message: 'There is no provider called github.',
+      });
+    });
+  });
+
   describe('CORS', () => {
     it('allows the client origin with credentials', async () => {
       const response = await fetch(`${app.url}/me`, {

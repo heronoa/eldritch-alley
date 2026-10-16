@@ -2,7 +2,7 @@ import { Test } from '@nestjs/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from './app.module';
 import { setAuthEnvironment } from './auth/test-app';
-import { readDatabaseUrl, readGameTicketTtl, readPort, readRequired } from './config';
+import { readDatabaseUrl, readGameTicketTtl, readOptional, readPort, readRequired } from './config';
 import { createScratchDatabase, dropScratchDatabase, hasDatabase } from './db/test-database';
 
 describe('readDatabaseUrl', () => {
@@ -32,6 +32,20 @@ describe('readRequired', () => {
     expect(() => readRequired(undefined, 'SESSION_SECRET')).toThrow(/SESSION_SECRET/);
     expect(() => readRequired('', 'SESSION_SECRET')).toThrow(/SESSION_SECRET/);
     expect(() => readRequired('   ', 'SESSION_SECRET')).toThrow(/SESSION_SECRET/);
+  });
+});
+
+describe('readOptional', () => {
+  it('returns the value without the whitespace around it', () => {
+    expect(readOptional('  s3cret  ')).toBe('s3cret');
+  });
+
+  it('answers nothing for a variable that is not set, for a blank one and for whitespace', () => {
+    // The three spellings of "not configured" are one answer here, which is what lets § 8's providers
+    // and § 9's mailer switch themselves off instead of stopping the boot.
+    expect(readOptional(undefined)).toBeUndefined();
+    expect(readOptional('')).toBeUndefined();
+    expect(readOptional('   ')).toBeUndefined();
   });
 });
 
@@ -125,6 +139,18 @@ describe.skipIf(!hasDatabase)('the platform at boot, with the rest of the enviro
       await expect(Test.createTestingModule({ imports: [AppModule] }).compile()).rejects.toThrow(
         /GAME_TICKET_TTL_SECONDS/,
       );
+    } finally {
+      await setAuthEnvironment(url);
+    }
+  });
+
+  it('does build its container with no OAuth value configured at all', async () => {
+    // The state a person cloning the repository is in. Everything the container needs is present
+    // except the four values from a third party, and that has to be enough to come up (§ 8).
+    await setAuthEnvironment(url, { oauth: false });
+    try {
+      const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+      await moduleRef.close();
     } finally {
       await setAuthEnvironment(url);
     }

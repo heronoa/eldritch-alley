@@ -6,11 +6,25 @@
  * whole number between 1 and 65535 throws: `Number('abc')` is NaN, and `listen(NaN)` picks a random port.
  */
 export function readPort(raw: string | undefined, fallback: number): number {
-  if (raw === undefined || raw === '') return fallback;
+  const value = raw?.trim() ?? '';
+  if (value === '') return fallback;
 
-  const port = Number(raw);
+  return portOf(value, 'port');
+}
+
+/**
+ * A TCP port that has to be there — a mail server's, where there is no sensible default and a wrong one
+ * is a connection refused nobody sees. The variable is named in the refusal, because a port that is not
+ * a port is a typo in one line of one file and the message is the only thing that says which.
+ */
+export function readRequiredPort(raw: string | undefined, name: string): number {
+  return portOf(readRequired(raw, name), name);
+}
+
+function portOf(value: string, name: string): number {
+  const port = Number(value);
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
-    throw new Error(`port must be an integer between 1 and 65535, got ${raw}`);
+    throw new Error(`${name} must be an integer between 1 and 65535, got ${value}`);
   }
   return port;
 }
@@ -39,6 +53,17 @@ export function readRequired(raw: string | undefined, name: string): string {
     throw new Error(`${name} must be set, got ${valueOrNothing(raw)}`);
   }
   return value;
+}
+
+/**
+ * A value that may be absent, and whose absence is a configuration of its own rather than a mistake: a
+ * provider with no credentials is a provider that is off, and a mailer with no server writes to the
+ * log. Blank and whitespace answer the same as unset, because that is what a compose file passes for
+ * `${VAR:-}` and what a half-filled `.env` holds.
+ */
+export function readOptional(raw: string | undefined): string | undefined {
+  const value = raw?.trim() ?? '';
+  return value === '' ? undefined : value;
 }
 
 /**

@@ -2,7 +2,9 @@ import type { Constructor } from '@mikro-orm/core';
 import type { Migration } from '@mikro-orm/migrations';
 import { MikroORM, type Options } from '@mikro-orm/postgresql';
 import { Agent } from './entities/agent.entity';
+import { AuthToken } from './entities/auth-token.entity';
 import { Identity } from './entities/identity.entity';
+import { PasswordCredential } from './entities/password-credential.entity';
 import { User } from './entities/user.entity';
 
 /**
@@ -30,7 +32,7 @@ export interface DatabaseConfig {
 export function ormOptions(config: DatabaseConfig): Options {
   return {
     clientUrl: config.databaseUrl,
-    entities: [User, Identity, Agent],
+    entities: [User, Identity, Agent, PasswordCredential, AuthToken],
     migrations: {
       // The compiled migrations in a built image, the sources under tsx. Both are derived from the
       // entities, so the schema cannot drift from them without a file in this repository changing.

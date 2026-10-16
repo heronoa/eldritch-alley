@@ -43,13 +43,11 @@ Steps 2 to 4 follow the planning workflow's order, as m4-04 does.
 | `backend/platform-api/src/contact/contact.controller.ts` | create | `POST /contact` |
 | `backend/platform-api/src/release/release.service.ts` | create | Opt in and out, the consent date, the unsubscribe token |
 | `backend/platform-api/src/release/release.controller.ts` | create | `GET /unsubscribe/:token` |
-| `backend/platform-api/src/email/email.ts` | create | The port: one `send(message)`; a message carries the unsubscribe link or is not a release e-mail |
-| `backend/platform-api/src/email/log.adapter.ts` | create | Writes the message to the log. The local and test adapter |
-| `backend/platform-api/src/email/smtp.adapter.ts` | create | SMTP, through `nodemailer`, with the settings read at boot |
+| `backend/platform-api/src/email/messages.ts` | modify | The release message and its unsubscribe link, beside the verification and reset ones m4-02 wrote |
 | `backend/platform-api/src/me/me.controller.ts` | modify | `releaseEmails` in `GET /me`; `PATCH /me/release-emails` |
-| `backend/platform-api/src/config.ts` | modify | `TURNSTILE_SECRET`, `CONTACT_IP_SALT`, `EMAIL_FROM`, `CONTACT_NOTIFY_TO`, `SMTP_*`, the rate-limit numbers |
+| `backend/platform-api/src/config.ts` | modify | `TURNSTILE_SECRET`, `CONTACT_IP_SALT`, `CONTACT_NOTIFY_TO` and the rate-limit numbers. `EMAIL_FROM` and the SMTP settings are already here (m4-02, § 8) |
 | `backend/platform-api/src/app.module.ts` | modify | Registers the modules |
-| `backend/platform-api/package.json` | modify | `nodemailer`, `ioredis` (and `@types/nodemailer`, dev) |
+| `backend/platform-api/package.json` | modify | `ioredis`. `nodemailer` and `@types/nodemailer` are already installed (m4-02, § 8) |
 | `backend/platform-api/src/contact/*.test.ts`, `src/release/*.test.ts`, `src/email/*.test.ts` | create | Section 5 |
 | `frontend/src/contact/contact.ts` | create | The form's pure part: what it accepts, what it sends, the failure kinds |
 | `frontend/src/contact/contact-panel.ts` | create | The form over the document |
@@ -264,3 +262,28 @@ someone edits the policy without bumping the version — which is exactly the mi
 to false in the column, and the checkbox carries no `checked` attribute, so a page whose script never
 runs cannot consent on anyone's behalf. The policy's legal basis for these e-mails is consent
 (§ 3), which is only true if the default is off in both places.
+
+## 8. Note — the mailer already exists (2026-10-16)
+
+Written while m4-02 was being applied. m4-02 § 9 needed to send a verification link and a reset link, so
+it built the mailer this plan was reserving for itself (ADR 0021, D14). What that changes here:
+
+- **`MAILER` is the port, and it is `src/email/mailer.ts`.** `send({ to, subject, text })`, injected by
+  the `MAILER` token — the same shape the port in this plan's section 3 described, in a different file
+  and with a different name. This milestone adds the release message to `src/email/messages.ts` and sends
+  it through the same port; it writes no adapter.
+- **Both adapters are already there, in `src/email/adapters.ts`**, chosen by
+  `mailerFromEnvironment()`. The local and test adapter is the log one and it is the default, which is
+  what section 3's "a LocalStack-free local flow" asked for.
+- **The variables are `EMAIL_SMTP_HOST`, `EMAIL_SMTP_PORT`, `EMAIL_SMTP_USER`, `EMAIL_SMTP_PASSWORD` and
+  `EMAIL_FROM`**, all five or none, already in `.env.example` and `docker-compose.yml` with the Zoho
+  settings as the worked example. They are the `SMTP_*` and `EMAIL_FROM` of section 3, renamed; nothing
+  new is needed in either file for the mailer itself.
+- **`CONTACT_NOTIFY_TO` is the one mail variable that is new**, and it is the only one that is not part of
+  the all-or-nothing group: it names where the contact form's notification goes, it is read by the
+  contact service and not by the mailer, and with no mail server configured the notification is a line in
+  the log like everything else.
+- **The unsubscribe link travels in the message text, and the port does not know about it.** A release
+  mail without one is a bug in `messages.ts`, not something the adapter can detect, so the test belongs
+  there — on the message this milestone writes, beside the one m4-02 has for the verification link.
+

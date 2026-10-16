@@ -81,11 +81,21 @@ services:
       COOKIE_DOMAIN: ${COOKIE_DOMAIN:-localhost}
       CLIENT_ORIGIN: ${CLIENT_ORIGIN:-http://localhost:5173}
       OAUTH_REDIRECT_BASE_URL: ${OAUTH_REDIRECT_BASE_URL:-http://localhost:3000}
-      # The OAuth apps are the developer's own; there is no value here that could work for everyone.
-      OAUTH_GITHUB_CLIENT_ID: ${OAUTH_GITHUB_CLIENT_ID:?set OAUTH_GITHUB_CLIENT_ID in .env}
-      OAUTH_GITHUB_CLIENT_SECRET: ${OAUTH_GITHUB_CLIENT_SECRET:?set OAUTH_GITHUB_CLIENT_SECRET in .env}
-      OAUTH_GOOGLE_CLIENT_ID: ${OAUTH_GOOGLE_CLIENT_ID:?set OAUTH_GOOGLE_CLIENT_ID in .env}
-      OAUTH_GOOGLE_CLIENT_SECRET: ${OAUTH_GOOGLE_CLIENT_SECRET:?set OAUTH_GOOGLE_CLIENT_SECRET in .env}
+      # The OAuth apps are the developer's own, and they are optional: a provider with no values here is
+      # a provider that is off, its button is not drawn and its route answers 404. Half a pair is a typo
+      # and stops the container, naming both variables.
+      OAUTH_GITHUB_CLIENT_ID: ${OAUTH_GITHUB_CLIENT_ID:-}
+      OAUTH_GITHUB_CLIENT_SECRET: ${OAUTH_GITHUB_CLIENT_SECRET:-}
+      OAUTH_GOOGLE_CLIENT_ID: ${OAUTH_GOOGLE_CLIENT_ID:-}
+      OAUTH_GOOGLE_CLIENT_SECRET: ${OAUTH_GOOGLE_CLIENT_SECRET:-}
+      # Outgoing mail (m4-02), optional by the same rule and with the same failure: all five or none.
+      # None and the platform logs each verification and reset message instead of sending it, which is
+      # what a local stack should do. Some and it refuses to start, naming every value that is missing.
+      EMAIL_SMTP_HOST: ${EMAIL_SMTP_HOST:-}
+      EMAIL_SMTP_PORT: ${EMAIL_SMTP_PORT:-}
+      EMAIL_SMTP_USER: ${EMAIL_SMTP_USER:-}
+      EMAIL_SMTP_PASSWORD: ${EMAIL_SMTP_PASSWORD:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
     ports:
       - "3000:3000"
     depends_on:

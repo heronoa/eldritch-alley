@@ -7,7 +7,8 @@
 
 ## What this delivery covers
 
-Signing in with GitHub and Google, a session cookie, a persistent squad and a battle history. The
+Signing in with GitHub, with Google, or with an address and a password, a session cookie, a persistent
+squad and a battle history. The
 project gets a real database with migrations, so the planned AWS deploy (ECS, ALB, RDS) has data to
 store. Three smaller pieces the spec pairs with it close the same delivery: the contact form, the
 release-email opt-in and the privacy policy page.
@@ -138,9 +139,10 @@ later change to that file.
 
 | ADR | Decision | Milestone | State |
 |---|---|---|---|
-| 0018 | Sign-in with GitHub and Google only: OAuth, a session cookie, and a short game ticket signed with an asymmetric key | m4-02 | to write |
+| 0018 | Sign-in with GitHub and Google only: OAuth, a session cookie, and a short game ticket signed with an asymmetric key | m4-02 | Accepted ([written](../../docs/adr/0018-oauth-sign-in-session-and-ticket.md)); its decision 1 is superseded by 0021 |
 | 0019 | MikroORM migrations as a single step before the services start, under a PostgreSQL advisory lock | m4-01 | Accepted ([written](../../docs/adr/0019-migrations-as-a-single-step.md)) |
-| 0020 | A persistent squad with a starter set; death and level-up deferred (links ADR 0003's addendum) | m4-02 | to write |
+| 0020 | A persistent squad with a starter set; death and level-up deferred (links ADR 0003's addendum) | m4-02 | Accepted ([written](../../docs/adr/0020-persistent-squad-and-starter-set.md)) |
+| 0021 | Entering with an address and a password, once the address is verified: the credential hangs off the identity, the link points at the client, tokens are hashed and single use | m4-02 (§ 9 amendment) | Accepted ([written](../../docs/adr/0021-password-sign-in-with-a-verified-address.md)) |
 
 No ADR for m4-03, m4-04 or m4-05. The queue between the two backends and the client screens are
 mechanism, not a decision that constrains the future; the pieces of m4-03 that do constrain it (the

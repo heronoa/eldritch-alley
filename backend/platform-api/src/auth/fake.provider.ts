@@ -1,4 +1,4 @@
-import type { OAuthProvider, ProviderName, ProviderProfile } from './provider';
+import type { OAuthProvider, OAuthProviderName, ProviderProfile } from './provider';
 
 /**
  * A provider with no network behind it: it answers with the profile the caller hands it, and it can be
@@ -7,7 +7,7 @@ import type { OAuthProvider, ProviderName, ProviderProfile } from './provider';
  */
 export class FakeProvider implements OAuthProvider {
   constructor(
-    readonly name: ProviderName,
+    readonly name: OAuthProviderName,
     private readonly respond: () => ProviderProfile,
   ) {}
 

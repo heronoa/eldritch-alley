@@ -17,7 +17,9 @@ import { apiError } from '../app';
 import { AuthService } from './auth.service';
 import {
   OAUTH_PROVIDERS,
+  PROVIDER_NAMES,
   type OAuthProvider,
+  type OAuthProviderName,
   type OAuthProviders,
   type ProviderName,
   type ProviderProfile,
@@ -56,6 +58,20 @@ export class OAuthController {
     @Inject(SESSION_CONFIG) private readonly config: SessionConfig,
     @Inject(AuthService) private readonly auth: AuthService,
   ) {}
+
+  /**
+   * Which providers this deployment has, so that the client can draw one button per name and none at all
+   * when the list is empty (§ 8). The client answers this question of the server because it is published
+   * as static assets and cannot read the server's environment.
+   *
+   * Declared before `@Get(':provider')` because Nest matches routes in the order they are declared, and
+   * declared after it `providers` would be read as a provider called `providers` — which answers 404, and
+   * looks exactly like an endpoint that was never written.
+   */
+  @Get('providers')
+  providerList(): { providers: OAuthProviderName[] } {
+    return { providers: PROVIDER_NAMES.filter((name) => this.providers[name] !== undefined) };
+  }
 
   @Get(':provider')
   async start(@Param('provider') name: string, @Res() response: Response): Promise<void> {
@@ -135,7 +151,7 @@ export class OAuthController {
     // `hasOwn` and not a plain lookup: `this.providers['constructor']` is a function, and a route that
     // answers 500 for `/auth/constructor` is a route that answers 500.
     const provider = Object.hasOwn(this.providers, name)
-      ? this.providers[name as ProviderName]
+      ? this.providers[name as OAuthProviderName]
       : undefined;
     if (provider === undefined) {
       throw apiError(HttpStatus.NOT_FOUND, 'unknown_provider', `There is no provider called ${name}.`);

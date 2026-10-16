@@ -23,6 +23,7 @@
     "@nestjs/platform-express": "^11.2.7",
     "cookie-parser": "^1.4.7",
     "jose": "^6.2.12",
+    "nodemailer": "^7.0.13",
     "openid-client": "^6.8.8",
     "pg": "^8.20.0",
     "reflect-metadata": "^0.2.2",
@@ -32,6 +33,7 @@
     "@mikro-orm/cli": "^6.6.17",
     "@nestjs/testing": "^11.2.7",
     "@types/cookie-parser": "^1.4.10",
+    "@types/nodemailer": "^8.0.2",
     "@types/pg": "^8.23.1",
     "tsx": "^4.23.15",
     "vitest": "^3.2.7"

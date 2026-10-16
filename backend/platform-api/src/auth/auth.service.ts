@@ -142,8 +142,11 @@ function touch(user: User, profile: ProviderProfile): void {
  * is what the linking rule and its index rely on. The whole address is lowercased and not only the part
  * after the `@`: RFC 5321 makes the local part case-sensitive in theory, and no provider this platform
  * signs in with treats it that way in practice.
+ *
+ * Exported because a password sign-up looks an identity up by the address too (§ 9), and the two lookups
+ * have to agree on the spelling or one of them finds nothing.
  */
-function normalizeAddress(email: string | null): string | null {
+export function normalizeAddress(email: string | null): string | null {
   const value = email?.trim().toLowerCase() ?? '';
   return value === '' ? null : value;
 }
