@@ -14,6 +14,12 @@ const BACKDROP_DEPTH = -1;
 const HIGHLIGHT_STEP = 0.1;
 
 /**
+ * The mark of the tile under the mouse sits over the highlight of that same cell, so its outline is
+ * read over the wash it may be drawn on, and it is still under the unit standing there.
+ */
+const HOVER_STEP = 0.2;
+
+/**
  * The wires and the clotheslines: over every cell and every unit — the deepest of the maps puts a unit
  * at 18.5 — and under the attack effects, which are thrown over the whole board.
  */
@@ -29,6 +35,7 @@ export const LAYER = {
   backdrop: BACKDROP_DEPTH,
   board: depthOfCell,
   highlight: (cell: Cell): number => depthOfCell(cell) + HIGHLIGHT_STEP,
+  hover: (cell: Cell): number => depthOfCell(cell) + HOVER_STEP,
   unit: depthOfUnit,
   overlay: OVERLAY_DEPTH,
   effect: EFFECT_DEPTH,

@@ -24,8 +24,10 @@ import {
   BATTLE_REPORT_REOPEN_RECT,
   BATTLE_REPORT_SCROLL_DOWN_RECT,
   BATTLE_REPORT_SCROLL_UP_RECT,
+  CAROUSEL_SLOT,
   INSPECT_CLOSE_RECT,
   INSPECT_RECT,
+  LEGEND_RECT,
   LOG_RECT,
   LOG_TOGGLE_RECT,
   RESULT_BUTTON_RECT,
@@ -35,11 +37,16 @@ import {
   SETTINGS_PAN_MINUS_RECT,
   SETTINGS_PAN_PLUS_RECT,
   abilityMenuRowRect,
+  carouselSlotRect,
 } from '../view/layout';
 import { MatchScene } from './MatchScene';
 import { UnitSprite } from './units';
 import { EFFECTS } from '../view/effects';
 import { ATTACK_TIMELINE } from '../view/animation';
+import { LAYER } from '../view/depth';
+import { highlightedCells } from '../game/highlight';
+import { BODY_HEIGHT } from '../view/unit-look';
+import { type Cell, type Pixel } from '../view/grid';
 import { download } from './download';
 import { exportFileName, exportText } from '../game/battle-report';
 
@@ -1334,6 +1341,311 @@ describe('the match scene', () => {
       } finally {
         badge.mockRestore();
       }
+    });
+  });
+
+  describe('the tile hover highlight', () => {
+    /** The scene's own private surface, as these cases reach it. */
+    interface HoverScene {
+      feetOf(cell: Cell): Pixel;
+      handlePointerMove(pointer: unknown): void;
+      init(data: { session: Session }): void;
+      hoveredCell: Cell | null;
+    }
+
+    /**
+     * A mouse at a point of the screen and a point of the world, which are two different things
+     * whenever the map is zoomed or panned: the hover reads both, as a press does (EA-8).
+     */
+    function mouse(at: Pixel, world: Pixel = at) {
+      return {
+        id: 1,
+        x: at.x,
+        y: at.y,
+        worldX: world.x,
+        worldY: world.y,
+        rightButtonDown: () => false,
+        wasTouch: false,
+      };
+    }
+
+    /** The pointer over a tile of the board, which is where a mouse resting on it reports. */
+    function overTile(scene: HoverScene, cell: Cell) {
+      const feet = scene.feetOf(cell);
+      return mouse(feet, feet);
+    }
+
+    /** One `Graphics` the scene created, as the stand-in canvas below reports it. */
+    interface DrawnGraphic {
+      depth: number | null;
+      strokes: number;
+      fills: number;
+      destroyed: number;
+    }
+
+    /** The drawing calls of one stand-in `Graphics`, which answer with themselves like Phaser's do. */
+    interface FakeGraphics {
+      setDepth(...args: unknown[]): FakeGraphics;
+      strokePoints(...args: unknown[]): FakeGraphics;
+      fillPoints(...args: unknown[]): FakeGraphics;
+      destroy(): void;
+    }
+
+    /**
+     * A stand-in for `this.add`, so a case reads the marks the scene makes instead of the pixels it
+     * would paint: every `Graphics` the scene makes is counted here, with the depth it was given and
+     * whether it was stroked or filled. The array it fills is cleared by a case that only means to
+     * read the drawing of one move.
+     *
+     * Only `graphics` is answered here: a unit also makes a sprite and a couple more graphics through
+     * the same object, and those are the stand-in's own, so every other name is handed on untouched.
+     *
+     * It is defined rather than assigned: Phaser is a stand-in in this run and swallows a write to a
+     * property the class does not declare, which is the shape `add` has.
+     */
+    function recordDraws(scene: MatchScene): DrawnGraphic[] {
+      const drawn: DrawnGraphic[] = [];
+      const stand = scene.add as unknown as Record<string, unknown>;
+      /** One of the stand-in's own graphics, which answers every drawing call a mark makes. */
+      const blank = (stand.graphics as () => object)();
+
+      function graphics(): FakeGraphics {
+        const record: DrawnGraphic = { depth: null, strokes: 0, fills: 0, destroyed: 0 };
+        drawn.push(record);
+
+        const api = new Proxy(blank, {
+          get: (target, property) => {
+            if (property === 'setDepth') {
+              return (depth: number) => {
+                record.depth = depth;
+                return api;
+              };
+            }
+            if (property === 'strokePoints') {
+              return () => {
+                record.strokes += 1;
+                return api;
+              };
+            }
+            if (property === 'fillPoints') {
+              return () => {
+                record.fills += 1;
+                return api;
+              };
+            }
+            if (property === 'destroy') {
+              return () => {
+                record.destroyed += 1;
+              };
+            }
+
+            // Every other call is drawing this case does not read — `clear`, `lineStyle`, a fill of a
+            // colour — so it goes to the stand-in, and the answer is this mark again, so a chain of
+            // them is read on the same record.
+            const value = Reflect.get(target, property) as unknown;
+            if (typeof value !== 'function') return value;
+
+            return (...args: unknown[]) => {
+              (value as (...rest: unknown[]) => unknown).apply(target, args);
+              return api;
+            };
+          },
+        });
+
+        return api as unknown as FakeGraphics;
+      }
+
+      Object.defineProperty(scene, 'add', {
+        configurable: true,
+        value: new Proxy(stand, {
+          get: (target, property) => (property === 'graphics' ? graphics : Reflect.get(target, property)),
+        }),
+      });
+
+      return drawn;
+    }
+
+    it('outlines the tile under the mouse, and takes the mark down off the board', () => {
+      const { scene, session } = startMatch();
+      const drawn = recordDraws(scene);
+      session.emit.state(message(stateFor({ onTurn: 'A', spent: false })));
+
+      const hover = scene as unknown as HoverScene;
+      drawn.length = 0;
+      hover.handlePointerMove(overTile(hover, { x: 3, y: 3 }));
+
+      expect(hover.hoveredCell).toEqual({ x: 3, y: 3 });
+      // One mark, stroked once and never filled (D2), in the hover tier of the depth table (DT-47).
+      expect(drawn).toHaveLength(1);
+      expect(drawn[0]!.strokes).toBe(1);
+      expect(drawn[0]!.fills).toBe(0);
+      expect(drawn[0]!.depth).toBe(LAYER.hover({ x: 3, y: 3 }));
+
+      // Off the board there is no tile under the mouse at all, so the mark goes with it.
+      const off = { x: -5000, y: -5000 };
+      hover.handlePointerMove(mouse(off, off));
+
+      expect(hover.hoveredCell).toBeNull();
+      expect(drawn[0]!.destroyed).toBe(1);
+    });
+
+    it('marks the cell of a unit when the mouse is over its figure (EA-8)', () => {
+      const { scene, session } = startMatch();
+      session.emit.state(message(attackScenario()));
+
+      const hover = scene as unknown as HoverScene;
+      // The middle of the body of B-priest, which stands over the tiles behind its own: the figure
+      // names the unit, and the mark goes on the cell that unit is on — the cell a click would act on.
+      const feet = hover.feetOf({ x: 2, y: 0 });
+      hover.handlePointerMove(mouse({ x: feet.x, y: feet.y - BODY_HEIGHT / 2 }));
+
+      expect(hover.hoveredCell).toEqual({ x: 2, y: 0 });
+    });
+
+    it('marks the cell of a unit from its portrait, with the pointer nowhere near the board', () => {
+      const { scene, session } = startMatch();
+      session.emit.state(message(stateFor({ onTurn: 'A', spent: false })));
+
+      const hover = scene as unknown as HoverScene;
+      // The first portrait of the turn queue shows A-sniper: the mark goes on the cell it stands on,
+      // wherever in the world the mouse is — this one has never been over the board.
+      const portrait = carouselSlotRect(0);
+      const onPortrait = { x: portrait.x + portrait.width / 2, y: portrait.y + portrait.height / 2 };
+      const nowhere = { x: -5000, y: -5000 };
+      hover.handlePointerMove(mouse(onPortrait, nowhere));
+      expect(hover.hoveredCell).toEqual({ x: 0, y: 0 });
+
+      // The gap between two portraits is the HUD's, not a unit's (EA-8): nothing is marked there.
+      const gap = { x: portrait.x + portrait.width + CAROUSEL_SLOT.gap / 2, y: onPortrait.y };
+      hover.handlePointerMove(mouse(gap, nowhere));
+
+      expect(hover.hoveredCell).toBeNull();
+    });
+
+    it('draws the mark of the tile over the wash under it, neither one suppressing the other', () => {
+      const { scene, session } = startMatch();
+      const state = stateFor({ onTurn: 'A', spent: false });
+      (scene as unknown as { mode: string }).mode = 'move';
+      session.emit.state(message(state));
+
+      const hover = scene as unknown as HoverScene;
+      const wash = (scene as unknown as { highlights: unknown[] }).highlights;
+      expect(wash.length).toBeGreaterThan(0);
+
+      // One tile the armed move offers: the two marks answer two different questions, so both are on
+      // the screen over it.
+      const cell = { x: 0, y: 1 };
+      expect(highlightedCells({ state, selectedId: 'A-sniper', mode: 'move', humanTeam: 'A' })).toContainEqual(cell);
+
+      const drawn = recordDraws(scene);
+      hover.handlePointerMove(overTile(hover, cell));
+
+      expect(hover.hoveredCell).toEqual(cell);
+      expect(drawn.filter((graphic) => graphic.depth === LAYER.hover(cell))).toHaveLength(1);
+      expect((scene as unknown as { highlights: unknown[] }).highlights).toHaveLength(wash.length);
+    });
+
+    it('marks nothing under a point the HUD covers, even where the board sits behind it', () => {
+      const { scene, session } = startMatch();
+      const state = casterState();
+      session.emit.state(message(state));
+
+      const hover = scene as unknown as HoverScene & {
+        hudTakesPress(point: Pixel): boolean;
+        pressAction(id: string, mode: string | null): void;
+        pressOnCell(state: PublicState, cell: Cell, secondary: boolean): void;
+      };
+
+      // The world point is over a tile of the board the whole time: only the screen point moves, which
+      // is exactly what a panel floating over the board looks like to the hover.
+      const world = hover.feetOf({ x: 3, y: 3 });
+      hover.handlePointerMove(mouse(world));
+      expect(hover.hoveredCell).toEqual({ x: 3, y: 3 });
+
+      // A band of `hudRects` no control sits on is still the HUD's, and a press there reaches no tile.
+      hover.handlePointerMove(mouse({ x: LEGEND_RECT.x + 4, y: LEGEND_RECT.y + 4 }, world));
+      expect(hover.hoveredCell).toBeNull();
+
+      // The log, open or closed, is its own box.
+      hover.handlePointerMove(mouse({ x: LOG_RECT.x + 8, y: LOG_RECT.y + 8 }, world));
+      expect(hover.hoveredCell).toBeNull();
+
+      // The gear, and the panel it opens over the board.
+      hover.hudTakesPress({ x: SETTINGS_BUTTON_RECT.x + 1, y: SETTINGS_BUTTON_RECT.y + 1 });
+      hover.handlePointerMove(mouse({ x: SETTINGS_PANEL_RECT.x + 8, y: SETTINGS_PANEL_RECT.y + 8 }, world));
+      expect(hover.hoveredCell).toBeNull();
+
+      // The inspection window a secondary press opens. The cell is the one the enemy stands on: a press
+      // on an empty tile has no unit to ask about and opens nothing.
+      hover.pressOnCell(state, { x: 7, y: 7 }, true);
+      hover.handlePointerMove(mouse({ x: INSPECT_RECT.x + 8, y: INSPECT_RECT.y + 8 }, world));
+      expect(hover.hoveredCell).toBeNull();
+
+      // And the ability menu, which takes every point of the canvas while it is up.
+      hover.pressAction('ability', 'ability');
+      hover.handlePointerMove(mouse({ x: ABILITY_MENU_RECT.x + 8, y: ABILITY_MENU_RECT.y + 8 }, world));
+      expect(hover.hoveredCell).toBeNull();
+    });
+
+    it('marks nothing for a finger, which has no hover at all (EA-18, D1)', () => {
+      const { scene, session } = startMatch();
+      session.emit.state(message(stateFor({ onTurn: 'A', spent: false })));
+
+      const hover = scene as unknown as HoverScene;
+      const feet = hover.feetOf({ x: 3, y: 3 });
+
+      // The gesture rules answer `none` for a finger that is not down, so no branch of the move runs.
+      hover.handlePointerMove({ ...mouse(feet, feet), wasTouch: true });
+      expect(hover.hoveredCell).toBeNull();
+
+      // The same move from a mouse is the hover, which is the one answer a finger never gets.
+      hover.handlePointerMove(mouse(feet, feet));
+      expect(hover.hoveredCell).toEqual({ x: 3, y: 3 });
+    });
+
+    it('opens a match with nothing marked, and clears the mark the moment it is decided (D5)', () => {
+      const { scene, session } = startMatch();
+      session.emit.state(message(stateFor({ onTurn: 'A', spent: false })));
+
+      const hover = scene as unknown as HoverScene;
+      expect(hover.hoveredCell).toBeNull();
+      hover.handlePointerMove(overTile(hover, { x: 3, y: 3 }));
+      expect(hover.hoveredCell).toEqual({ x: 3, y: 3 });
+
+      // A new match reuses the scene: nothing the last one marked outlives it.
+      hover.init({ session });
+      expect(hover.hoveredCell).toBeNull();
+
+      // And once the match is decided there is no board being played, so nothing on it is marked —
+      // not through the result screen, and not through the battle report over it either (D5).
+      session.emit.state(message(stateFor({ onTurn: 'A', spent: false })));
+      hover.handlePointerMove(overTile(hover, { x: 3, y: 3 }));
+      expect(hover.hoveredCell).toEqual({ x: 3, y: 3 });
+
+      session.emit.ended('A');
+      expect(hover.hoveredCell).toBeNull();
+
+      hover.handlePointerMove(overTile(hover, { x: 3, y: 3 }));
+      expect(hover.hoveredCell).toBeNull();
+    });
+
+    it('keeps the mark of a tile the mouse has not left, without building it again (DT-46)', () => {
+      const { scene, session } = startMatch();
+      const drawn = recordDraws(scene);
+      session.emit.state(message(stateFor({ onTurn: 'A', spent: false })));
+
+      const hover = scene as unknown as HoverScene;
+      const pointer = overTile(hover, { x: 3, y: 3 });
+
+      // A mouse resting on a tile reports the same point again and again: the mark is kept, and none
+      // of those reports throws it away to make it again.
+      drawn.length = 0;
+      hover.handlePointerMove(pointer);
+      hover.handlePointerMove(pointer);
+      hover.handlePointerMove(pointer);
+
+      expect(hover.hoveredCell).toEqual({ x: 3, y: 3 });
+      expect(drawn).toHaveLength(1);
     });
   });
 });

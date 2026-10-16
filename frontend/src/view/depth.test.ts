@@ -25,6 +25,13 @@ describe('the board layers', () => {
     }
   });
 
+  it('draws the mark of the tile under the mouse over its highlight and below the unit on it', () => {
+    for (const cell of everyCell()) {
+      expect(LAYER.hover(cell)).toBeGreaterThan(LAYER.highlight(cell));
+      expect(LAYER.hover(cell)).toBeLessThan(depthOfUnit(cell));
+    }
+  });
+
   it('draws a unit above the board of its own cell and below the board of the next cell', () => {
     for (const cell of everyCell()) {
       const next = { x: cell.x + 1, y: cell.y };
