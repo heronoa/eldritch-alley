@@ -1,0 +1,244 @@
+// The three widgets of the HUD. They only draw: every label, order, enabled flag and colour comes
+// from `game/` or `view/`, and the widgets are told what to show.
+//
+// `view/` stays free of Phaser by convention, so these live beside the scenes. `Button` is a class
+// because it is the only one of the three that keeps visual state across ticks; the panel and the
+// carousel chips are rebuilt wholesale from the pure models on each state message.
+import Phaser from 'phaser';
+import type { TurnSlot } from '../game/turn-order';
+import type { UnitState } from '../protocol';
+import { PADDING, PANEL_ALPHA, type Rect } from '../view/layout';
+import { chipFrameOf, spriteSheetOf } from '../view/unit-look';
+import {
+  BUTTON_FILL,
+  BUTTON_FILL_DISABLED,
+  BUTTON_FILL_SELECTED,
+  BUTTON_PULSE_ALPHA,
+  BUTTON_PULSE_MS,
+  CORPSE_COLOR,
+  CURRENT_TURN_COLOR,
+  FONT_BODY,
+  FONT_SIZE,
+  FONT_TITLE,
+  PANEL_FILL,
+  PANEL_INNER_ALPHA,
+  PANEL_INNER_STROKE,
+  PANEL_STROKE,
+  TEAM_COLOR,
+  TEXT_COLOR,
+  TEXT_COLOR_DISABLED,
+  TEXT_COLOR_ON_LIGHT,
+} from '../view/theme';
+
+/** Sniper, wizard, priest — the first letter of the class names a unit everywhere it is drawn. */
+export function initialOf(unit: { primaryClass: string }): string {
+  return unit.primaryClass.charAt(0).toUpperCase();
+}
+
+/**
+ * A button of the action bar. It can be pressed, armed, or out of reach.
+ *
+ * It only draws, and it does not take pointer input of its own. The scene hit-tests the rectangle
+ * `buttonRect` returns, which is the same rectangle this widget is built from, so the click lands
+ * where the button is drawn (DT-30) and the two paths can never disagree.
+ */
+export class Button extends Phaser.GameObjects.Container {
+  private readonly background: Phaser.GameObjects.Rectangle;
+  private readonly caption: Phaser.GameObjects.Text;
+  private usable = true;
+  private armed = false;
+  private hinting = false;
+  private pulse: Phaser.Tweens.Tween | null = null;
+
+  constructor(scene: Phaser.Scene, rect: Rect, label: string) {
+    super(scene, rect.x, rect.y);
+
+    this.background = scene.add
+      .rectangle(0, 0, rect.width, rect.height, BUTTON_FILL)
+      .setOrigin(0)
+      .setStrokeStyle(1, PANEL_STROKE);
+    this.caption = scene.add
+      .text(rect.width / 2, rect.height / 2, label, {
+        fontFamily: FONT_BODY,
+        fontSize: FONT_SIZE.unit,
+        color: TEXT_COLOR,
+      })
+      .setOrigin(0.5);
+
+    this.add([this.background, this.caption]);
+    scene.add.existing(this);
+  }
+
+  setLabel(label: string): void {
+    this.caption.setText(label);
+  }
+
+  setEnabled(enabled: boolean): void {
+    this.usable = enabled;
+    this.refresh();
+  }
+
+  setSelected(selected: boolean): void {
+    this.armed = selected;
+    this.refresh();
+  }
+
+  /**
+   * The pulse of a button that is the only thing left to press (EA-4): the automatic end of turn is
+   * off and the turn has nothing in it, so the button points at itself instead of being pressed for
+   * the player. It breathes the whole button, caption included, and it is started and stopped as
+   * often as the HUD is redrawn without ever stacking a second tween.
+   */
+  setHinting(hinting: boolean): void {
+    if (hinting === this.hinting) return;
+    this.hinting = hinting;
+
+    this.pulse?.remove();
+    this.pulse = null;
+    this.setAlpha(1);
+    if (!hinting) return;
+
+    this.pulse = this.scene.tweens.add({
+      targets: this,
+      alpha: { from: 1, to: BUTTON_PULSE_ALPHA },
+      duration: BUTTON_PULSE_MS,
+      yoyo: true,
+      repeat: -1,
+    });
+  }
+
+  /** A button nobody may press is never shown as the armed one, so being out of reach wins. */
+  private refresh(): void {
+    const fill = !this.usable
+      ? BUTTON_FILL_DISABLED
+      : this.armed
+        ? BUTTON_FILL_SELECTED
+        : BUTTON_FILL;
+
+    this.background.setFillStyle(fill);
+    this.caption.setColor(this.usable ? (this.armed ? TEXT_COLOR_ON_LIGHT : TEXT_COLOR) : TEXT_COLOR_DISABLED);
+  }
+}
+
+/** How far inside the frame the second line is drawn. */
+const PANEL_INNER_INSET = 4;
+
+/** The look of an overlay panel: how solid its fill is, and how strong the line inside its frame. */
+export interface PanelStyle {
+  fillAlpha: number;
+  innerAlpha: number;
+  innerInset: number;
+}
+
+/**
+ * The panel of the match: the prototype's dark paper, floating over the board, with a paper line just
+ * inside the frame. Only the fill is translucent — the heading and the line stay at full strength.
+ */
+export const OVERLAY_PANEL: PanelStyle = {
+  fillAlpha: PANEL_ALPHA,
+  innerAlpha: PANEL_INNER_ALPHA,
+  innerInset: PANEL_INNER_INSET,
+};
+
+/**
+ * A framed box with a title in its top-left corner: a carbon frame, a paper line just inside it, and
+ * the heading in the typewriter face. The style is passed in, so where the box floats and how solid it
+ * is are the scene's decision and not this widget's.
+ */
+export function createPanel(
+  scene: Phaser.Scene,
+  rect: Rect,
+  title: string,
+  style: PanelStyle = OVERLAY_PANEL,
+): Phaser.GameObjects.Container {
+  const frame = scene.add.rectangle(0, 0, rect.width, rect.height, PANEL_FILL).setOrigin(0);
+  frame.setStrokeStyle(1, PANEL_STROKE);
+  frame.setAlpha(style.fillAlpha);
+
+  const inner = scene.add.graphics();
+  inner.lineStyle(1, PANEL_INNER_STROKE, style.innerAlpha);
+  inner.strokeRect(
+    style.innerInset,
+    style.innerInset,
+    rect.width - 2 * style.innerInset,
+    rect.height - 2 * style.innerInset,
+  );
+
+  const heading = scene.add.text(PADDING, PADDING, title, {
+    fontFamily: FONT_TITLE,
+    fontSize: FONT_SIZE.unit,
+    color: TEXT_COLOR,
+  });
+
+  return scene.add.container(rect.x, rect.y, [frame, inner, heading]);
+}
+
+/**
+ * The banner a turn change raises: one line over the board, framed like a panel. It fades out on its
+ * own (decision D1 of the EA-3 plan) and takes no pointer input, so the bar and the map stay usable
+ * while it is on the screen.
+ */
+export class Banner extends Phaser.GameObjects.Container {
+  private readonly caption: Phaser.GameObjects.Text;
+  private fade: Phaser.Tweens.Tween | null = null;
+
+  constructor(scene: Phaser.Scene, rect: Rect) {
+    super(scene, rect.x, rect.y);
+
+    const frame = scene.add.rectangle(0, 0, rect.width, rect.height, PANEL_FILL).setOrigin(0);
+    frame.setStrokeStyle(1, PANEL_STROKE);
+    frame.setAlpha(PANEL_ALPHA);
+
+    this.caption = scene.add
+      .text(rect.width / 2, rect.height / 2, '', {
+        fontFamily: FONT_TITLE,
+        fontSize: FONT_SIZE.title,
+        color: TEXT_COLOR,
+      })
+      .setOrigin(0.5);
+
+    this.add([frame, this.caption]);
+    this.setVisible(false);
+    scene.add.existing(this);
+  }
+
+  /** Shows one line at full strength and lets it fade away over `durationMs`. */
+  show(text: string, durationMs: number): void {
+    this.caption.setText(text);
+    this.setAlpha(1);
+    this.setVisible(true);
+
+    // A turn can change while the banner of the last one is still fading; that one is dropped.
+    this.fade?.remove();
+    this.fade = this.scene.tweens.add({
+      targets: this,
+      alpha: 0,
+      duration: durationMs,
+      onComplete: () => this.setVisible(false),
+    });
+  }
+}
+
+/** The fill of a unit: the colour of its team, greyed out once it has fallen. */
+export function fillColorOf(unit: UnitState): number {
+  return unit.defeated ? CORPSE_COLOR : TEAM_COLOR[unit.team];
+}
+
+/** One slot of the carousel: the unit's letter on its team colour, ringed while it is on turn. */
+export function createTurnChip(
+  scene: Phaser.Scene,
+  rect: Rect,
+  slot: TurnSlot,
+): Phaser.GameObjects.Container {
+  const fill = fillColorOf(slot.unit);
+
+  const body = scene.add.rectangle(0, 0, rect.width, rect.height, fill).setOrigin(0);
+  if (slot.isCurrent) body.setStrokeStyle(3, CURRENT_TURN_COLOR);
+
+  const figure = scene.add
+    .sprite(rect.width / 2, rect.height / 2, `unit-${spriteSheetOf(slot.unit.team)}`, chipFrameOf(slot.unit))
+    .setScale(2);
+  if (slot.unit.defeated) figure.setTint(CORPSE_COLOR);
+
+  return scene.add.container(rect.x, rect.y, [body, figure]);
+}

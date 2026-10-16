@@ -1,0 +1,144 @@
+/* Onboarding M3 — the sequence over the title: the card, its step dots, its three controls, and the link
+   the footer grew for it in M2.
+
+   The palette is the title screen's, not a second one: every colour here is a token `title.css` defines,
+   or a literal that sheet already writes (the card's border, its hard shadow, the pool of night behind
+   it). `contrast.test.ts` holds both halves of that — that no colour is invented, and that every text
+   and marker pair clears its floor, hover and focus included. Two colours that would have been obvious
+   are deliberately absent: `--accent` is 3.62:1 on the card and the footer's own grey is 3.85, both under
+   the floor for text this size. */
+
+/* The layer is the whole screen while it is up: the backdrop takes the clicks, so nothing behind it
+   answers, and it is `z-index: 1` like the notice — above the title and its stamp, below `#game`, so a
+   match taking the screen covers it instead of a card floating over a board. */
+.onboarding {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(5, 7, 15, 0.72);
+}
+
+/* `display: grid` above would otherwise win over the `hidden` attribute. */
+.onboarding[hidden] {
+  display: none;
+}
+
+/* Opaque, like the notice card and for the same reason: the words sit on the game's own background, so
+   their contrast does not depend on what the city behind the layer happens to be drawing. The border and
+   the hard shadow are the call to action's, which is what makes this read as the same client. */
+.onboarding-card {
+  width: min(560px, 100%);
+  padding: 28px 26px 22px;
+  background: var(--game);
+  border: 2px solid #e07a6f;
+  box-shadow: 6px 6px 0 rgba(0, 0, 0, 0.45);
+}
+
+/* The card's title, in the typewriter face the title screen's own name is set in. */
+.onboarding-heading {
+  margin: 0;
+  font: 400 clamp(22px, 3.4vw, 30px) / 1.25 var(--title);
+  letter-spacing: 0.04em;
+  color: var(--ink);
+}
+
+.onboarding-body {
+  margin: 14px 0 0;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--ink);
+}
+
+/* The step dots: one per card, drawn by `onboarding.ts` from the sequence itself. The lit one is the
+   stamp red, the same red the title's mark lands in; the ones still to read are the muted ink. */
+.onboarding-dots {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 24px;
+}
+
+.onboarding-dots span {
+  width: 8px;
+  height: 8px;
+  background: var(--muted);
+}
+
+.onboarding-dots span.on {
+  background: var(--stamp);
+}
+
+/* The three controls, in the order Tab walks them: back on the left, the way out in the middle, skip on
+   the right. Their order on the screen and their order under Tab are the same, so the focus never jumps
+   across the row. */
+.onboarding-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 18px;
+}
+
+/* Back and skip are the quiet pair: no fill, no border of their own, the muted ink until the pointer or
+   the keyboard is on them. Only the words change on hover, which is what keeps them past 14:1 rather
+   than the 4.15:1 the title's hovered button records. */
+.onboarding-back,
+.onboarding-skip {
+  padding: 14px 20px;
+  cursor: pointer;
+  font: 600 14px/1 var(--body);
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  background: none;
+  border: 2px solid transparent;
+}
+
+.onboarding-back:hover:enabled,
+.onboarding-skip:hover:enabled {
+  color: var(--ink);
+}
+
+.onboarding-back:focus-visible,
+.onboarding-skip:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+/* The first card has nothing to go back to: the button is drawn and does not answer. Recorded as a known
+   gap in `contrast.test.ts` — WCAG exempts a disabled control, and the dimming is the whole cue. */
+.onboarding-back:disabled {
+  cursor: default;
+  opacity: 0.72;
+}
+
+/* The forward button wears `.cta` from the title screen and keeps it: this rule only takes away the
+   margin that button carries for the title's own stack, which would drop it out of the row. Its colour,
+   its background and its press are the title's, held there by that screen's contrast test. */
+.onboarding-forward {
+  margin-top: 0;
+}
+
+/* The footer link that opens the sequence again. The footer does not take the pointer (`pointer-events:
+   none`), so the link gives it back for itself. It reads in the muted ink rather than the footer's own
+   grey, which is the title screen's recorded 4.02:1 gap. */
+.how-to-play {
+  padding: 0;
+  cursor: pointer;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  background: none;
+  border: 0;
+  pointer-events: auto;
+}
+
+.how-to-play:hover {
+  color: var(--ink);
+}
+
+.how-to-play:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}

@@ -1,8 +1,8 @@
 {
-  "name": "@mystic-alley/engine",
+  "name": "@eldritch-alley/engine",
   "version": "0.0.0",
   "private": true,
-  "description": "Motor de batalha determinístico (TypeScript puro)",
+  "description": "Deterministic battle engine (pure TypeScript)",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [

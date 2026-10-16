@@ -1,12 +1,125 @@
 <!doctype html>
+<!-- `lang` is the markup's own: the title's text below is Portuguese, which is what a page whose
+     script never runs shows. The script writes the language it resolved — the player's saved choice,
+     or the browser's — over this one as it loads. -->
 <html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Eldritch Alley: Tactics</title>
+    <style>
+      /* Both typefaces are served from this origin, so a match never waits on a third party and
+         the page still renders — in the fallback monospace — with the network off. */
+      @font-face {
+        font-family: 'Special Elite';
+        src: url('/fonts/SpecialElite-Regular.woff2') format('woff2');
+        font-weight: 400;
+        font-style: normal;
+        font-display: block;
+      }
+
+      @font-face {
+        font-family: 'IBM Plex Mono';
+        src: url('/fonts/IBMPlexMono-Regular.woff2') format('woff2');
+        font-weight: 400;
+        font-style: normal;
+        font-display: block;
+      }
+
+      @font-face {
+        font-family: 'IBM Plex Mono';
+        src: url('/fonts/IBMPlexMono-SemiBold.woff2') format('woff2');
+        font-weight: 600;
+        font-style: normal;
+        font-display: block;
+      }
+
+      /* The title is a page, not a canvas: the night it sits on belongs to the document. */
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        background: #05070f;
+      }
+    </style>
+    <link rel="stylesheet" href="/src/title/title.css" />
+    <link rel="stylesheet" href="/src/onboarding/onboarding.css" />
   </head>
   <body>
-    <div id="game"></div>
-    <script type="module" src="/src/main.ts"></script>
+    <canvas id="title-city" aria-hidden="true"></canvas>
+    <div class="shade"></div>
+    <!-- The text below is what the page shows before its script runs. Every line carries an id and is
+         written again from the catalog of the client's language on load, so the catalog is the one
+         source once the script is up and the markup is only the fallback. -->
+    <main class="title">
+      <div class="block">
+        <p class="meta" id="meta">SECRETARIA DE ASSUNTOS OCULTOS · OCORRÊNCIA Nº 2026/0001</p>
+        <h1 id="name">Eldritch Alley</h1>
+        <span class="stamp" id="stamp">TACTICS</span>
+        <p class="tagline" id="tagline">Agentes licenciados, magia sem licença e uma cidade inteira de becos. Monte o seu esquadrão e responda à ocorrência.</p>
+        <button class="cta" id="cta" type="button">Iniciar partida</button>
+        <p class="hint" id="hint">ou pressione Enter</p>
+      </div>
+    </main>
+    <!-- The language switcher, in the corner the title block leaves free. Only the box is here: the
+         script draws one button per locale the client ships, so a page whose script never runs has no
+         dead control, and the box draws nothing while it is empty. `aria-label` is the markup's
+         fallback, rewritten from the catalog with the rest of the screen.
+         It stands outside the title's own layer on purpose. That layer is a fixed box, and a fixed box
+         opens a stacking context: a switcher written inside it would be ordered against the title's
+         text and against nothing else, and the cards over the title — which need it reachable, since
+         the onboarding is read in the language it is read in — would stay above it. -->
+    <div class="lang" id="lang" role="group" aria-label="Idioma"></div>
+    <div class="granted" id="granted" aria-live="polite">PARTIDA AUTORIZADA</div>
+    <footer><button class="how-to-play" id="how-to-play" type="button">Como jogar</button><span id="footer-version">v0.1</span><span id="footer-place">Belém · madrugada</span></footer>
+    <!-- Why the player is not in a match, over the title and over the city. It opens only when the
+         client has something to say, and its three lines are written from the catalog — the empty
+         paragraphs here are what a page whose script never runs shows, which is nothing, because
+         the whole card is hidden until a failure opens it. -->
+    <div
+      class="notice"
+      id="notice"
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby="notice-heading"
+      aria-describedby="notice-body"
+      hidden
+    >
+      <div class="notice-card">
+        <p class="notice-heading" id="notice-heading"></p>
+        <p class="notice-body" id="notice-body"></p>
+        <button class="cta notice-close" id="notice-close" type="button"></button>
+      </div>
+    </div>
+    <div id="game" hidden></div>
+    <!-- The onboarding, over the title and over the notice: the sequence of cards a player reads once,
+         before the first match, and can open again from the footer at any time. The text below is the
+         Portuguese a page whose script never runs shows, written again from the catalog on load, and the
+         empty box holds the step dots the script draws — one per card, so a card cannot arrive without
+         its dot. It starts hidden: only a browser that has never been shown the sequence takes the
+         attribute away. -->
+    <div
+      class="onboarding"
+      id="onboarding"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="onboarding-heading"
+      aria-describedby="onboarding-body"
+      hidden
+    >
+      <div class="onboarding-card">
+        <p class="onboarding-heading" id="onboarding-heading">Ocorrência aberta</p>
+        <p class="onboarding-body" id="onboarding-body">A Secretaria de Assuntos Ocultos abriu uma ocorrência no beco atrás do mercado: magia sem licença, três testemunhas e nenhuma explicação que fique de pé.</p>
+        <div class="onboarding-dots" id="onboarding-dots"></div>
+        <div class="onboarding-controls">
+          <button class="onboarding-back" id="onboarding-back" type="button">Voltar</button>
+          <button class="onboarding-forward cta" id="onboarding-forward" type="button">Continuar</button>
+          <button class="onboarding-skip" id="onboarding-skip" type="button">Pular</button>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="/src/title/title.ts"></script>
+    <script type="module" src="/src/onboarding/onboarding.ts"></script>
   </body>
 </html>

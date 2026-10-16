@@ -1,16 +1,13 @@
 {
-  "name": "@mystic-alley/platform-api",
+  "name": "@eldritch-alley/platform-api",
   "version": "0.0.0",
   "private": true,
-  "description": "Plataforma: contas, elencos, rating, replays e matchmaking (NestJS)",
+  "description": "Platform: accounts, rosters, rating, replays and matchmaking (NestJS)",
   "main": "dist/main.js",
   "scripts": {
     "build": "tsc -b",
     "start": "node dist/main.js",
-    "dev": "ts-node-dev --respawn --transpile-only src/main.ts"
-  },
-  "devDependencies": {
-    "ts-node-dev": "^2.0.0"
+    "dev": "tsx watch --env-file-if-exists=../../.env src/main.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.2.7",
@@ -18,5 +15,8 @@
     "@nestjs/platform-express": "^11.2.7",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2"
+  },
+  "devDependencies": {
+    "tsx": "^4.23.15"
   }
 }

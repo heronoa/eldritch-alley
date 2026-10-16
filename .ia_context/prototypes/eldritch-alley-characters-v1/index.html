@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Eldritch Alley: Tactics, personagens da v1</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Special+Elite&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="meta">FICHA DE PERSONAGENS · V1</p>
+    <h1>Eldritch Alley: Tactics, personagens da v1</h1>
+    <p>As sete classes da v1 em 16 por 24 pixels: aparência, animações, ataque básico, recarga e leitura de equipes. Silhueta primeiro, cores chapadas com duas tonalidades, um detalhe por classe e néon só na magia.</p>
+    <nav class="toc"><a href="#classes">Classes</a><a href="#combate">Ataque e recarga</a><a href="#cena">No tamanho do jogo</a><a href="#regras">Regras</a></nav>
+  </header>
+
+  <section class="section" id="classes">
+    <h2>Classes</h2>
+    <div class="panel controls">
+      <div class="group" id="g-anim"><span>Animação</span>
+        <button data-v="idle" aria-pressed="true">Parado</button><button data-v="walk">Andando</button><button data-v="melee">Ataque de perto</button><button data-v="ranged">Ataque de longe</button><button data-v="reload">Recarga ou meditação</button>
+      </div>
+      <div class="group" id="g-team"><span>Equipe</span><button data-v="ally" aria-pressed="true">Aliado</button><button data-v="enemy">Inimigo</button></div>
+      <div class="group" id="g-face"><span>Direção</span><button data-v="1" aria-pressed="true">Direita</button><button data-v="-1">Esquerda</button></div>
+    </div>
+    <h3 class="sub">Classes base · neutras</h3>
+    <div class="grid" id="grid-base"></div>
+    <h3 class="sub">Classes avançadas</h3>
+    <div class="grid" id="grid-adv"></div>
+  </section>
+
+  <section class="section" id="combate">
+    <h2>Ataque básico e recarga</h2>
+    <p>Um único ataque por classe, com o mesmo efeito e o mesmo custo em qualquer distância; só a animação muda. A recarga (munição) e a meditação (mana) são ações próprias das classes que usam esses recursos.</p>
+    <div class="panel controls">
+      <div class="group" id="s-class"><span>Classe</span></div>
+      <div class="group" id="s-act"><span>Ação</span><button data-v="melee">Perto</button><button data-v="ranged" aria-pressed="true">Longe</button><button data-v="reload">Recarga ou meditação</button></div>
+      <div class="group" id="s-bg"><span>Fundo</span><button data-v="white" aria-pressed="true">Branco</button><button data-v="map">Mapa</button></div>
+      <div class="group" id="s-speed"><span>Velocidade</span><button data-v="1" aria-pressed="true">Normal</button><button data-v="0.35">Lenta</button></div>
+    </div>
+    <div class="panel stage"><canvas id="stage"></canvas></div>
+    <div class="info">
+      <div class="panel"><p class="tag">PERTO · ALVO ADJACENTE</p><h4 id="i-m-t"></h4><p id="i-m"></p></div>
+      <div class="panel"><p class="tag">LONGE · DUAS CÉLULAS OU MAIS</p><h4 id="i-r-t"></h4><p id="i-r"></p></div>
+      <div class="panel"><p class="tag">RECARGA OU MEDITAÇÃO</p><h4 id="i-l-t"></h4><p id="i-l"></p></div>
+    </div>
+    <div class="panel rules">
+      <b>Distância:</b> perto se o alvo está adjacente, longe a partir de duas células. <b>Munição:</b> classes que atiram atiram nas duas distâncias, e todo tiro gasta munição. <b>Mana:</b> as classes mágicas usam mana como munição; todo ataque básico mágico gasta mana nas duas distâncias, por isso até o golpe de perto delas solta um pouco de magia. <b>Recarga e meditação:</b> gastam a ação do turno e devolvem o recurso cheio.
+    </div>
+  </section>
+
+  <section class="section" id="cena">
+    <h2>No tamanho do jogo</h2>
+    <p>Aliados embaixo à esquerda, inimigos em cima à direita, na escala dos mapas. Os marcadores de equipe são o losango no chão (com pontas no inimigo), o contorno na cor do time e a barra de vida.</p>
+    <div class="panel controls"><div class="group" id="g-marks"><span>Marcadores de equipe</span><button data-v="1" aria-pressed="true">Ligados</button><button data-v="0">Só a braçadeira</button></div></div>
+    <div class="panel scene"><canvas id="scene"></canvas></div>
+  </section>
+
+  <section class="section" id="regras">
+    <h2>Regras de desenho</h2>
+    <div class="notes">
+      <div class="panel"><b>Silhueta.</b> Cada classe se reconhece pela forma, mesmo sem cor (miniatura preta em cada ficha).</div>
+      <div class="panel"><b>Duas tonalidades.</b> Luz vindo da esquerda: cor base e uma sombra à direita.</div>
+      <div class="panel"><b>Contorno gerado.</b> Todo pixel transparente vizinho do sprite vira contorno, na cor do time.</div>
+      <div class="panel"><b>Néon.</b> Só no quadro de ação das classes mágicas, e como uma piscada no amuleto do Street Vendor.</div>
+      <div class="panel"><b>Quadros.</b> Dois por animação: parado, andando, ataque de perto, ataque de longe e recarga ou meditação.</div>
+      <div class="panel"><b>Direções.</b> Só a frente, espelhada. A vista de costas fica para depois.</div>
+    </div>
+  </section>
+</div>
+
+<script src="js/characters.js"></script>
+</body>
+</html>

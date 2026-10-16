@@ -1,20 +1,27 @@
 {
-  "name": "@mystic-alley/frontend",
+  "name": "@eldritch-alley/frontend",
   "version": "0.0.0",
   "private": true,
-  "description": "Cliente no navegador (Phaser, isométrico 2D)",
+  "description": "Browser client (Phaser, isometric 2D)",
   "type": "module",
   "scripts": {
+    "predev": "npm run build -w @eldritch-alley/engine",
     "dev": "vite",
+    "prebuild": "npm run build -w @eldritch-alley/engine",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "deploy": "wrangler deploy"
+    "deploy": "wrangler deploy",
+    "pretest": "npm run build -w @eldritch-alley/engine",
+    "test": "vitest run"
   },
   "dependencies": {
+    "@colyseus/sdk": "^0.18.1",
+    "@eldritch-alley/engine": "*",
     "phaser": "^3.90.0"
   },
   "devDependencies": {
     "vite": "^6.4.3",
+    "vitest": "^3.2.7",
     "wrangler": "^4.147.0"
   }
 }

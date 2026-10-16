@@ -1,0 +1,236 @@
+// One match per room. The room owns the engine's MatchState, applies the human's actions through the
+// engine's public contract, answers each accepted action with its events and the new public state,
+// and then plays the bot's turns. A client never names the acting unit: the room derives it from
+// whose turn it is.
+import { randomInt } from 'node:crypto';
+import { Room, type Client } from '@colyseus/core';
+import {
+  applyAction,
+  newMatch,
+  publicState,
+  type Action,
+  type Event,
+  type MatchState,
+  type RejectReason,
+  type Team,
+  type UnitState,
+} from '@eldritch-alley/engine';
+import { isClientAction } from './action-shape';
+import { chooseBotAction } from './bot';
+import { createMatchSetup, mapFor, type MapId } from './map';
+import {
+  MESSAGE,
+  PROTOCOL_VERSION,
+  type ClientAction,
+  type EndedMessage,
+  type RejectedMessage,
+  type StateMessage,
+  type WireRejectReason,
+} from './protocol';
+
+/** The first client plays team A; the room plays team B. */
+const HUMAN_TEAM: Team = 'A';
+const BOT_TEAM: Team = 'B';
+
+/** How long a client that dropped has to come back before its team forfeits the match. */
+export const RECONNECTION_WINDOW_SECONDS = 120;
+
+/** A bot turn is a few moves, one action and an endTurn per unit. This only stops a runaway loop. */
+const BOT_ITERATION_GUARD = 50;
+
+/** The seed range the engine takes, `0 <= seed <= UINT32_MAX`. */
+const SEED_RANGE = 2 ** 32;
+
+/**
+ * The seed of a new match, drawn by the room: the map is a pure function of it, so this is where a
+ * match's board is chosen. It is not engine randomness (ADR 0005) — the engine still only ever replays
+ * the seed it is handed, and the seed travels in the public state, so a match stays reproducible.
+ */
+function randomSeed(): number {
+  return randomInt(0, SEED_RANGE);
+}
+
+/** A unit is in the fight until it is defeated. A body still holds its tile but no longer fights. */
+export function teamHasLivingUnit(state: MatchState, team: Team): boolean {
+  return state.units.some((unit) => unit.team === team && !unit.defeated);
+}
+
+export type HumanActionOutcome =
+  | { ok: true; state: MatchState; events: Event[] }
+  | { ok: false; reason: WireRejectReason };
+
+/** The unit whose turn it is, or undefined in a match that is over. */
+function unitOnTurn(state: MatchState): UnitState | undefined {
+  const currentId = state.initiative[state.currentIndex];
+  return state.units.find((unit) => unit.id === currentId);
+}
+
+/**
+ * Applies a client action on behalf of `humanTeam`. The actor is never taken from the client: it is
+ * the unit whose turn it is, and the action is refused when that unit belongs to the other side.
+ */
+export function resolveHumanAction(
+  state: MatchState,
+  humanTeam: Team,
+  action: ClientAction,
+): HumanActionOutcome {
+  // A payload the protocol does not define never reaches the engine, which would throw on it.
+  if (!isClientAction(action)) return { ok: false, reason: 'malformed-action' };
+
+  const current = unitOnTurn(state);
+  if (!current || current.team !== humanTeam) return { ok: false, reason: 'not-your-turn' };
+
+  const asEngineAction: Action = { ...action, actor: current.id };
+  const result = applyAction(state, asEngineAction);
+  return result.ok ? { ok: true, state: result.state, events: result.events } : result;
+}
+
+/** How many matches a process opens at once, unless `main.ts` hands a different one in. */
+export const DEFAULT_MAX_CONCURRENT_MATCHES = 30;
+
+/**
+ * Matches open on this process right now. Module-level, not per instance: a room counts itself in
+ * only once its own `onCreate` has fully succeeded, and counts itself out in `onDispose` — never the
+ * other way round, so a room that fails to even construct never holds a slot open forever.
+ */
+let activeMatches = 0;
+
+interface BattleRoomOptions {
+  /** Set by `main.ts` via `gameServer.define`'s default options, which always win over a client's own. */
+  maxConcurrentMatches?: number;
+}
+
+export class BattleRoom extends Room {
+  /** Set once a side has no unit left. A finished room refuses every further action. */
+  ended = false;
+  winner: Team | null = null;
+
+  private match!: MatchState;
+  /** Which map the match was built on: the client is told, because it draws the terrain of the id. */
+  private mapId!: MapId;
+  private humanSessionId: string | null = null;
+
+  onCreate(options: BattleRoomOptions = {}): void {
+    const limit = options.maxConcurrentMatches ?? DEFAULT_MAX_CONCURRENT_MATCHES;
+    if (activeMatches >= limit) {
+      throw new Error(`the server already has ${limit} matches open`);
+    }
+
+    // One human per room. Without this, Colyseus's default (Infinity) never locks the room, so
+    // `joinOrCreate` keeps routing every new player worldwide into whichever room already exists
+    // instead of starting a fresh one, and the second player gets refused as if it were a stale tab.
+    this.maxClients = 1;
+    const setup = createMatchSetup(randomSeed());
+    this.match = newMatch(setup);
+    this.mapId = mapFor(setup.seed).id;
+    this.onMessage<ClientAction>(MESSAGE.action, (client, action) => this.handleAction(client, action));
+
+    activeMatches += 1;
+  }
+
+  onDispose(): void {
+    activeMatches -= 1;
+  }
+
+  onJoin(client: Client): void {
+    if (this.humanSessionId !== null && this.humanSessionId !== client.sessionId) {
+      throw new Error('room full');
+    }
+    this.humanSessionId = client.sessionId;
+    client.send(MESSAGE.state, this.stateMessage());
+  }
+
+  onDrop(client: Client): void {
+    if (this.ended || client.sessionId !== this.humanSessionId) return;
+    // Rejecting this deferred is the timeout; onLeave is where the forfeit happens.
+    this.allowReconnection(client, RECONNECTION_WINDOW_SECONDS).catch(() => undefined);
+  }
+
+  onReconnect(client: Client): void {
+    client.send(MESSAGE.state, this.stateMessage());
+  }
+
+  onLeave(client: Client): void {
+    // Reacting only to the human's departure covers both a refused reconnection and a consent.
+    if (client.sessionId !== this.humanSessionId) return;
+    this.finish(BOT_TEAM);
+  }
+
+  private handleAction(client: Client, action: ClientAction): void {
+    if (client.sessionId !== this.humanSessionId) {
+      this.refuse(client, 'not-your-turn');
+      return;
+    }
+    if (this.ended) {
+      this.refuse(client, 'game-over');
+      return;
+    }
+
+    const outcome = resolveHumanAction(this.match, HUMAN_TEAM, action);
+    if (!outcome.ok) {
+      this.refuse(client, outcome.reason);
+      return;
+    }
+
+    this.publish(outcome.state, outcome.events);
+    if (!this.ended) this.playBotTurns();
+  }
+
+  /** The bot keeps playing while the turn belongs to its team and the match is undecided. */
+  private playBotTurns(): void {
+    for (let iterations = 0; iterations < BOT_ITERATION_GUARD; iterations += 1) {
+      if (this.ended) return;
+
+      const current = unitOnTurn(this.match);
+      if (!current || current.team !== BOT_TEAM) return;
+
+      const result = applyAction(this.match, chooseBotAction(this.match, BOT_TEAM));
+      if (!result.ok) {
+        // The bot must always offer a legal action, so a refusal is a bug on its side: the bot forfeits.
+        console.error(`battle-room: the bot action was refused (${result.reason})`);
+        this.finish(HUMAN_TEAM);
+        return;
+      }
+
+      this.publish(result.state, result.events);
+    }
+
+    console.error(`battle-room: the bot did not hand the turn over within ${BOT_ITERATION_GUARD} iterations`);
+    this.finish(HUMAN_TEAM);
+  }
+
+  private publish(state: MatchState, events: Event[]): void {
+    this.match = state;
+    this.broadcast(MESSAGE.events, events);
+    this.broadcast(MESSAGE.state, this.stateMessage());
+    this.finishIfDecided();
+  }
+
+  private finishIfDecided(): void {
+    if (this.ended) return;
+
+    const humansAlive = teamHasLivingUnit(this.match, HUMAN_TEAM);
+    const botsAlive = teamHasLivingUnit(this.match, BOT_TEAM);
+    if (humansAlive && botsAlive) return;
+
+    this.finish(humansAlive ? HUMAN_TEAM : BOT_TEAM);
+  }
+
+  private finish(winner: Team): void {
+    if (this.ended) return;
+    this.ended = true;
+    this.winner = winner;
+
+    const message: EndedMessage = { winner };
+    this.broadcast(MESSAGE.ended, message);
+  }
+
+  private refuse(client: Client, reason: WireRejectReason): void {
+    const message: RejectedMessage = { reason };
+    client.send(MESSAGE.rejected, message);
+  }
+
+  private stateMessage(): StateMessage {
+    return { version: PROTOCOL_VERSION, mapId: this.mapId, state: publicState(this.match) };
+  }
+}
