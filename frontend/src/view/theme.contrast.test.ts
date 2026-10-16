@@ -190,3 +190,18 @@ describe('overlay contrast', () => {
     }
   });
 });
+
+// The hit-chance and cover badges sit on a panel tag of their own (M5 playtest polish), the same
+// carbon fill every other overlay floats on, so their words are read against a controlled backing
+// rather than whatever tile happens to be under the unit.
+describe('badge tag contrast', () => {
+  it('keeps the hit-chance badge readable on its own tag over the night and the lightest tile', () => {
+    expect(contrastRatio(HIT_CHANCE_BADGE_FILL, panelOver(BG_COLOR))).toBeGreaterThanOrEqual(BODY_FLOOR);
+    expect(contrastRatio(HIT_CHANCE_BADGE_FILL, panelOver(LIGHTEST_TOP))).toBeGreaterThanOrEqual(BODY_FLOOR);
+  });
+
+  it('keeps the cover badge readable on its own tag over the night and the lightest tile', () => {
+    expect(contrastRatio(COVER_BADGE_FILL, panelOver(BG_COLOR))).toBeGreaterThanOrEqual(BODY_FLOOR);
+    expect(contrastRatio(COVER_BADGE_FILL, panelOver(LIGHTEST_TOP))).toBeGreaterThanOrEqual(BODY_FLOOR);
+  });
+});

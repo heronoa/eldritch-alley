@@ -202,8 +202,8 @@ describe('the pt-BR the game shows', () => {
       expect(message('en-US', `hud.cover.${side}`), side).toBe(english[side]);
     }
 
-    expect(message('pt-BR', 'hud.cover.sides')).toBe('Em cobertura a {sides}');
-    expect(message('en-US', 'hud.cover.sides')).toBe('In cover for {sides}');
+    expect(message('pt-BR', 'hud.cover.sides')).toBe('Cobertura: {sides}');
+    expect(message('en-US', 'hud.cover.sides')).toBe('Cover: {sides}');
     expect(message('pt-BR', 'hud.cover.and')).toBe(' e ');
     expect(message('en-US', 'hud.cover.and')).toBe(' and ');
     // The label of the checkbox is the owner's own wording.
@@ -223,8 +223,8 @@ describe('the pt-BR the game shows', () => {
   });
 
   it('carries the hit-chance badge in both catalogs (EA-18)', () => {
-    expect(message('pt-BR', 'hud.target.chance')).toBe('{value}%');
-    expect(message('en-US', 'hud.target.chance')).toBe('{value}%');
+    expect(message('pt-BR', 'hud.target.chance')).toBe('Acerto {value}%');
+    expect(message('en-US', 'hud.target.chance')).toBe('Hit {value}%');
   });
 
   it('answers every refusal code out of the catalog, keyed by the code itself', () => {

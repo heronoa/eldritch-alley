@@ -148,10 +148,12 @@ export const enUS: Record<MessageKey, string> = {
   'hud.report.export': 'Download .txt',
   'hud.report.reopen': 'View full log',
   'hud.report.range': '{from}-{to} of {total}',
-  // The odds over a unit's head while it is being aimed at (EA-18).
-  'hud.target.chance': '{value}%',
+  // The odds over a unit's head while it is being aimed at (EA-18). Named rather than a bare number
+  // (M5 playtest polish).
+  'hud.target.chance': 'Hit {value}%',
   // The badge a unit in cover wears over its head. The sides are the board's own (m3-02, D1).
-  'hud.cover.sides': 'In cover for {sides}',
+  // Shortened to a label pairing with `hud.target.chance` above it (M5 playtest polish).
+  'hud.cover.sides': 'Cover: {sides}',
   'hud.cover.and': ' and ',
   'hud.cover.north': 'North',
   'hud.cover.northeast': 'Northeast',

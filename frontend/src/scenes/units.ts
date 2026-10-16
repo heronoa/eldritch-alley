@@ -18,7 +18,7 @@ import {
 import type { Cell, Pixel } from '../view/grid';
 import { nextHealthDisplay, revealHealth, type HealthDisplay } from '../view/healthHold';
 import { TILE_H, TILE_W, depthOfUnit } from '../view/iso';
-import { TURN_ARROW, TURN_ARROW_POINT } from '../view/layout';
+import { PANEL_ALPHA, TURN_ARROW, TURN_ARROW_POINT } from '../view/layout';
 import {
   COVER_BADGE_FILL,
   COVER_BADGE_STROKE,
@@ -29,6 +29,7 @@ import {
   FONT_BODY,
   FONT_SIZE,
   MANA_COLOR,
+  PANEL_FILL,
   PANEL_STROKE,
   PAPER_COLOR,
   SELECTED_COLOR,
@@ -100,6 +101,13 @@ const HIT_CHANCE_BADGE = { gapAboveArrow: 6, strokeThickness: 5 };
  */
 const COVER_BADGE = { gapAboveHitChance: 18, strokeThickness: 4 };
 
+/**
+ * The tag behind each badge (owner's request, M5 playtest polish): the panel's own carbon fill and
+ * frame, floated in miniature over the board, so the words read against a controlled backing instead
+ * of whatever the tile under the unit happens to be. Sized to the text it backs plus this padding.
+ */
+const BADGE_TAG = { paddingX: 5, paddingY: 2 };
+
 /** What the sprite is busy with, and when it started. Only one action runs at a time. */
 type Action =
   | { kind: 'attack'; style: 'melee' | 'ranged'; hit: boolean; start: number; impactAt: number; impactUntil: number }
@@ -145,8 +153,12 @@ export class UnitSprite extends Phaser.GameObjects.Container {
   private readonly arrow: Phaser.GameObjects.Graphics;
   /** The words over the head of a unit in cover, or nothing at all (EA-15). */
   private readonly coverBadge: Phaser.GameObjects.Text;
+  /** The tag the cover badge sits on, resized to the words it backs each time they change. */
+  private readonly coverTag: Phaser.GameObjects.Rectangle;
   /** The odds over the head of a unit being aimed at, or nothing while none is armed (EA-18). */
   private readonly hitChanceBadge: Phaser.GameObjects.Text;
+  /** The tag the hit-chance badge sits on, resized to the words it backs each time they change. */
+  private readonly hitChanceTag: Phaser.GameObjects.Rectangle;
 
   private team: Team = 'A';
   /** The row of the sheet this unit is drawn from. A class without one falls back to Combatant. */
@@ -184,6 +196,13 @@ export class UnitSprite extends Phaser.GameObjects.Container {
     this.arrow = scene.add.graphics();
     this.ring = scene.add.graphics();
     const hitChanceY = TURN_ARROW_POINT.y - TURN_ARROW.height - HIT_CHANCE_BADGE.gapAboveArrow;
+    const coverY = hitChanceY - COVER_BADGE.gapAboveHitChance;
+    this.hitChanceTag = scene.add
+      .rectangle(0, hitChanceY + BADGE_TAG.paddingY, 0, 0, PANEL_FILL)
+      .setOrigin(0.5, 1)
+      .setStrokeStyle(1, PANEL_STROKE)
+      .setAlpha(PANEL_ALPHA)
+      .setVisible(false);
     this.hitChanceBadge = scene.add
       .text(0, hitChanceY, '', {
         fontFamily: FONT_BODY,
@@ -193,8 +212,14 @@ export class UnitSprite extends Phaser.GameObjects.Container {
       .setOrigin(0.5, 1)
       .setStroke(cssColor(HIT_CHANCE_BADGE_STROKE), HIT_CHANCE_BADGE.strokeThickness)
       .setVisible(false);
+    this.coverTag = scene.add
+      .rectangle(0, coverY + BADGE_TAG.paddingY, 0, 0, PANEL_FILL)
+      .setOrigin(0.5, 1)
+      .setStrokeStyle(1, PANEL_STROKE)
+      .setAlpha(PANEL_ALPHA)
+      .setVisible(false);
     this.coverBadge = scene.add
-      .text(0, hitChanceY - COVER_BADGE.gapAboveHitChance, '', {
+      .text(0, coverY, '', {
         fontFamily: FONT_BODY,
         fontSize: `${FONT_SIZE.log}px`,
         color: cssColor(COVER_BADGE_FILL),
@@ -209,7 +234,9 @@ export class UnitSprite extends Phaser.GameObjects.Container {
       this.bars,
       this.arrow,
       this.ring,
+      this.coverTag,
       this.coverBadge,
+      this.hitChanceTag,
       this.hitChanceBadge,
     ]);
 
@@ -274,6 +301,8 @@ export class UnitSprite extends Phaser.GameObjects.Container {
   setCoverBadge(text: string | null): void {
     this.coverBadge.setText(text ?? '');
     this.coverBadge.setVisible(text !== null);
+    this.coverTag.setVisible(text !== null);
+    if (text !== null) this.fitTag(this.coverTag, this.coverBadge);
   }
 
   /**
@@ -284,6 +313,13 @@ export class UnitSprite extends Phaser.GameObjects.Container {
   setHitChanceBadge(text: string | null): void {
     this.hitChanceBadge.setText(text ?? '');
     this.hitChanceBadge.setVisible(text !== null);
+    this.hitChanceTag.setVisible(text !== null);
+    if (text !== null) this.fitTag(this.hitChanceTag, this.hitChanceBadge);
+  }
+
+  /** Grows `tag` to fit `label` plus the padding every badge tag keeps around its words. */
+  private fitTag(tag: Phaser.GameObjects.Rectangle, label: Phaser.GameObjects.Text): void {
+    tag.setSize(label.width + BADGE_TAG.paddingX * 2, label.height + BADGE_TAG.paddingY * 2);
   }
 
   /**

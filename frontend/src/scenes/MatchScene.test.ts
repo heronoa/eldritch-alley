@@ -937,7 +937,7 @@ describe('the match scene', () => {
       session.emit.state(message(state));
 
       // Sniper stands at (0,0), with the crate on its east; the priest at (7,7) has none beside it.
-      expect(badge.mock.calls.map(([sentence]) => sentence)).toEqual(['Em cobertura a leste', null]);
+      expect(badge.mock.calls.map(([sentence]) => sentence)).toEqual(['Cobertura: leste', null]);
     } finally {
       badge.mockRestore();
     }

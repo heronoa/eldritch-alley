@@ -175,13 +175,16 @@ export const ptBR = {
   'hud.report.export': 'Baixar .txt',
   'hud.report.reopen': 'Ver registro completo',
   'hud.report.range': '{from}–{to} de {total}',
-  // The odds over a unit's head while it is being aimed at (EA-18). A bare number plus a sign still
-  // comes from the catalog, like every other word on the screen (ADR 0009).
-  'hud.target.chance': '{value}%',
-  // The badge a unit in cover wears over its head: the sentence, the conjunction that joins two sides,
-  // and the name of each of the eight. The sides are the board's own and the camera never renames one
-  // (m3-02, D1), so these are not the letters of the camera panel above.
-  'hud.cover.sides': 'Em cobertura a {sides}',
+  // The odds over a unit's head while it is being aimed at (EA-18). Named rather than a bare number,
+  // so the badge reads on its own — without the green fill or the aiming context — what the figure in
+  // front of the % sign actually answers (owner's request, M5 playtest polish).
+  'hud.target.chance': 'Acerto {value}%',
+  // The badge a unit in cover wears over its head: the label, the conjunction that joins two sides, and
+  // the name of each of the eight. The sides are the board's own and the camera never renames one
+  // (m3-02, D1), so these are not the letters of the camera panel above. Shortened from a full sentence
+  // to a label, pairing with `hud.target.chance` above it (M5 playtest polish): `cobertura` keeps the
+  // fiction's own word (ADR 0012 § D3) rather than the effect it has.
+  'hud.cover.sides': 'Cobertura: {sides}',
   'hud.cover.and': ' e ',
   'hud.cover.north': 'norte',
   'hud.cover.northeast': 'nordeste',
