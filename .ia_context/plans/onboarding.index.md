@@ -28,7 +28,7 @@ sobre o tabuleiro real — decisão do dono, 2026-10-14.
 |---|---|---|---|
 | 1 | [onboarding-m1-logic.plan.md](./onboarding-m1-logic.plan.md) | [x] aprovado | `bf7960b` |
 | 2 | [onboarding-m2-integration.plan.md](./onboarding-m2-integration.plan.md) | [x] aprovado | — |
-| 3 | [onboarding-m3-design.plan.md](./onboarding-m3-design.plan.md) | [ ] implementado, aguardando revisão | — |
+| 3 | [onboarding-m3-design.plan.md](./onboarding-m3-design.plan.md) | [x] aprovado | #23 |
 
 ## Notas de dependência
 
