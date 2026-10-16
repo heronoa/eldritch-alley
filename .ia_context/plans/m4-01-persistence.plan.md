@@ -3,8 +3,8 @@
 **Milestone:** m4-01
 **Parent feature:** m4-accounts-and-persistence
 **Created:** 2026-10-16
-**Status:** pending
-**ADR:** 0019 · Migrations as a single step before the services start (to write)
+**Status:** delivered 2026-10-16, awaiting review — the decisions taken while implementing are D6–D12
+**ADR:** 0019 · Migrations as a single step before the services start (accepted, written)
 
 ## 1. Objective
 
@@ -27,22 +27,33 @@ M2-b line, which is the gate the owner closed on 2026-10-16 (see the index, § M
 | `.ia_context/plans/m4-accounts-and-persistence.index.md` | modify | Milestone 0 and 1 marked with their PRs |
 | `docs/adr/0019-migrations-as-a-single-step.md` | create | The decision, the advisory lock, expand and contract |
 | `docs/adr/README.md` | modify | The 0018–0020 rows |
-| `backend/platform-api/package.json` | modify | `@mikro-orm/core`, `@mikro-orm/postgresql`, `@mikro-orm/migrations`, `@mikro-orm/cli` (dev), `vitest` (dev); scripts `test`, `test:watch`, `migrate`, `migrate:create` |
+| `backend/platform-api/package.json` | modify | `@mikro-orm/core`, `@mikro-orm/postgresql`, `@mikro-orm/migrations`, `@mikro-orm/cli` (dev), `vitest` (dev); scripts `test`, `test:watch`, `migrate`, `migrate:create`, `migrate:check` — the last one is D12 |
 | `backend/platform-api/tsconfig.json` | modify | Nothing but the entries the new `src` folders need, if `include: ["src"]` is not enough (it is — listed only if it changes) |
 | `backend/platform-api/vitest.config.mts` | create | The test config, mirroring `backend/game-server/vitest.config.mts` |
 | `backend/platform-api/src/config.ts` | modify | `readDatabaseUrl`, `readRequired` |
 | `backend/platform-api/src/config.test.ts` | create | Section 4 |
 | `backend/platform-api/src/db/orm.ts` | create | `createOrm(config)`, the single place the ORM options are built |
 | `backend/platform-api/src/db/database.module.ts` | create | The Nest module that owns the ORM's lifetime and exposes the `EntityManager` |
+| `backend/platform-api/src/db/database.module.test.ts` | create | Section 4, the ORM cases |
 | `backend/platform-api/src/db/entities/user.entity.ts` | create | `users` |
 | `backend/platform-api/src/migrations/Migration<timestamp>.ts` | create | The first migration: `users` |
-| `backend/platform-api/src/migrate.ts` | create | The entry point: advisory lock, `up()`, unlock, `process.exit` |
+| `backend/platform-api/src/migrate.ts` | create | The entry point: the process, its output and its exit codes |
 | `backend/platform-api/src/migrate.test.ts` | create | Section 4 |
+| `backend/platform-api/src/db/migrate.ts` | create | `runMigrations(config)` — added while implementing, see below |
+| `backend/platform-api/src/db/test-database.ts` | create | Test support: the scratch database — added while implementing |
+| `backend/platform-api/src/mikro-orm.config.ts` | create | The config the CLI reads — added while implementing, see D9 |
+| `backend/platform-api/tsconfig.json` | modify | The test files excluded from `tsc`, as the sibling packages do — see D10 |
 | `backend/platform-api/src/app.module.ts` | modify | Registers `DatabaseModule` |
-| `.github/workflows/ci.yml` | modify | A `postgres:17-alpine` service, `DATABASE_URL` in the environment, and the migrate step before the tests |
+| `.github/workflows/ci.yml` | modify | A `postgres:17-alpine` service, `DATABASE_URL` in the environment, the migrate step before the tests, and the `migrate:check` step right after it |
 | `docker-compose.yml` | modify | A `migrate` service on the same image; `platform-api` waits for `condition: service_completed_successfully` |
-| `package.json` | modify | `test` and `typecheck` include `platform-api`; a root `db:migrate` convenience script |
+| `package.json` | modify | `test` and `typecheck` include `platform-api`; root `db:migrate`, `db:migrate:create` and `db:migrate:check` scripts |
 | `.env.example` | modify | `DATABASE_URL` documented as required, with its shape |
+
+**Three files the plan did not list.** `src/db/migrate.ts` holds `runMigrations` and `src/migrate.ts`
+holds the process, because a test cannot import a file that calls `process.exit` — and a
+`require.main`/`import.meta` guard is not available in a package compiled to CommonJS and transformed to
+ESM by vitest. `src/db/test-database.ts` is the scratch-database helper the integration cases share, and
+is test support rather than application code. `src/mikro-orm.config.ts` is the CLI's config (D9).
 
 ## 3. Contract of the layer
 
@@ -148,3 +159,56 @@ depend on inference through `reflect-metadata`.
 alternative — every contributor needing a running PostgreSQL to run the suite — buys nothing that the
 CI job does not already give, and it breaks the property the repository has today, where the whole
 suite runs with nothing up.
+
+### Taken while implementing (2026-10-16)
+
+**D6 · MikroORM 6, not 7.** v7 is ESM-only (`type: module`, no `main`) and `platform-api` compiles to
+CommonJS. Pinned `^6.6.17`. Recorded in ADR 0019 §1.
+
+**D7 · The manager the container exports is a fork.** The plan said `DatabaseModule` "exports the
+`EntityManager`"; the first reading of it was `orm.em`, the ORM's global instance, and MikroORM refuses
+`create`, `persist`, `flush` and `find` through it — `ValidationError: Using global EntityManager
+instance methods for context specific actions is disallowed`. The token now resolves to `orm.em.fork()`:
+a unit of work with an identity map of its own, one instance for the whole container, as the plan's test
+case asks. The consequence to carry into m4-02: a fork is shared by every consumer, so the first request
+that writes has to decide whether it forks per request (`RequestContext`, or a request-scoped provider).
+That decision belongs to the milestone with the first write, not to this one, and the module comment
+says so.
+
+**D8 · `migrations.snapshot: false`.** MikroORM's default has the migrator write a
+`.snapshot-<database>.json` next to the migrations for **every** database it touches. The test suite
+creates a scratch database per case, so a run left twenty-three of them in `src/migrations/`, and a
+container would write into its own filesystem on every boot. It also changed what `migrate:create`
+diffs against — the snapshot rather than the database — which produced a migration that undid the
+previous one. Off, and the diff is against the live database. Found by running the CLI, not by reading
+about it; recorded in ADR 0019 §7.
+
+**D9 · The CLI's config lives in `src/`.** `migrate:create` was given `mikro-orm.config.ts` at the
+package root, and the CLI does not read it: without `ts-node` it looks only for a `.js` config, and
+`rootDir: "src"` means `tsc` cannot emit one from the root. It is `src/mikro-orm.config.ts`, compiled to
+`dist/mikro-orm.config.js`, and the script builds first — the CLI reads the same `ormOptions` the
+application does, so a generated migration and the runner cannot drift. It also needs `defineConfig`
+from the driver package: the CLI builds its configuration out of core, where an options object without a
+`driver` is not a configuration at all.
+
+**D10 · `@types/pg`, and the test files are excluded from `tsc`.** `pg` ships no types, so it is a
+devDependency. The test files joined the siblings' convention — `backend/engine` and
+`backend/game-server` both carry `"exclude": ["src/**/*.test.ts"]` — because they use `import.meta`,
+which `module: "commonjs"` rejects. The plan predicted `tsconfig.json` would not change; it does, by
+that one line.
+
+**D11 · The entity's column types are written to match the migration.** `type: 'string'` is
+`varchar(255)` to MikroORM, and the first migration writes `text`; the entity also had no schema default
+for `created_at` where the migration has `now()`. The CLI reported both as pending changes — the drift
+this milestone exists to prevent, caught by the tool the milestone adds. The entity was corrected
+(`text`, `defaultRaw: 'now()'`, and `[OptionalProps]?: 'createdAt'` so a caller may leave it out), and
+the same command now answers `No changes required, schema is up-to-date`.
+
+**D12 · `migrate:check` is a script, and CI runs it after the migrate step.** The command that found the
+drift in D11 was one a person has to remember to type. It is now `npm run db:migrate:check`
+(`mikro-orm migration:check`), and the CI job runs it immediately after the migrate step, against the
+database the migrations have just produced — so entity metadata and migrations that disagree exit `1`
+with `Changes detected. Please create migration to update schema.` and fail the build. Verified both
+ways on a scratch database before it was committed: green after a real migration
+(`No changes required, schema is up-to-date`, exit `0`), red with a deliberately wrong column type, then
+green again after the revert. Recorded in ADR 0019 §Consequences.

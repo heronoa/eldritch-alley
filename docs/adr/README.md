@@ -21,3 +21,4 @@ Short records of decisions that shape the game and the codebase. Each ADR has a 
 | [0015](0015-height-advantage.md) | Height advantage | Accepted |
 | [0016](0016-abilities-as-data.md) | Abilities as data | Accepted |
 | [0017](0017-mana-regeneration.md) | Mana regenerates one point at the start of the turn | Accepted |
+| [0019](0019-migrations-as-a-single-step.md) | Migrations run as a single step, before the services start | Accepted |

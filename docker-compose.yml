@@ -41,6 +41,22 @@ services:
     volumes:
       - localstack-data:/var/lib/localstack
 
+  # The schema, applied once, before any instance of the API starts. It is the same image with a
+  # different command: the migration is a process, not something the API does on its way up.
+  migrate:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      args:
+        SERVICE: platform-api
+    image: eldritch-alley/platform-api:local
+    command: ["node", "dist/migrate.js"]
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-eldritch}:${POSTGRES_PASSWORD:-eldritch}@postgres:5432/${POSTGRES_DB:-eldritch_alley}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   platform-api:
     build:
       context: .
@@ -64,6 +80,9 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      # Completed successfully, not merely started: the API assumes the schema is already there.
+      migrate:
+        condition: service_completed_successfully
 
   game-server:
     build:

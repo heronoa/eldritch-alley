@@ -14,3 +14,34 @@ export function readPort(raw: string | undefined, fallback: number): number {
   }
   return port;
 }
+
+/**
+ * The PostgreSQL the platform reads and writes. Checked here, while the container is being built, so a
+ * platform pointed at the wrong thing refuses to start instead of answering requests with errors.
+ */
+export function readDatabaseUrl(raw: string | undefined): string {
+  const value = raw?.trim() ?? '';
+  if (!value.startsWith('postgres://') && !value.startsWith('postgresql://')) {
+    throw new Error(
+      `DATABASE_URL must be a postgres:// or postgresql:// connection string, got ${valueOrNothing(raw)}`,
+    );
+  }
+  return value;
+}
+
+/**
+ * A value that has to be there: a secret, a signing key, a host. Whitespace is not a value, which is
+ * what catches the environment variable that was set and left blank.
+ */
+export function readRequired(raw: string | undefined, name: string): string {
+  const value = raw?.trim() ?? '';
+  if (value === '') {
+    throw new Error(`${name} must be set, got ${valueOrNothing(raw)}`);
+  }
+  return value;
+}
+
+/** What an error says it found: `nothing` for an unset or blank variable, the value in quotes otherwise. */
+function valueOrNothing(raw: string | undefined): string {
+  return raw?.trim() ? `"${raw.trim()}"` : 'nothing';
+}

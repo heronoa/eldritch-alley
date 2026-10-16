@@ -2,8 +2,8 @@
 
 **Created:** 2026-10-16
 **Roadmap:** [ROADMAP.md](../../ROADMAP.md) § M4. Accounts and persistence
-**Spec:** [accounts-and-persistance.spec.md](../inputs/accounts-and-persistance.spec.md)
-**Status:** pending approval
+**Spec:** [m4-accounts-and-persistence.spec.md](../inputs/m4-accounts-and-persistence.spec.md)
+**Status:** in progress — m4-01 delivered, awaiting review
 
 ## What this delivery covers
 
@@ -20,12 +20,15 @@ agents go into a match, agent death and level-up. They stay in M4 as a later del
 
 | # | Plan | Status | PR |
 |---|------|--------|----|
-| 0 | Index correction (M3 and M3.5) — first commit of m4-01 | [ ] pending | — |
-| 1 | [m4-01-persistence.plan.md](./m4-01-persistence.plan.md) | [ ] pending | — |
+| 0 | Index correction (M3 and M3.5) — first commit of m4-01 | [x] delivered | — |
+| 1 | [m4-01-persistence.plan.md](./m4-01-persistence.plan.md) | [x] delivered | — |
 | 2 | [m4-02-auth.plan.md](./m4-02-auth.plan.md) | [ ] pending | — |
 | 3 | [m4-03-match-recording.plan.md](./m4-03-match-recording.plan.md) | [ ] pending | — |
 | 4 | [m4-04-client.plan.md](./m4-04-client.plan.md) | [ ] pending | — |
 | 5 | [m4-05-contact-release-privacy.plan.md](./m4-05-contact-release-privacy.plan.md) | [ ] pending | — |
+
+The PR column is filled when the pull request opens. Milestone 0 is the first commit of m4-01's branch
+and not a PR of its own, as the gate below decided.
 
 Milestones 4 and 5 are frontend work, and each is delivered in three steps — **logic → integration →
 design** — as the onboarding delivery was (`.ia_context/plans/onboarding.index.md`): three commits,
@@ -112,21 +115,31 @@ tests use a fake provider and do not need them; the manual run of the milestone 
 
 ## Documentation debt found while planning
 
-- `.ia_context/plans/m3-rules-and-content.index.md` and `.ia_context/plans/onboarding.index.md` are
-  corrected by m4-01's first commit (see the gate above).
-- `ROADMAP.md` § M4 still describes JWT sign-up/login, squad choice before the match and a replay
-  endpoint in this milestone. m4-01 rewrites it into "this delivery" and "the rest of M4", and adds the
-  ADR rows 0018–0020 to § Decisions, which stops at 0006.
-- The spec file sits at `.ia_context/inputs/accounts-and-persistance.spec.md` while the spec itself
-  suggests `m4-accounts-and-persistence.spec.md`. m4-01 renames it and fixes the typo.
-- `docs/adr/README.md` is up to date (it lists 0001–0017). m4-01, m4-02 add the three new rows.
+All four items are settled by m4-01. Recorded here as they were found, with what closed each one.
+
+- `.ia_context/plans/m3-rules-and-content.index.md` and `.ia_context/plans/onboarding.index.md` were
+  corrected by m4-01's first commit (see the gate above). The M3 index gained a § How the milestone
+  closed and its ADR table was corrected — it planned five records, six were written, and the numbering
+  had drifted by one.
+- `ROADMAP.md` § M4 described JWT sign-up/login, squad choice before the match and a replay endpoint in
+  this milestone. m4-01 rewrote it into "this delivery" and "the rest of M4", added the ADR rows
+  0018–0020 to § Decisions (which stopped at 0006), marked M3 and M3.5 done, and corrected § Current
+  state, which still said there were no combat rules and no CI.
+- The spec file sat at `.ia_context/inputs/accounts-and-persistance.spec.md`. It is now
+  [m4-accounts-and-persistence.spec.md](../inputs/m4-accounts-and-persistence.spec.md), the name the
+  spec itself suggests.
+- `docs/adr/README.md` listed 0001–0017 and now carries the 0019 row. 0018 and 0020 come with m4-02.
+
+One thing m4-01 did **not** correct, because it is not its subject: `.env.example` still has a
+Portuguese section header (`# Portas locais`) in an English repository. One line, worth taking with any
+later change to that file.
 
 ## ADRs this index opens
 
 | ADR | Decision | Milestone | State |
 |---|---|---|---|
 | 0018 | Sign-in with GitHub and Google only: OAuth, a session cookie, and a short game ticket signed with an asymmetric key | m4-02 | to write |
-| 0019 | MikroORM migrations as a single step before the services start, under a PostgreSQL advisory lock | m4-01 | to write |
+| 0019 | MikroORM migrations as a single step before the services start, under a PostgreSQL advisory lock | m4-01 | Accepted ([written](../../docs/adr/0019-migrations-as-a-single-step.md)) |
 | 0020 | A persistent squad with a starter set; death and level-up deferred (links ADR 0003's addendum) | m4-02 | to write |
 
 No ADR for m4-03, m4-04 or m4-05. The queue between the two backends and the client screens are
