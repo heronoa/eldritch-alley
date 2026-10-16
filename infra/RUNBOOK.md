@@ -1,6 +1,6 @@
 # Runbook: M2-b staging on EC2
 
-Operational steps before the first `terraform plan` of the staging environment. The design is in [.ia_context/plans/m2b-ec2.plan.md](../.ia_context/plans/m2b-ec2.plan.md). Terraform code is in [terraform/](terraform/).
+Operational steps before the first `terraform plan` of the staging environment. The design is in [.ia_context/plans/m2b-ec2.plan.md](../.ia_context/plans/m2b-ec2.plan.md). Terraform code is in [aws/envs/stg/](aws/envs/stg/) (moved from `terraform/` in infra-01; see [the bootstrap plan](../.ia_context/plans/infra-01-bootstrap-and-ci.plan.md)).
 
 Rules that apply to every step:
 
@@ -116,7 +116,7 @@ Expected: `"SecureString"`. Do not print the value with `--with-decryption` in a
 Copy the example and fill in the three values:
 
 ```
-cd infra/terraform/envs/stg
+cd infra/aws/envs/stg
 cp terraform.tfvars.example terraform.tfvars
 ```
 
@@ -130,12 +130,12 @@ Edit `terraform.tfvars`:
 
 Tags are immutable in ECR. Pick the tag you will push, not a placeholder.
 
-Check: `terraform.tfvars` has no `REPLACE_` strings. `grep REPLACE infra/terraform/envs/stg/terraform.tfvars` prints nothing.
+Check: `terraform.tfvars` has no `REPLACE_` strings. `grep REPLACE infra/aws/envs/stg/terraform.tfvars` prints nothing.
 
 ## 6. Plan (do not apply yet)
 
 ```
-cd infra/terraform/envs/stg
+cd infra/aws/envs/stg
 export AWS_PROFILE=eldritch-stg
 terraform init
 terraform validate
@@ -211,5 +211,5 @@ Check: both services are `running`. In the Cloudflare dashboard, the tunnel `eld
 ## Rollback
 
 - Before apply: nothing exists; delete the local `stg.tfplan` if needed.
-- After apply: `terraform destroy` in `infra/terraform/envs/stg`, after owner approval. This removes the VPC, ECR repository (with its images, since `force_delete` is off, ECR refuses to delete a non-empty repository: delete the images first), role and instance.
+- After apply: `terraform destroy` in `infra/aws/envs/stg`, after owner approval. This removes the VPC, ECR repository (with its images, since `force_delete` is off, ECR refuses to delete a non-empty repository: delete the images first), role and instance.
 - Manual items not managed by Terraform: delete the SSM parameter `/eldritch-alley/stg/cloudflared-token` and the tunnel `eldritch-stg` in the Cloudflare dashboard.

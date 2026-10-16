@@ -87,6 +87,13 @@ Planned features are not debt: they live in [backlog.md](./backlog.md).
 - **Trigger:** if a measurement in a long match shows high cost.
 - **Evidence:** `frontend/src/scenes/map/MapView.ts` (one canvas and one texture per cell, plus the animated layers). Suspected, not measured.
 - **Measured on 2026-10-04**, headless Chrome 150 against the production build, one valid match: 134 canvases created for the match, about 7.3 Mpx, so about 29 MB of canvas memory (estimate: 4 bytes per pixel). JS heap 6 MB, unchanged after 20 s idle. Frame rate 13 fps during the match, but Chrome ran without a GPU (`--disable-gpu`), so that number does not describe a real browser. **Still open:** the next three matches in the same run did not start (see DT-60), so growth across matches is not measured yet.
+### DT-69 · The game-server has no HTTP health check for the ALB
+- **Category:** Architecture (deploy)
+- **Risk if untreated:** `backend/game-server/src/main.ts` opens a raw Colyseus `WebSocketTransport` with no Express app attached, so there is no HTTP path to point an Application Load Balancer health check at. Without it, `infra-04-edge-and-compute.plan.md` (AWS prod deploy, ECS Fargate behind an ALB) cannot configure a real `GET` health check for the game-server target group; a catch-all success matcher would hide actual outages instead of detecting them.
+- **Effort:** P (a minimal HTTP route alongside the existing WebSocket transport; MikroORM/persistence work on another branch is unrelated and does not block this).
+- **Trigger:** before infra-04 is applied (ALB target group creation for game-server). Not blocking infra-01/02/03, which do not touch the ALB.
+- **Evidence:** `backend/game-server/src/main.ts` (only `gameServer.listen(port)`, no HTTP route); contrast with `backend/platform-api/src/health/health.controller.ts`, which already answers `GET /health`; `.ia_context/inputs/aws-terraform-deploy.spec.md`, section "alb and edge-dns" ("it is not confirmed that the game server answers any HTTP health path... Do not use a catch-all success matcher to hide it").
+
 ### DT-66 · The "room full" error is printed by the server test suite
 - **Category:** Testing
 - **Risk if untreated:** expected log noise can hide a real server error.
