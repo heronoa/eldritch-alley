@@ -3,7 +3,7 @@
 **Milestone:** m3-design
 **Feature pai:** onboarding
 **Criado em:** 2026-10-14
-**Status:** pendente
+**Status:** implementado, aguardando revisão (2026-10-16)
 
 ## 1. Objetivo
 
@@ -28,9 +28,9 @@ incompleta, não trabalho para a m3.
 ## 4. Testes previstos
 
 **Unitários:**
-- [ ] Todo par texto/fundo do overlay listado em `contrast.test.ts` passa 4.5:1, incluindo hover e
+- [x] Todo par texto/fundo do overlay listado em `contrast.test.ts` passa 4.5:1, incluindo hover e
       focus dos três controles e do link do rodapé
-- [ ] Nenhum valor de cor novo fora do que `view/theme.ts`/`title.css` já define — o teste falha se
+- [x] Nenhum valor de cor novo fora do que `view/theme.ts`/`title.css` já define — o teste falha se
       uma cor literal nova aparecer em `onboarding.css`
 
 **E2E:** nenhum.
