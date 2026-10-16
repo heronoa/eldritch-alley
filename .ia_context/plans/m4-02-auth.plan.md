@@ -3,7 +3,7 @@
 **Milestone:** m4-02
 **Parent feature:** m4-accounts-and-persistence
 **Created:** 2026-10-16
-**Status:** pending
+**Status:** in progress (2026-10-16) — m4-01 was approved by the owner the same day
 **ADR:** 0018 · Sign-in with GitHub and Google only (to write) · 0020 · A persistent squad with a starter set (to write)
 
 ## 1. Objective

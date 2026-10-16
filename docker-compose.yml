@@ -72,7 +72,20 @@ services:
       AWS_ENDPOINT_URL: http://localstack:4566
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
-      JWT_SECRET: ${JWT_SECRET:?defina JWT_SECRET no .env}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+      # Sign-in (m4-02). The two secrets have no local default on purpose: a session signed with a
+      # key from a repository is a session anyone can mint.
+      SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET in .env}
+      GAME_TICKET_PRIVATE_KEY: ${GAME_TICKET_PRIVATE_KEY:?set GAME_TICKET_PRIVATE_KEY in .env}
+      GAME_TICKET_TTL_SECONDS: ${GAME_TICKET_TTL_SECONDS:-300}
+      COOKIE_DOMAIN: ${COOKIE_DOMAIN:-localhost}
+      CLIENT_ORIGIN: ${CLIENT_ORIGIN:-http://localhost:5173}
+      OAUTH_REDIRECT_BASE_URL: ${OAUTH_REDIRECT_BASE_URL:-http://localhost:3000}
+      # The OAuth apps are the developer's own; there is no value here that could work for everyone.
+      OAUTH_GITHUB_CLIENT_ID: ${OAUTH_GITHUB_CLIENT_ID:?set OAUTH_GITHUB_CLIENT_ID in .env}
+      OAUTH_GITHUB_CLIENT_SECRET: ${OAUTH_GITHUB_CLIENT_SECRET:?set OAUTH_GITHUB_CLIENT_SECRET in .env}
+      OAUTH_GOOGLE_CLIENT_ID: ${OAUTH_GOOGLE_CLIENT_ID:?set OAUTH_GOOGLE_CLIENT_ID in .env}
+      OAUTH_GOOGLE_CLIENT_SECRET: ${OAUTH_GOOGLE_CLIENT_SECRET:?set OAUTH_GOOGLE_CLIENT_SECRET in .env}
     ports:
       - "3000:3000"
     depends_on:
@@ -98,7 +111,7 @@ services:
       AWS_ENDPOINT_URL: http://localstack:4566
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
-      JWT_SECRET: ${JWT_SECRET:?defina JWT_SECRET no .env}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
     ports:
       - "2567:2567"
     depends_on:

@@ -21,6 +21,9 @@
     "@nestjs/common": "^11.2.7",
     "@nestjs/core": "^11.2.7",
     "@nestjs/platform-express": "^11.2.7",
+    "cookie-parser": "^1.4.7",
+    "jose": "^6.2.12",
+    "openid-client": "^6.8.8",
     "pg": "^8.20.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2"
@@ -28,6 +31,7 @@
   "devDependencies": {
     "@mikro-orm/cli": "^6.6.17",
     "@nestjs/testing": "^11.2.7",
+    "@types/cookie-parser": "^1.4.10",
     "@types/pg": "^8.23.1",
     "tsx": "^4.23.15",
     "vitest": "^3.2.7"

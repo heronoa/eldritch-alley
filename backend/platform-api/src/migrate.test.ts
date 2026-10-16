@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Migration } from '@mikro-orm/migrations';
@@ -13,6 +14,18 @@ import {
 import { runMigrations } from './db/migrate';
 
 const PACKAGE_ROOT = fileURLToPath(new URL('..', import.meta.url));
+
+/**
+ * How many migrations the repository has. Counted from the directory rather than written down, so that
+ * a case about the runner keeps meaning "every migration, once" — m4-02's second migration is what a
+ * number here would have cost, and every migration after it would cost again.
+ */
+const MIGRATIONS_ON_DISK = readdirSync(new URL('./migrations', import.meta.url)).filter((name) =>
+  name.endsWith('.ts'),
+).length;
+
+/** The runner counts in words: `applied 1 migration`, `applied 2 migrations`. */
+const APPLIED_EVERY_MIGRATION = new RegExp(`migrate: applied ${MIGRATIONS_ON_DISK} migrations?`);
 
 // A migration that writes something and then fails. It is what proves the two properties the plan asks
 // for: nothing it wrote survives, and the run is over rather than stuck.
@@ -61,12 +74,12 @@ async function tableNames(url: string): Promise<string[]> {
 }
 
 describe.skipIf(!hasDatabase)('migrate', () => {
-  it('applies the first migration and creates users with the columns of the spec', async () => {
+  it('applies the migrations and creates users with the columns of the spec', async () => {
     const url = await createScratchDatabase();
     try {
       const run = await runMigrateProcess(url);
       expect(run.code, run.stderr).toBe(0);
-      expect(run.stdout).toMatch(/migrate: applied 1 migration/);
+      expect(run.stdout).toMatch(APPLIED_EVERY_MIGRATION);
 
       const { rows } = await withClient(url, (client) =>
         client.query<{ column_name: string; data_type: string; is_nullable: string; column_default: string | null }>(
@@ -106,7 +119,7 @@ describe.skipIf(!hasDatabase)('migrate', () => {
       expect(second.code, second.stderr).toBe(0);
       expect(second.stdout).toMatch(/migrate: nothing to apply/);
 
-      expect(await executedMigrations(url)).toHaveLength(1);
+      expect(await executedMigrations(url)).toHaveLength(MIGRATIONS_ON_DISK);
     } finally {
       await dropScratchDatabase(url);
     }
@@ -119,12 +132,12 @@ describe.skipIf(!hasDatabase)('migrate', () => {
 
       expect(first.code, first.stderr).toBe(0);
       expect(second.code, second.stderr).toBe(0);
-      const applied = [first, second].filter((run) => /migrate: applied 1 migration/.test(run.stdout));
+      const applied = [first, second].filter((run) => APPLIED_EVERY_MIGRATION.test(run.stdout));
       const skipped = [first, second].filter((run) => /migrate: nothing to apply/.test(run.stdout));
       expect(applied).toHaveLength(1);
       expect(skipped).toHaveLength(1);
 
-      expect(await executedMigrations(url)).toHaveLength(1);
+      expect(await executedMigrations(url)).toHaveLength(MIGRATIONS_ON_DISK);
     } finally {
       await dropScratchDatabase(url);
     }
@@ -145,26 +158,28 @@ describe.skipIf(!hasDatabase)('migrate', () => {
       // held and no half-applied state for the migrator to trip over.
       const after = await runMigrateProcess(url);
       expect(after.code, after.stderr).toBe(0);
-      expect(after.stdout).toMatch(/migrate: applied 1 migration/);
+      expect(after.stdout).toMatch(APPLIED_EVERY_MIGRATION);
       expect(await tableNames(url)).toContain('users');
     } finally {
       await dropScratchDatabase(url);
     }
   });
 
-  // For the first migration this is the only reading the case can have: there is no earlier version of
-  // the schema for it to be additive to. It becomes load-bearing from the second migration on, which is
-  // why it is written now rather than left for later.
+  // For the first migration this was the only reading the case could have: there was no earlier version
+  // of the schema for it to be additive to. From m4-02's second migration on it is load-bearing — the
+  // schema is already there when the next one runs.
   it('adds tables and drops none when it runs over an already migrated database', async () => {
     const url = await createScratchDatabase();
     try {
-      expect((await runMigrations({ databaseUrl: url })).applied).toBe(1);
+      expect((await runMigrations({ databaseUrl: url })).applied).toBe(MIGRATIONS_ON_DISK);
       const before = await tableNames(url);
 
       expect((await runMigrations({ databaseUrl: url })).applied).toBe(0);
 
       expect(await tableNames(url)).toEqual(before);
       expect(before).toContain('users');
+      expect(before).toContain('identities');
+      expect(before).toContain('agents');
     } finally {
       await dropScratchDatabase(url);
     }

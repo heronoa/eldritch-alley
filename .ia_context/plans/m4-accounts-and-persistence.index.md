@@ -3,7 +3,7 @@
 **Created:** 2026-10-16
 **Roadmap:** [ROADMAP.md](../../ROADMAP.md) § M4. Accounts and persistence
 **Spec:** [m4-accounts-and-persistence.spec.md](../inputs/m4-accounts-and-persistence.spec.md)
-**Status:** in progress — m4-01 delivered, awaiting review
+**Status:** in progress — m4-01 approved (2026-10-16), m4-02 in progress
 
 ## What this delivery covers
 
@@ -21,8 +21,8 @@ agents go into a match, agent death and level-up. They stay in M4 as a later del
 | # | Plan | Status | PR |
 |---|------|--------|----|
 | 0 | Index correction (M3 and M3.5) — first commit of m4-01 | [x] delivered | — |
-| 1 | [m4-01-persistence.plan.md](./m4-01-persistence.plan.md) | [x] delivered | — |
-| 2 | [m4-02-auth.plan.md](./m4-02-auth.plan.md) | [ ] pending | — |
+| 1 | [m4-01-persistence.plan.md](./m4-01-persistence.plan.md) | [x] approved (2026-10-16) | — |
+| 2 | [m4-02-auth.plan.md](./m4-02-auth.plan.md) | [~] in progress | — |
 | 3 | [m4-03-match-recording.plan.md](./m4-03-match-recording.plan.md) | [ ] pending | — |
 | 4 | [m4-04-client.plan.md](./m4-04-client.plan.md) | [ ] pending | — |
 | 5 | [m4-05-contact-release-privacy.plan.md](./m4-05-contact-release-privacy.plan.md) | [ ] pending | — |

@@ -3,6 +3,7 @@ import { Inject, Injectable, Module } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from '../app.module';
+import { setAuthEnvironment } from '../auth/test-app';
 import { runMigrations } from './migrate';
 import { ENTITY_MANAGER } from './database.module';
 import { User } from './entities/user.entity';
@@ -54,7 +55,9 @@ describe.skipIf(!hasDatabase)('DatabaseModule', () => {
 
   beforeAll(async () => {
     url = await createScratchDatabase();
-    process.env.DATABASE_URL = url;
+    // The whole application is what this case compiles, and since m4-02 that means the secrets a
+    // session and a ticket need as well as the database.
+    await setAuthEnvironment(url);
     await runMigrations({ databaseUrl: url });
     moduleRef = await Test.createTestingModule({ imports: [ConsumerModule] }).compile();
   });

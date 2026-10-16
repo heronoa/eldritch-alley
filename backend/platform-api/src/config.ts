@@ -41,6 +41,21 @@ export function readRequired(raw: string | undefined, name: string): string {
   return value;
 }
 
+/**
+ * How long a game ticket is worth, in seconds. Five minutes when the environment says nothing, which is
+ * what the spec asks for: long enough for a player to reach the match server, short enough that a leaked
+ * ticket is worth little. A value that is not a whole positive number stops the service at boot.
+ */
+export function readGameTicketTtl(raw: string | undefined): number {
+  if (raw === undefined || raw.trim() === '') return 300;
+
+  const seconds = Number(raw);
+  if (!Number.isInteger(seconds) || seconds < 1) {
+    throw new Error(`GAME_TICKET_TTL_SECONDS must be a whole number of seconds, got ${raw}`);
+  }
+  return seconds;
+}
+
 /** What an error says it found: `nothing` for an unset or blank variable, the value in quotes otherwise. */
 function valueOrNothing(raw: string | undefined): string {
   return raw?.trim() ? `"${raw.trim()}"` : 'nothing';

@@ -1,7 +1,9 @@
 import { Test } from '@nestjs/testing';
-import { describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from './app.module';
-import { readDatabaseUrl, readPort, readRequired } from './config';
+import { setAuthEnvironment } from './auth/test-app';
+import { readDatabaseUrl, readGameTicketTtl, readPort, readRequired } from './config';
+import { createScratchDatabase, dropScratchDatabase, hasDatabase } from './db/test-database';
 
 describe('readDatabaseUrl', () => {
   it('returns a postgres:// or postgresql:// URL unchanged', () => {
@@ -41,6 +43,25 @@ describe('readPort', () => {
   });
 });
 
+describe('readGameTicketTtl', () => {
+  it('is five minutes when the environment says nothing', () => {
+    expect(readGameTicketTtl(undefined)).toBe(300);
+    expect(readGameTicketTtl('')).toBe(300);
+    expect(readGameTicketTtl('   ')).toBe(300);
+  });
+
+  it('is the number of seconds the environment asks for', () => {
+    expect(readGameTicketTtl('120')).toBe(120);
+    expect(readGameTicketTtl(' 900 ')).toBe(900);
+  });
+
+  it('rejects anything that is not a whole positive number of seconds, naming the variable', () => {
+    for (const bad of ['cinco', '0', '-5', '300.5']) {
+      expect(() => readGameTicketTtl(bad)).toThrow(/GAME_TICKET_TTL_SECONDS/);
+    }
+  });
+});
+
 // The database is not read by a service at its first query: it is read while the container is being
 // built, so a platform with an unusable DATABASE_URL fails to come up rather than answering requests
 // with errors. That is the shape `readPort` already has, and neither case needs a database to check.
@@ -50,9 +71,13 @@ describe('readPort', () => {
 // run in the process it kills.
 describe('the platform at boot', () => {
   it('does not build its container without a usable DATABASE_URL', async () => {
+    // The case leaves the environment as it found it: the describe below reaches for a database, and a
+    // URL this case invented would be the one it then tried to connect to.
     const previous = process.env.DATABASE_URL;
     try {
-      delete process.env.DATABASE_URL;
+      // Everything else the container reads is in place, so the variable under test is the only thing
+      // that can be missing: which factory Nest builds first is its business, not this case's.
+      await setAuthEnvironment(undefined);
       await expect(Test.createTestingModule({ imports: [AppModule] }).compile()).rejects.toThrow(
         /DATABASE_URL/,
       );
@@ -64,6 +89,44 @@ describe('the platform at boot', () => {
     } finally {
       if (previous === undefined) delete process.env.DATABASE_URL;
       else process.env.DATABASE_URL = previous;
+    }
+  });
+});
+
+// The secrets a session and a ticket need are read the same way, while the container is being built.
+// These two cases need a database in reach because the container connects to it before the auth side
+// is instantiated — with DATABASE_URL unusable the failure would be the connection's, not the secret's.
+describe.skipIf(!hasDatabase)('the platform at boot, with the rest of the environment in place', () => {
+  let url: string;
+
+  beforeAll(async () => {
+    url = await createScratchDatabase();
+    await setAuthEnvironment(url);
+  });
+
+  afterAll(async () => {
+    await dropScratchDatabase(url);
+  });
+
+  it('does not build its container without a session secret', async () => {
+    delete process.env.SESSION_SECRET;
+    try {
+      await expect(Test.createTestingModule({ imports: [AppModule] }).compile()).rejects.toThrow(
+        /SESSION_SECRET/,
+      );
+    } finally {
+      await setAuthEnvironment(url);
+    }
+  });
+
+  it('does not build its container with a ticket lifetime that is not a number of seconds', async () => {
+    process.env.GAME_TICKET_TTL_SECONDS = 'cinco minutos';
+    try {
+      await expect(Test.createTestingModule({ imports: [AppModule] }).compile()).rejects.toThrow(
+        /GAME_TICKET_TTL_SECONDS/,
+      );
+    } finally {
+      await setAuthEnvironment(url);
     }
   });
 });
