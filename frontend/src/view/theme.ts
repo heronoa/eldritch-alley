@@ -97,6 +97,17 @@ export const HIGHLIGHT_ATTACK_ALPHA = 0.48;
 
 export const GRID_STROKE_COLOR = 0x000000;
 
+/**
+ * The outline of the tile under the mouse. It is the paper of the identity and it is a stroke only:
+ * the wash of a move or of an attack is a fill, and the two are read together on one tile, so a fill
+ * here would hide the answer the wash is already giving. `PAPER_COLOR` is measured at the AAA outline
+ * floor against every tile the three maps draw (`theme.contrast.test.ts`, "keeps the paper marker
+ * legible on every tile"), which is the floor an outline over the board is held to — so this pair
+ * needs no contrast case of its own.
+ */
+export const HOVER_HIGHLIGHT_COLOR = PAPER_COLOR;
+export const HOVER_HIGHLIGHT_ALPHA = 0.9;
+
 /** The frame stamped around the result of a finished match. Decoration: it carries no information. */
 export const STAMP_COLOR = ACCENT_COLOR;
 export const STAMP_WIDTH = 4;

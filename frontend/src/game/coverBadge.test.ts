@@ -113,10 +113,10 @@ describe('coverSentence', () => {
     const board = makeBoard([coverAt(TARGET.x + 1, TARGET.y)]);
 
     setLocale('pt-BR');
-    expect(coverSentence(board, TARGET)).toBe('Em cobertura a leste');
+    expect(coverSentence(board, TARGET)).toBe('Cobertura: leste');
 
     setLocale('en-US');
-    expect(coverSentence(board, TARGET)).toBe('In cover for East');
+    expect(coverSentence(board, TARGET)).toBe('Cover: East');
 
     setLocale('pt-BR');
   });
@@ -125,10 +125,10 @@ describe('coverSentence', () => {
     const board = makeBoard([coverAt(TARGET.x, TARGET.y - 1), coverAt(TARGET.x + 1, TARGET.y)]);
 
     setLocale('pt-BR');
-    expect(coverSentence(board, TARGET)).toBe('Em cobertura a norte e leste');
+    expect(coverSentence(board, TARGET)).toBe('Cobertura: norte e leste');
 
     setLocale('en-US');
-    expect(coverSentence(board, TARGET)).toBe('In cover for North and East');
+    expect(coverSentence(board, TARGET)).toBe('Cover: North and East');
 
     setLocale('pt-BR');
   });

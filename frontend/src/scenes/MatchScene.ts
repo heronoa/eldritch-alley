@@ -119,6 +119,8 @@ import {
   HIGHLIGHT_ATTACK_COLOR,
   HIGHLIGHT_MOVE_ALPHA,
   HIGHLIGHT_MOVE_COLOR,
+  HOVER_HIGHLIGHT_ALPHA,
+  HOVER_HIGHLIGHT_COLOR,
 } from '../view/theme';
 import { BODY_HEIGHT, SPRITE_SIZE } from '../view/unit-look';
 import { download } from './download';
@@ -188,6 +190,17 @@ function secondsLeft(machine: AutoEndTurn): number {
 }
 
 /**
+ * Whether two cells name the same tile, either of them being no tile at all. Both the aim's preview and
+ * the mark of the tile under the mouse are held this way: they ask it before rebuilding what they drew,
+ * so a mouse sweeping the board does not throw a `Graphics` away for a tile that has not changed.
+ */
+function sameCell(one: Cell | null, other: Cell | null): boolean {
+  if (one === null || other === null) return one === other;
+
+  return one.x === other.x && one.y === other.y;
+}
+
+/**
  * A turn of the view while it is happening (EA-12, slice 3): the map being turned away from, the way
  * round the map goes, when the turn began, and the simplified drawing that carries it.
  */
@@ -229,6 +242,13 @@ export class MatchScene extends Phaser.Scene {
    * holding, not a property of the match, so it is never sent anywhere.
    */
   private previewCell: Cell | null = null;
+  /**
+   * The cell the mouse currently answers to: the board tile under the pointer, the cell of the figure
+   * under it, or the position of the unit whose portrait of the turn queue is under it. It is a
+   * question the scene is holding about the mouse, not a property of the match, so it is never sent
+   * anywhere — and it is kept apart from `previewCell`, which answers a different question (D1).
+   */
+  private hoveredCell: Cell | null = null;
   /**
    * The gestures of the match, by their own rules (DT-79, DT-84): the fingers that are down, the press
    * waiting on its own lift and the drag the map follows. The scene asks it what a pointer event means
@@ -304,6 +324,8 @@ export class MatchScene extends Phaser.Scene {
   private mapView: MapView | null = null;
   /** One graphic per highlighted cell, at the cell's own depth, rebuilt on every redraw. */
   private highlights: Phaser.GameObjects.Graphics[] = [];
+  /** The one mark of the tile under the mouse, or null while no tile is marked. */
+  private hoverHighlight: Phaser.GameObjects.Graphics | null = null;
   /** The HUD, in its own scene above the map. It is handed a view of the match and draws it. */
   private hud!: HudScene;
   /** The model the drawn buttons came from, so a click resolves to the action the player sees. */
@@ -330,6 +352,7 @@ export class MatchScene extends Phaser.Scene {
     this.disarmLongPress();
     this.gestures.cancel();
     this.previewCell = null;
+    this.hoveredCell = null;
     this.pinchFrom = 0;
     this.pinchZoom = MIN_ZOOM;
     // Switching maps resets the view to N, so a match never opens from a side the last one was left on.
@@ -360,6 +383,9 @@ export class MatchScene extends Phaser.Scene {
     this.resultText = '';
     this.camera = { zoom: MIN_ZOOM, centre: { x: CANVAS_WIDTH / 2, y: CANVAS_HEIGHT / 2 } };
     this.highlights = [];
+    // The mark of the last match went with the display list it was drawn on; the reference must not
+    // outlive it, or a later redraw would take down an object of a scene that is already gone.
+    this.hoverHighlight = null;
     this.map = null;
     this.mapView = null;
     this.sprites = new Map();
@@ -503,8 +529,10 @@ export class MatchScene extends Phaser.Scene {
     const outcome = this.gestures.move(pressPointer(pointer));
     if (!this.gestures.waiting()) this.disarmLongPress();
 
-    if (outcome.kind === 'hover') this.updatePreview(pointer);
-    else if (outcome.kind === 'pinch') this.pinchTo(outcome.pinch);
+    if (outcome.kind === 'hover') {
+      this.updatePreview(pointer);
+      this.updateHoveredCell(pointer);
+    } else if (outcome.kind === 'pinch') this.pinchTo(outcome.pinch);
     else if (outcome.kind === 'pan') {
       // The one place the drag sensitivity is read: the travel is the whole of it from where the finger
       // went down, so scaling it scales the gesture and never accumulates. The keys call the camera
@@ -543,20 +571,27 @@ export class MatchScene extends Phaser.Scene {
       return;
     }
 
-    const world = { x: pointer.worldX, y: pointer.worldY };
+    this.setPreviewCell(this.cellUnderPointer({ x: pointer.worldX, y: pointer.worldY }, state));
+  }
+
+  /**
+   * The cell a point of the world answers to, read the way a press reads one (EA-8): the cell of the
+   * figure of a unit drawn under the point, and the tile the projection finds there only when no figure
+   * covers it. The aim's preview and the mark of the tile under the mouse ask the same question, so they
+   * take the same answer.
+   */
+  private cellUnderPointer(world: Pixel, state: PublicState): Cell | null {
     const hit = unitAtPoint(this.inView(state.units), world, this.spriteLayout);
     const view =
       hit?.position ??
       cellAt(world, this.map?.size ?? state.board, (candidate) => this.levelAt(candidate), this.lift);
 
-    this.setPreviewCell(view === null ? null : this.mapCell(view));
+    return view === null ? null : this.mapCell(view);
   }
 
   /** Keeps the cell the preview is asking about, and redraws only the badges it can change (D2). */
   private setPreviewCell(cell: Cell | null): void {
-    const before = this.previewCell;
-    const same = before === null ? cell === null : cell !== null && before.x === cell.x && before.y === cell.y;
-    if (same) return;
+    if (sameCell(this.previewCell, cell)) return;
 
     this.previewCell = cell;
     this.drawTargetPreview(this.state);
@@ -629,6 +664,104 @@ export class MatchScene extends Phaser.Scene {
       const chance = chances.get(id);
       sprite.setHitChanceBadge(chance === undefined ? null : t('hud.target.chance', { value: chance }));
     }
+  }
+
+  /**
+   * Reads which tile the mouse is answering to, and keeps it. It is a portrait of the turn queue
+   * first, then the board — the two readings a press already runs, in the order a press runs them
+   * (EA-8) — so the tile the mark lands on is the tile a click there would act on.
+   *
+   * The mark answers "what is under the mouse", not "what could I do now", so nothing about the armed
+   * mode is read here (D3): it keeps working while the bot plays and while a replay's camera swings.
+   * A match that is decided has no board being played, so nothing on it is marked either (D5).
+   */
+  private updateHoveredCell(pointer: Phaser.Input.Pointer): void {
+    const state = this.state;
+    if (state === null || this.finished) {
+      this.setHoveredCell(null);
+      return;
+    }
+
+    const point = { x: pointer.x, y: pointer.y };
+    const portrait = this.portraitAt(state, point);
+    if (portrait !== null) {
+      this.setHoveredCell(portrait.position);
+      return;
+    }
+
+    // A point the HUD owns is the HUD's, whatever tile the world has behind it.
+    if (this.hudCoversPoint(point)) {
+      this.setHoveredCell(null);
+      return;
+    }
+
+    // The same resolution a press runs: the figure of a unit first, and the cell under the point only
+    // when no drawn figure covers it (EA-8).
+    this.setHoveredCell(this.cellUnderPointer({ x: pointer.worldX, y: pointer.worldY }, state));
+  }
+
+  /**
+   * Keeps the tile the mark is on, and redraws only the mark it can change — a no-op while the tile is
+   * the one already marked, so a mouse sweeping the board never throws a `Graphics` away and makes it
+   * again for a tile that has not changed (DT-46).
+   */
+  private setHoveredCell(cell: Cell | null): void {
+    if (sameCell(this.hoveredCell, cell)) return;
+
+    this.hoveredCell = cell;
+    this.drawHoverHighlight(this.state);
+  }
+
+  /**
+   * The outline of the tile under the mouse: a stroke and no fill, so the wash of a move or of an
+   * attack under it is still read (D2). A gap has no top face to outline, and a scene with no state
+   * has no board to mark; the mark is taken down in both cases.
+   */
+  private drawHoverHighlight(state: PublicState | null): void {
+    this.hoverHighlight?.destroy();
+    this.hoverHighlight = null;
+
+    const cell = this.hoveredCell;
+    if (cell === null || state === null) return;
+
+    const view = this.viewCell(cell);
+    const level = this.levelAt(view);
+    if (level === NO_FLOOR) return;
+
+    const graphic = this.add.graphics().setDepth(LAYER.hover(view));
+    const face = topFace(view, level, this.lift);
+
+    graphic.lineStyle(2, HOVER_HIGHLIGHT_COLOR, HOVER_HIGHLIGHT_ALPHA);
+    graphic.strokePoints(face, true, true);
+    this.hoverHighlight = graphic;
+  }
+
+  /**
+   * Whether the HUD owns this point, read as a question and nothing more: it is the containment half
+   * of `hudTakesPress`, which bundles each check together with the click's own side effect and so
+   * cannot be asked without acting (D4). The two are the same list of pieces read in the same order
+   * and must be kept in step by hand: while the menu is up it takes every point of the canvas, the
+   * inspection window floats over the board and over every panel, then the countdown, the gear and its
+   * panel, the log, the bar, the camera panel, the chips of a pending move, and finally every
+   * rectangle `hudRects` lists.
+   */
+  private hudCoversPoint(point: Pixel): boolean {
+    if (this.menuOpen) return true;
+    if (this.inspectedId !== null && containsPoint(INSPECT_RECT, point)) return true;
+    if (
+      this.autoEndTurn.phase === 'counting' &&
+      (containsPoint(COUNTDOWN_LINK_RECT, point) || containsPoint(COUNTDOWN_RECT, point))
+    ) {
+      return true;
+    }
+    if (containsPoint(SETTINGS_BUTTON_RECT, point)) return true;
+    if (this.settingsOpen && containsPoint(SETTINGS_PANEL_RECT, point)) return true;
+    if (containsPoint(logRect(this.logOpen), point)) return true;
+    if (buttonIndexAt(point) !== null) return true;
+    if (containsPoint(CAMERA_RECT, point)) return true;
+    if (moveChipIndexAt(point) !== null) return true;
+
+    return hudRects().some((rect) => containsPoint(rect, point));
   }
 
   /**
@@ -1459,6 +1592,9 @@ export class MatchScene extends Phaser.Scene {
   /** The match is over: clicks stop, the countdown stops with them, and the way out appears. */
   private finish(): void {
     this.finished = true;
+    // No board is being played any more, so nothing on it stays marked as hovered (D5): the result
+    // screen and the battle report are read against nothing the mouse is over.
+    this.setHoveredCell(null);
     this.syncAutoEndTurn();
     this.pushHud();
   }
@@ -1631,7 +1767,8 @@ export class MatchScene extends Phaser.Scene {
    * building is whole — and a building the view has already cut down is left solid, because there is
    * nothing left behind it to hide.
    *
-   * The cell under the pointer is not among them yet: the client has no hover to read one from.
+   * The tile under the mouse is not among them yet: the client has a hover to read one from now, but
+   * fading what stands over it is a follow-up of its own and not asked for here.
    */
   private drawCoveredBuildings(state: PublicState): void {
     const { map, mapView } = this;
@@ -1701,6 +1838,11 @@ export class MatchScene extends Phaser.Scene {
     // path, a mouse sweeping the board, goes through `setPreviewCell` instead and skips the rest of
     // this method's own work.
     this.drawTargetPreview(this.state);
+    // The same catch for the mark of the tile under the mouse: every other mutation ends up here, so
+    // this is where a mark left over from a board that has moved on is taken down. The high-frequency
+    // path, a mouse sweeping the board, goes through `setHoveredCell` and skips the rest of this
+    // method's work, exactly as the preview does.
+    this.drawHoverHighlight(this.state);
     const reportTotal = this.fullLogLines.length;
     const reportFrom = reportTotal === 0 ? 0 : this.reportScroll + 1;
     const reportTo = reportTotal === 0 ? 0 : Math.min(this.reportScroll + REPORT_LINES, reportTotal);
