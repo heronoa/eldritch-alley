@@ -149,6 +149,18 @@ const languageButtons = LANGUAGE_OPTIONS.map((option) => {
   return { locale: option.locale, element };
 });
 
+/**
+ * The screens over the title that rewrite themselves when the language changes. They are written by
+ * their own file and the title cannot reach into them, so they are told instead: the onboarding layer is
+ * the one that registers today, and it needs this to rewrite the card it has open.
+ */
+const localeHandlers: ((locale: Locale) => void)[] = [];
+
+/** Registers a handler for a change of language. Called after the title has written itself again. */
+export function onLocaleChange(handler: (locale: Locale) => void): void {
+  localeHandlers.push(handler);
+}
+
 /** What a press on the switcher does: the language changes, the page is written again, and it is kept. */
 function switchLanguage(locale: Locale): void {
   if (!switchesTo(getLocale(), locale)) return;
@@ -156,6 +168,9 @@ function switchLanguage(locale: Locale): void {
   setLocale(locale);
   saveLocale(locale);
   render();
+
+  // Told after the title is written, so a handler that reads the catalog reads the new language.
+  for (const handler of localeHandlers) handler(locale);
 }
 
 /** The server to join. Resolved here, at load: a build without a valid endpoint never shows the title. */

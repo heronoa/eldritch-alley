@@ -3,7 +3,7 @@
 **Milestone:** m1-logic
 **Feature pai:** onboarding
 **Criado em:** 2026-10-14
-**Status:** pendente
+**Status:** aprovado (2026-10-16)
 
 ## 1. Objetivo
 
@@ -51,16 +51,16 @@ os controles pedem. Uma chave que falta aqui é erro de compilação, igual a `t
 ## 4. Testes previstos
 
 **Unitários:**
-- [ ] `ONBOARDING_CARDS` começa com todo card `story` antes de qualquer `howto`, e não repete id
-- [ ] `next(flow, 'advance')` no último passo leva a `{ state: 'done' }`, não a um índice fora da lista
-- [ ] `next(flow, 'back')` no primeiro passo devolve o mesmo `flow` (evento ignorado)
-- [ ] `next(flow, 'skip')` leva a `{ state: 'done' }` de qualquer passo
-- [ ] `next` depois de `done` ignora todo evento
-- [ ] `hasSeenOnboarding` devolve `false` quando `storage` é `null`, quando a chave não existe, e quando `getItem` lança
-- [ ] `markOnboardingSeen` seguido de `hasSeenOnboarding` com o mesmo storage devolve `true`
-- [ ] `markOnboardingSeen` não lança quando `setItem` lança
-- [ ] `onboardingCopy()` tem uma entrada para todo id de `ONBOARDING_CARDS`, nos dois locales
-- [ ] `catalog.test.ts`: toda chave `onboarding.*` existe nos dois catálogos (teste de paridade já existente, estendido)
+- [x] `ONBOARDING_CARDS` começa com todo card `story` antes de qualquer `howto`, e não repete id
+- [x] `next(flow, 'advance')` no último passo leva a `{ state: 'done' }`, não a um índice fora da lista
+- [x] `next(flow, 'back')` no primeiro passo devolve o mesmo `flow` (evento ignorado)
+- [x] `next(flow, 'skip')` leva a `{ state: 'done' }` de qualquer passo
+- [x] `next` depois de `done` ignora todo evento
+- [x] `hasSeenOnboarding` devolve `false` quando `storage` é `null`, quando a chave não existe, e quando `getItem` lança
+- [x] `markOnboardingSeen` seguido de `hasSeenOnboarding` com o mesmo storage devolve `true`
+- [x] `markOnboardingSeen` não lança quando `setItem` lança
+- [x] `onboardingCopy()` tem uma entrada para todo id de `ONBOARDING_CARDS`, nos dois locales
+- [x] `catalog.test.ts`: toda chave `onboarding.*` existe nos dois catálogos (teste de paridade já existente, estendido)
 
 **E2E:** nenhum nesta milestone — não há DOM aqui.
 

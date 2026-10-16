@@ -3,7 +3,7 @@
 **Milestone:** m2-integration
 **Feature pai:** onboarding
 **Criado em:** 2026-10-14
-**Status:** pendente
+**Status:** implementado, aguardando revisão (2026-10-16)
 
 ## 1. Objetivo
 
@@ -38,13 +38,13 @@ foco preso já garante. Não guarda nenhum estado que a m1 não exponha.
 ## 4. Testes previstos
 
 **Unitários/jsdom:**
-- [ ] Primeira visita (storage vazio): `#onboarding` perde `hidden` no load
-- [ ] Visita com a flag marcada: `#onboarding` continua `hidden` no load
-- [ ] `skip` em qualquer passo marca a flag e esconde o overlay
-- [ ] `advance` no último card marca a flag e esconde o overlay
-- [ ] O link do rodapé reabre o overlay no passo 0 mesmo com a flag já marcada, e não altera a flag
-- [ ] Trocar o idioma com o overlay aberto reescreve o card atual sem mudar de passo
-- [ ] Tab dentro do overlay aberto nunca sai dele (mesmo teste de ciclo que `notice` já tem em `title`)
+- [x] Primeira visita (storage vazio): `#onboarding` perde `hidden` no load
+- [x] Visita com a flag marcada: `#onboarding` continua `hidden` no load
+- [x] `skip` em qualquer passo marca a flag e esconde o overlay
+- [x] `advance` no último card marca a flag e esconde o overlay
+- [x] O link do rodapé reabre o overlay no passo 0 mesmo com a flag já marcada, e não altera a flag
+- [x] Trocar o idioma com o overlay aberto reescreve o card atual sem mudar de passo
+- [x] Tab dentro do overlay aberto nunca sai dele (mesmo teste de ciclo que `notice` já tem em `title`)
 
 **E2E:** nenhum além do jsdom acima — o projeto não roda Playwright hoje (`frontend/package.json` só
 tem Vitest); abrir essa frente fica fora de escopo desta milestone.
