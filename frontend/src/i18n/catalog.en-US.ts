@@ -45,7 +45,7 @@ export const enUS: Record<MessageKey, string> = {
     'The Supernatural Control Agency licenses who may work magic in the city. There is no written exam: your admission is the match you are about to play.',
   'onboarding.story-squad.heading': 'Your squad',
   'onboarding.story-squad.body':
-    'You go into the alley with three agents — soldiers, initiates and adepts. Each brings their own class, their own weapon or magic, and their own idea of what is worth the risk.',
+    'You go into the alley with three agents — a sniper, a wizard and a priest. Each brings their own class, their own weapon or magic, and their own idea of what is worth the risk.',
 
   'onboarding.grid-and-height.heading': 'The grid has height',
   'onboarding.grid-and-height.body':

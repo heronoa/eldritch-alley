@@ -49,9 +49,12 @@ export const ptBR = {
   'onboarding.story-admission.heading': 'O teste de admissão',
   'onboarding.story-admission.body':
     'A Agência de Controle do Sobrenatural licencia quem pode usar magia na cidade. Não há prova escrita: a sua admissão é a partida que você vai jogar agora.',
+  // The three classes the match actually fields, named the way the game names them: the advanced
+  // classes are what ships (`sniper`, `wizard`, `priest` in `backend/game-server/src/map.ts`), while
+  // the pitch's own opening line names the base classes they are promoted from.
   'onboarding.story-squad.heading': 'O seu esquadrão',
   'onboarding.story-squad.body':
-    'Você entra no beco com três agentes — soldados, iniciados e adeptos. Cada um traz a sua classe, a sua arma ou a sua magia, e a sua própria noção de risco.',
+    'Você entra no beco com três agentes — um sniper, um wizard e um priest. Cada um traz a sua classe, a sua arma ou a sua magia, e a sua própria noção de risco.',
 
   'onboarding.grid-and-height.heading': 'A grade tem altura',
   'onboarding.grid-and-height.body':

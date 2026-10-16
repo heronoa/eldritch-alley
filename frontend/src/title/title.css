@@ -162,15 +162,21 @@ h1 {
    is drawn small and blown up, so a neon pixel can be a bright block under this corner. At 0.92
    --muted stays above 5.8:1 even over the brightest thing the city draws (#3de9ff), which is the
    worst case; over the plain night it is 6.6:1, and --ink is far past both. The script fills the box
-   with one button per locale; an empty one draws nothing, which is what a page without script gets. */
+   with one button per locale; an empty one draws nothing, which is what a page without script gets.
+
+   It is a box of its own on the page, and not a part of the title's layer: that layer is fixed, so a
+   `z-index` written inside it would order the switcher against the title's own text and against
+   nothing else, and the cards over the title — which have to leave it reachable, since a card is read
+   in the language it is read in — would stay above it. `fixed` holds the corner now that it stands on
+   its own, and the number is the layer the notice and the onboarding share, plus one. */
 .lang {
-  position: absolute;
+  position: fixed;
   top: 12px;
   right: 16px;
+  z-index: 2;
   display: flex;
   gap: 2px;
   padding: 3px;
-  pointer-events: auto;
   background: rgba(5, 7, 15, 0.92);
 }
 
@@ -302,11 +308,13 @@ footer {
 }
 
 /* Where the match is drawn, once the server has confirmed the session. It covers the title and the
-   city, and carries the game's own colour so the bars around a fitted canvas are not another night. */
+   city, and carries the game's own colour so the bars around a fitted canvas are not another night.
+   It is the top of the client's stack, one number above the switcher, so a match on the screen covers
+   the switcher and the cards over the title instead of leaving them floating over the board. */
 #game {
   position: fixed;
   inset: 0;
-  z-index: 2;
+  z-index: 3;
   background: var(--game);
 }
 

@@ -121,8 +121,8 @@
 }
 
 /* The footer link that opens the sequence again. The footer does not take the pointer (`pointer-events:
-   none`), so the link gives it back for itself, the way the switcher does. It reads in the muted ink
-   rather than the footer's own grey, which is the title screen's recorded 4.02:1 gap. */
+   none`), so the link gives it back for itself. It reads in the muted ink rather than the footer's own
+   grey, which is the title screen's recorded 4.02:1 gap. */
 .how-to-play {
   padding: 0;
   cursor: pointer;
