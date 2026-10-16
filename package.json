@@ -6,11 +6,12 @@
     "backend/engine",
     "backend/game-server",
     "backend/platform-api",
+    "backend/e2e",
     "frontend"
   ],
   "scripts": {
     "build": "npm run build -w @eldritch-alley/engine && npm run build -w @eldritch-alley/game-server && npm run build -w @eldritch-alley/platform-api && npm run build -w @eldritch-alley/frontend",
-    "test": "npm test -w @eldritch-alley/engine && npm test -w @eldritch-alley/game-server && npm test -w @eldritch-alley/platform-api && npm test -w @eldritch-alley/frontend",
+    "test": "npm test -w @eldritch-alley/engine && npm test -w @eldritch-alley/game-server && npm test -w @eldritch-alley/platform-api && npm test -w @eldritch-alley/frontend && npm test -w @eldritch-alley/e2e",
     "typecheck": "tsc -b backend/engine backend/game-server backend/platform-api",
     "db:migrate": "npm run migrate -w @eldritch-alley/platform-api",
     "db:migrate:create": "npm run migrate:create -w @eldritch-alley/platform-api",

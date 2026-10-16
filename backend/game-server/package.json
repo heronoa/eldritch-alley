@@ -11,9 +11,11 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@aws-sdk/client-sqs": "^3.1152.0",
     "@colyseus/core": "^0.18.1",
     "@colyseus/ws-transport": "^0.18.1",
-    "colyseus": "^0.18.1"
+    "colyseus": "^0.18.1",
+    "jose": "^6.2.12"
   },
   "devDependencies": {
     "@colyseus/sdk": "^0.18.1",

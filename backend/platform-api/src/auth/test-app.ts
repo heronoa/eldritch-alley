@@ -11,6 +11,8 @@ import { configureApp } from '../app';
 import { runMigrations } from '../db/migrate';
 import { MAILER, type EmailMessage, type Mailer } from '../email/mailer';
 import { EMAIL_VARIABLES } from '../email/mailer-from-environment';
+import { MatchEndedConsumer } from '../matches/match-ended.consumer';
+import { InMemoryMatchEndedQueue, MATCH_ENDED_QUEUE, type MatchEndedQueue } from '../queue/queue';
 import { OAUTH_PROVIDERS, type OAuthProvider, type ProviderName } from './provider';
 
 /** The origin the client would be served from, and the one CORS has to allow. */
@@ -34,6 +36,13 @@ export interface TestApp {
   url: string;
   /** Every message the platform "sent", in order. No case here touches the network. */
   mailer: FakeMailer;
+  /**
+   * One pass of the application's own consumer over the queue it was given. A case uses this instead of
+   * waiting: the polling interval is set to an hour, so the only way a message is stored during a test is
+   * because the case asked for it — which is the difference between a suite that is fast and a suite that
+   * sleeps.
+   */
+  drain(): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -96,6 +105,14 @@ export async function setAuthEnvironment(
   // environment means.
   delete process.env.GAME_TICKET_TTL_SECONDS;
 
+  // The match queue is a value a test replaces, not a URL it reaches: the consumer's factory reads this
+  // variable and builds a client it would then poll, so it is set to something that is never dialled —
+  // and the interval is set to an hour, so that a container built by a case that only wanted to check a
+  // secret does not start polling anything at all. A case that wants messages delivered to the platform
+  // drains them itself (src/auth/test-app.ts's `queue`).
+  process.env.MATCH_ENDED_QUEUE_URL = 'http://queue.invalid/000000000000/match-ended';
+  process.env.MATCH_ENDED_POLL_INTERVAL_MS = '3600000';
+
   // No mail is configured in a test environment, and the mailer is replaced outright below. A case that
   // wants the choice between the two adapters makes it without a container (src/email/mailer.test.ts).
   for (const name of EMAIL_VARIABLES) delete process.env[name];
@@ -118,6 +135,12 @@ export async function startTestApp(options: {
   providers?: Partial<Record<ProviderName, OAuthProvider>>;
   /** `false` asks for a platform with none of the five OAuth variables in the environment. */
   oauth?: boolean;
+  /**
+   * The queue the consumer reads from. Absent means one of this harness's own, which is what a case that
+   * only cares that a message *is* stored passes. The end-to-end case passes the object the match server
+   * publishes into, so that one object is both halves of the conversation.
+   */
+  queue?: MatchEndedQueue;
 }): Promise<TestApp> {
   await setAuthEnvironment(options.databaseUrl, { oauth: options.oauth });
   // The container does not create tables — the migrations do, and in production that is a step of its
@@ -125,11 +148,16 @@ export async function startTestApp(options: {
   await runMigrations({ databaseUrl: options.databaseUrl });
 
   const mailer = new FakeMailer();
+  const queue = options.queue ?? new InMemoryMatchEndedQueue();
   let builder: TestingModuleBuilder = Test.createTestingModule({ imports: [AppModule] })
     // Replaced always, and not only when a case asks: nothing in the suite may open a socket to a mail
     // server, and a case that forgot to ask must not be the one that tries.
     .overrideProvider(MAILER)
-    .useValue(mailer);
+    .useValue(mailer)
+    // And the same for the queue, for the same reason: a URL in the environment is not a queue, and a
+    // consumer left reading one would be a test that fails when the network does.
+    .overrideProvider(MATCH_ENDED_QUEUE)
+    .useValue(queue);
   if (options.providers !== undefined) {
     builder = builder.overrideProvider(OAUTH_PROVIDERS).useValue(options.providers);
   }
@@ -138,9 +166,12 @@ export async function startTestApp(options: {
   const app: INestApplication = configureApp(moduleRef.createNestApplication());
   await app.listen(0, '127.0.0.1');
 
+  const consumer = moduleRef.get(MatchEndedConsumer);
+
   return {
     url: await app.getUrl(),
     mailer,
+    drain: () => consumer.drain(),
     close: () => app.close(),
   };
 }

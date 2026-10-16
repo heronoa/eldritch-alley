@@ -3,7 +3,7 @@
 **Created:** 2026-10-16
 **Roadmap:** [ROADMAP.md](../../ROADMAP.md) § M4. Accounts and persistence
 **Spec:** [m4-accounts-and-persistence.spec.md](../inputs/m4-accounts-and-persistence.spec.md)
-**Status:** in progress — m4-01 approved (2026-10-16), m4-02 in progress
+**Status:** in progress — m4-01 approved (2026-10-16), m4-02 in progress, m4-03 delivered (2026-10-16)
 
 ## What this delivery covers
 
@@ -24,7 +24,7 @@ agents go into a match, agent death and level-up. They stay in M4 as a later del
 | 0 | Index correction (M3 and M3.5) — first commit of m4-01 | [x] delivered | — |
 | 1 | [m4-01-persistence.plan.md](./m4-01-persistence.plan.md) | [x] approved (2026-10-16) | — |
 | 2 | [m4-02-auth.plan.md](./m4-02-auth.plan.md) | [~] in progress | — |
-| 3 | [m4-03-match-recording.plan.md](./m4-03-match-recording.plan.md) | [ ] pending | — |
+| 3 | [m4-03-match-recording.plan.md](./m4-03-match-recording.plan.md) | [x] delivered (2026-10-16) | — |
 | 4 | [m4-04-client.plan.md](./m4-04-client.plan.md) | [ ] pending | — |
 | 5 | [m4-05-contact-release-privacy.plan.md](./m4-05-contact-release-privacy.plan.md) | [ ] pending | — |
 
@@ -131,9 +131,9 @@ All four items are settled by m4-01. Recorded here as they were found, with what
   spec itself suggests.
 - `docs/adr/README.md` listed 0001–0017 and now carries the 0019 row. 0018 and 0020 come with m4-02.
 
-One thing m4-01 did **not** correct, because it is not its subject: `.env.example` still has a
-Portuguese section header (`# Portas locais`) in an English repository. One line, worth taking with any
-later change to that file.
+One thing m4-01 did **not** correct, because it is not its subject: `.env.example` still had a
+Portuguese section header (`# Portas locais`) in an English repository. **Closed by m4-02**, which
+edited that file anyway and took the line with it.
 
 ## ADRs this index opens
 
@@ -160,6 +160,11 @@ The spec's list, with where each case lives, because two of them cannot live whe
 | Starter squad, once | `backend/platform-api` | — |
 | Game ticket (expired, bad signature, absent) | `backend/game-server` for the refusal, `backend/platform-api` for the issuing | The verification is the match server's |
 | Idempotent consumer, guests, contact, unsubscribe, migrations | `backend/platform-api` | — |
+| The player's journey, and the two backends talking | `backend/e2e` | The only place that may know both services. It is a workspace that depends on the other two and is depended on by nobody, so neither backend learns about the other; the tests are not typechecked, which is what lets it import both by path |
+
+The end-to-end workspace is m4-03's addition and not a milestone of the index: it exists to hold the
+one test that cannot live in either backend. What it covers, step by step, is section 8 of
+[m4-03-match-recording.plan.md](./m4-03-match-recording.plan.md).
 
 The gap this leaves — rebuilding a match *from the database* with the engine in the same process — is
 opened as a backlog item for the replay delivery, whose plan has to solve it anyway (it needs the map

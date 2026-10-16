@@ -40,6 +40,9 @@ services:
       - "4566:4566"
     volumes:
       - localstack-data:/var/lib/localstack
+      # The queues themselves: match-ended.fifo and its dead-letter queue, with the redrive policy that
+      # gives up on a message the platform cannot store. Read by LocalStack once the service is up.
+      - ./docker/localstack/init:/etc/localstack/init/ready.d:ro
 
   # The schema, applied once, before any instance of the API starts. It is the same image with a
   # different command: the migration is a process, not something the API does on its way up.
@@ -96,6 +99,10 @@ services:
       EMAIL_SMTP_USER: ${EMAIL_SMTP_USER:-}
       EMAIL_SMTP_PASSWORD: ${EMAIL_SMTP_PASSWORD:-}
       EMAIL_FROM: ${EMAIL_FROM:-}
+      # Match recording (m4-03). Required, and there is no local default: a platform that cannot read
+      # the queue serves an empty battle history to everyone without ever saying so (see config.ts).
+      MATCH_ENDED_QUEUE_URL: http://localstack:4566/000000000000/match-ended.fifo
+      MATCH_ENDED_POLL_INTERVAL_MS: ${MATCH_ENDED_POLL_INTERVAL_MS:-1000}
     ports:
       - "3000:3000"
     depends_on:
@@ -122,6 +129,13 @@ services:
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+      # The public half of the ticket pair, and only the public half: this service verifies a ticket and
+      # cannot issue one. Required here even though the server runs happily without it — a stack that
+      # signs tickets and never verifies them is a stack where nobody's matches are recorded, and that
+      # is a mistake to stop on rather than to discover from an empty battle list.
+      GAME_TICKET_PUBLIC_KEY: ${GAME_TICKET_PUBLIC_KEY:?set GAME_TICKET_PUBLIC_KEY in .env}
+      # The other half of the platform's queue setting below: the same queue, seen from the writing end.
+      MATCH_ENDED_QUEUE_URL: http://localstack:4566/000000000000/match-ended.fifo
     ports:
       - "2567:2567"
     depends_on:

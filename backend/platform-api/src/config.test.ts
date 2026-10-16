@@ -2,7 +2,7 @@ import { Test } from '@nestjs/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from './app.module';
 import { setAuthEnvironment } from './auth/test-app';
-import { readDatabaseUrl, readGameTicketTtl, readOptional, readPort, readRequired } from './config';
+import { readDatabaseUrl, readGameTicketTtl, readMatchEndedQueueUrl, readOptional, readPollIntervalMs, readPort, readRequired } from './config';
 import { createScratchDatabase, dropScratchDatabase, hasDatabase } from './db/test-database';
 
 describe('readDatabaseUrl', () => {
@@ -76,6 +76,41 @@ describe('readGameTicketTtl', () => {
   });
 });
 
+describe('readMatchEndedQueueUrl', () => {
+  it('returns the queue URL', () => {
+    expect(readMatchEndedQueueUrl('  http://localhost:4566/000000000000/match-ended  ')).toBe(
+      'http://localhost:4566/000000000000/match-ended',
+    );
+  });
+
+  it('rejects a missing and a blank value, naming the variable', () => {
+    // The one value the platform cannot do without: a platform with no queue is a platform whose battle
+    // history is empty, and the refusal belongs at boot rather than in a queue nobody is reading.
+    expect(() => readMatchEndedQueueUrl(undefined)).toThrow(/MATCH_ENDED_QUEUE_URL/);
+    expect(() => readMatchEndedQueueUrl('')).toThrow(/MATCH_ENDED_QUEUE_URL/);
+    expect(() => readMatchEndedQueueUrl('   ')).toThrow(/MATCH_ENDED_QUEUE_URL/);
+  });
+});
+
+describe('readPollIntervalMs', () => {
+  it('is one second when the environment says nothing', () => {
+    expect(readPollIntervalMs(undefined)).toBe(1000);
+    expect(readPollIntervalMs('')).toBe(1000);
+    expect(readPollIntervalMs('   ')).toBe(1000);
+  });
+
+  it('is the number of milliseconds the environment asks for', () => {
+    expect(readPollIntervalMs('250')).toBe(250);
+    expect(readPollIntervalMs(' 60000 ')).toBe(60000);
+  });
+
+  it('rejects anything that is not a whole positive number of milliseconds, naming the variable', () => {
+    for (const bad of ['rápido', '0', '-1', '100.5']) {
+      expect(() => readPollIntervalMs(bad)).toThrow(/MATCH_ENDED_POLL_INTERVAL_MS/);
+    }
+  });
+});
+
 // The database is not read by a service at its first query: it is read while the container is being
 // built, so a platform with an unusable DATABASE_URL fails to come up rather than answering requests
 // with errors. That is the shape `readPort` already has, and neither case needs a database to check.
@@ -138,6 +173,19 @@ describe.skipIf(!hasDatabase)('the platform at boot, with the rest of the enviro
     try {
       await expect(Test.createTestingModule({ imports: [AppModule] }).compile()).rejects.toThrow(
         /GAME_TICKET_TTL_SECONDS/,
+      );
+    } finally {
+      await setAuthEnvironment(url);
+    }
+  });
+
+  it('does not build its container without the queue finished matches arrive on', async () => {
+    // A platform that cannot read the queue serves an empty battle history to everybody, and there is no
+    // request that would ever say so. It stops at boot, like a missing session secret.
+    delete process.env.MATCH_ENDED_QUEUE_URL;
+    try {
+      await expect(Test.createTestingModule({ imports: [AppModule] }).compile()).rejects.toThrow(
+        /MATCH_ENDED_QUEUE_URL/,
       );
     } finally {
       await setAuthEnvironment(url);

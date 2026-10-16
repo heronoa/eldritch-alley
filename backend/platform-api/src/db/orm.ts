@@ -1,9 +1,13 @@
+import { join } from 'node:path';
 import type { Constructor } from '@mikro-orm/core';
 import type { Migration } from '@mikro-orm/migrations';
 import { MikroORM, type Options } from '@mikro-orm/postgresql';
 import { Agent } from './entities/agent.entity';
 import { AuthToken } from './entities/auth-token.entity';
 import { Identity } from './entities/identity.entity';
+import { MatchAgent } from './entities/match-agent.entity';
+import { MatchEvent } from './entities/match-event.entity';
+import { Match } from './entities/match.entity';
 import { PasswordCredential } from './entities/password-credential.entity';
 import { User } from './entities/user.entity';
 
@@ -32,12 +36,17 @@ export interface DatabaseConfig {
 export function ormOptions(config: DatabaseConfig): Options {
   return {
     clientUrl: config.databaseUrl,
-    entities: [User, Identity, Agent, PasswordCredential, AuthToken],
+    entities: [User, Identity, Agent, PasswordCredential, AuthToken, Match, MatchAgent, MatchEvent],
     migrations: {
       // The compiled migrations in a built image, the sources under tsx. Both are derived from the
       // entities, so the schema cannot drift from them without a file in this repository changing.
-      path: 'dist/migrations',
-      pathTs: 'src/migrations',
+      //
+      // Read from this file's own folder and never from the working directory, which is where a relative
+      // path would be resolved. A platform started from anywhere but its own folder — a test runner of
+      // another workspace, a supervisor that sets no `cwd` — found no migrations at all, applied none,
+      // and came up against a schema that was never created, without saying a word about it.
+      path: join(__dirname, '..', '..', 'dist', 'migrations'),
+      pathTs: join(__dirname, '..', 'migrations'),
       // Each migration in its own transaction. PostgreSQL has transactional DDL, so a migration that
       // fails half way through leaves nothing behind for the next run to trip over.
       transactional: true,

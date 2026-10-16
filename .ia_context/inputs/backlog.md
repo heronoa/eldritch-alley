@@ -80,3 +80,21 @@ Order follows the roadmap: [ROADMAP.md](../../ROADMAP.md).
 - **Trigger:** after the rotation feature is accepted on device, and once the sprites of the rotation keep the look of the detailed view (see the smoke-test plan, which makes the units match).
 - **Notes:** the turn draws a simplified picture on one canvas (`frontend/src/scenes/map/RotationView.ts`). Richer drawing there (the prototype's windows, kerbs and markings, or a fuller projection of the blocks) would make it closer to the detailed view. Cost is measured under DT-88 before any of this.
 - **Evidence:** `frontend/src/scenes/map/RotationView.ts:82-114` (`draw`, `drawBlock`, `drawFigure`); `frontend/src/view/rotation-animation.ts`.
+
+### DT-91 · Rebuilding a match from the database, with the engine in the same process
+- **Category:** Tests
+- **Risk if untreated:** the spec's "done when" — a match rebuilt from what was stored has the same
+  final-state hash as the live one — is proved in two halves and never as a whole. The match server
+  proves the `match-ended` message carries everything a replay needs
+  (`hashState(applyEvents(createMatchSetup(seed), events)) === finalStateHash`), and the platform proves
+  the database hands the message back unchanged. Nothing runs the second half into the first.
+- **Effort:** M
+- **Trigger:** the replay delivery, which needs the map and class data shared between the two backends
+  anyway and is therefore where the question is answered.
+- **Notes:** the obstacle is not the test, it is where `createMatchSetup(seed)` lives: importing it into
+  `platform-api` would make the platform depend on the match server. Either the content moves to a
+  package both may import, or the rebuild happens in a third place that is allowed to know both — the
+  shape `backend/e2e` already has.
+- **Evidence:** `.ia_context/plans/m4-03-match-recording.plan.md` § 6;
+  `backend/game-server/src/match-ended.test.ts` (the message side);
+  `backend/platform-api/src/matches/matches.service.test.ts` (the storage side).

@@ -81,6 +81,30 @@ export function readGameTicketTtl(raw: string | undefined): number {
   return seconds;
 }
 
+/**
+ * The queue finished matches arrive on. Required, unlike the mail server: a platform that cannot read it
+ * is a platform whose entire battle history is empty, and a refusal at boot is a line in the deploy log
+ * rather than a silence nobody notices until a player asks where their matches went.
+ */
+export function readMatchEndedQueueUrl(raw: string | undefined): string {
+  return readRequired(raw, 'MATCH_ENDED_QUEUE_URL');
+}
+
+/**
+ * How long the consumer waits between two looks at the queue, in milliseconds. A second when the
+ * environment says nothing, which is the delay a player sees between finishing a match and seeing it in
+ * their history — the queue holds a message until it is deleted, so nothing is lost by waiting longer.
+ */
+export function readPollIntervalMs(raw: string | undefined): number {
+  if (raw === undefined || raw.trim() === '') return 1000;
+
+  const ms = Number(raw);
+  if (!Number.isInteger(ms) || ms < 1) {
+    throw new Error(`MATCH_ENDED_POLL_INTERVAL_MS must be a whole number of milliseconds, got ${raw}`);
+  }
+  return ms;
+}
+
 /** What an error says it found: `nothing` for an unset or blank variable, the value in quotes otherwise. */
 function valueOrNothing(raw: string | undefined): string {
   return raw?.trim() ? `"${raw.trim()}"` : 'nothing';
