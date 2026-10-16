@@ -53,7 +53,7 @@ The backend services read the root `.env` (copied from `.env.example`). The fron
 ## Manual Deploy
 ```bash
 REG=registry.snake-carob.ts.net
-TAG=1.7.0
+TAG=1.8.0
 
 
  for svc in platform-api game-server; do   docker build -f backend/Dockerfile --build-arg SERVICE=$svc -t $REG/eldritch-alley/$svc:$TAG .     && docker push $REG/eldritch-alley/$svc:$TAG; done
