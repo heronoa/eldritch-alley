@@ -39,6 +39,46 @@ export const ptBR = {
   // What the switcher is, for a screen reader. The two letters on its buttons need no translation.
   'title.language': 'Idioma',
 
+  // The onboarding: the cards of the admission test, read once before the first match. One heading and
+  // one body per card, keyed by the id the sequence gives it (`src/onboarding/content.ts`), plus the
+  // four controls and the footer link of the title that opens the sequence again. The wording is the
+  // owner's to review before the milestone closes.
+  'onboarding.story-incident.heading': 'Ocorrência aberta',
+  'onboarding.story-incident.body':
+    'A Secretaria de Assuntos Ocultos abriu uma ocorrência no beco atrás do mercado: magia sem licença, três testemunhas e nenhuma explicação que fique de pé.',
+  'onboarding.story-admission.heading': 'O teste de admissão',
+  'onboarding.story-admission.body':
+    'A Agência de Controle do Sobrenatural licencia quem pode usar magia na cidade. Não há prova escrita: a sua admissão é a partida que você vai jogar agora.',
+  'onboarding.story-squad.heading': 'O seu esquadrão',
+  'onboarding.story-squad.body':
+    'Você entra no beco com três agentes — soldados, iniciados e adeptos. Cada um traz a sua classe, a sua arma ou a sua magia, e a sua própria noção de risco.',
+
+  'onboarding.grid-and-height.heading': 'A grade tem altura',
+  'onboarding.grid-and-height.body':
+    'O mapa é uma grade de casas, e cada casa tem um nível: calçada, primeiro andar, telhado. Subir custa movimento, e cada classe sobe um tanto por passo. Quem está mais alto vê mais longe, atira mais longe e acerta melhor.',
+  'onboarding.initiative-order.heading': 'A fila de iniciativa',
+  'onboarding.initiative-order.body':
+    'A ordem das vezes vem da velocidade de cada unidade e fica visível para os dois lados, na fila no alto da tela. Na vez de uma unidade, ela pode mover e agir, na ordem que você quiser.',
+  'onboarding.move-and-attack.heading': 'Mover e atacar',
+  'onboarding.move-and-attack.body':
+    'Escolha Mover para ver as casas ao alcance e clique na que quiser; escolha Atacar e clique no alvo. As costas e o flanco do inimigo rendem bônus de acerto e de dano — a direção para a qual ele olha importa.',
+  'onboarding.ammo-and-reload.heading': 'Munição e energia',
+  'onboarding.ammo-and-reload.body':
+    'Quem luta com arma gasta munição e a repõe em Recarregar; quem luta com magia gasta energia, que volta aos poucos a cada rodada pela mesma ação — o registro da partida chama isso de meditar. Os pips sobre a unidade mostram o que ainda resta.',
+  'onboarding.cover-and-chance.heading': 'Cobertura e chance de acerto',
+  'onboarding.cover-and-chance.body':
+    'Paredes, carros e caixotes dão cobertura e cortam a linha de visão: um tiro contra cobertura acerta menos. Aponte para um alvo e a badge verde sobre ele mostra a chance daquele tiro, em porcentagem, antes de você atirar.',
+  'onboarding.abilities.heading': 'Habilidades',
+  'onboarding.abilities.body':
+    'Cada classe carrega habilidades: magias de área, curas, golpes próprios. O botão Habilidade abre a lista, mostra o custo de cada uma e desenha no mapa as casas que ela alcança antes de você confirmar.',
+
+  'onboarding.advance': 'Continuar',
+  'onboarding.back': 'Voltar',
+  'onboarding.skip': 'Pular',
+  'onboarding.finish': 'Concluir',
+  // The footer link of the title, which reopens the sequence: a question, never a first visit.
+  'onboarding.howToPlay': 'Como jogar',
+
   // The battle log. One sentence per event, and the placeholders are filled by `interpolate`.
   'log.event.moved': '{actor} moveu de {from} para {to}',
   'log.event.attacked': '{actor} acertou {target} por {damage}',

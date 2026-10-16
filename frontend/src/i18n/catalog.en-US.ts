@@ -34,6 +34,44 @@ export const enUS: Record<MessageKey, string> = {
   'title.footerPlace': 'Belém · the small hours',
   'title.language': 'Language',
 
+  // The onboarding: the cards of the admission test. Written again in English rather than carried over
+  // word by word, like the title's copy above — same tone, and the same room for the owner to rewrite
+  // them before the milestone closes.
+  'onboarding.story-incident.heading': 'Incident opened',
+  'onboarding.story-incident.body':
+    'The Bureau of Occult Affairs opened an incident in the alley behind the market: unlicensed magic, three witnesses, and no explanation that holds up.',
+  'onboarding.story-admission.heading': 'The admission test',
+  'onboarding.story-admission.body':
+    'The Supernatural Control Agency licenses who may work magic in the city. There is no written exam: your admission is the match you are about to play.',
+  'onboarding.story-squad.heading': 'Your squad',
+  'onboarding.story-squad.body':
+    'You go into the alley with three agents — soldiers, initiates and adepts. Each brings their own class, their own weapon or magic, and their own idea of what is worth the risk.',
+
+  'onboarding.grid-and-height.heading': 'The grid has height',
+  'onboarding.grid-and-height.body':
+    'The map is a grid of cells, and every cell has a level: pavement, first floor, rooftop. Climbing costs movement, and each class climbs so much per step. Whoever stands higher sees farther, shoots farther and hits more often.',
+  'onboarding.initiative-order.heading': 'The initiative queue',
+  'onboarding.initiative-order.body':
+    'The turn order comes from each unit’s speed and is visible to both sides, in the queue at the top of the screen. On its turn, a unit may move and act, in whichever order you like.',
+  'onboarding.move-and-attack.heading': 'Moving and attacking',
+  'onboarding.move-and-attack.body':
+    'Pick Move to see the cells in reach and click the one you want; pick Attack and click the target. An enemy’s back and flank give a bonus to hit and to damage — which way it faces matters.',
+  'onboarding.ammo-and-reload.heading': 'Ammunition and energy',
+  'onboarding.ammo-and-reload.body':
+    'Weapon classes spend ammunition and top it up with Reload; magic classes spend energy, which comes back a little each round through that same action — the battle log calls it meditating. The pips above the unit show what is left.',
+  'onboarding.cover-and-chance.heading': 'Cover and hit chance',
+  'onboarding.cover-and-chance.body':
+    'Walls, cars and crates give cover and cut the line of sight: a shot against cover lands less often. Aim at a target and the green badge above it shows that shot’s chance, as a percentage, before you take it.',
+  'onboarding.abilities.heading': 'Abilities',
+  'onboarding.abilities.body':
+    'Every class carries abilities: area magic, heals, strikes of its own. The Ability button opens the list, shows what each one costs, and draws the cells it reaches on the map before you commit.',
+
+  'onboarding.advance': 'Continue',
+  'onboarding.back': 'Back',
+  'onboarding.skip': 'Skip',
+  'onboarding.finish': 'Finish',
+  'onboarding.howToPlay': 'How to play',
+
   // The battle log. One sentence per event, and the placeholders are filled by `interpolate`.
   'log.event.moved': '{actor} moved from {from} to {to}',
   'log.event.attacked': '{actor} hit {target} for {damage}',

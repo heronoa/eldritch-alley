@@ -63,6 +63,13 @@ describe('the en-US catalog', () => {
     expect(untranslatedTitle).toEqual([]);
   });
 
+  it('translates the onboarding, which m1 ships in both languages', () => {
+    // The cards are read through `t()`, so a key en-US has not translated shows up as Portuguese inside
+    // an English screen — the same gap the title's own block above holds shut.
+    const untranslatedOnboarding = missingKeys('en-US').filter((key) => key.startsWith('onboarding.'));
+    expect(untranslatedOnboarding).toEqual([]);
+  });
+
   it('carries the English copy the owner reviews before this milestone closes', () => {
     expect(enUS['title.document']).toBe('Eldritch Alley: Tactics');
     expect(enUS['title.meta']).toBe('BUREAU OF OCCULT AFFAIRS · INCIDENT NO. 2026/0001');
