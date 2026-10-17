@@ -1,0 +1,7 @@
+# Copy to backend.hcl (gitignored) and run: terraform init -backend-config=backend.hcl
+# The bucket name is the state_bucket_name output of the bootstrap stack.
+bucket       = "eldritch-tfstate-510915414773"
+key          = "prod/terraform.tfstate"
+region       = "us-east-1"
+encrypt      = true
+use_lockfile = true

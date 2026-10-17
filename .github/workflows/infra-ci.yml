@@ -4,7 +4,7 @@
 # The "plan" job needs AWS_REGION, AWS_PLAN_ROLE_ARN and TF_STATE_BUCKET as
 # repository variables, set from infra-01's bootstrap outputs. Until the
 # bootstrap stack is applied and those variables exist, and until
-# infra/aws/envs/prod exists (infra-04), that job's steps are inert by
+# infra/aws/envs/prod exists (infra-02), that job's steps are inert by
 # design: they print a notice and exit 0 rather than fail the workflow.
 name: infra-ci
 
@@ -126,7 +126,7 @@ jobs:
             ready=false
           fi
           if [ ! -d infra/aws/envs/prod ]; then
-            echo "::notice::infra/aws/envs/prod does not exist yet (arrives in infra-04) — skipping the live plan."
+            echo "::notice::infra/aws/envs/prod does not exist yet (arrives in infra-02) — skipping the live plan."
             ready=false
           fi
           echo "ready=$ready" >> "$GITHUB_OUTPUT"

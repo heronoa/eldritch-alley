@@ -8,4 +8,4 @@ Stacks:
 
 - `bootstrap/` — state bucket, GitHub OIDC provider and the three CI roles (plan, apply, deploy). Local state; `backend.tf` is added by hand once the bucket exists (see the plan).
 - `envs/stg/` — the existing EC2 staging environment (ROADMAP M2-b). Unchanged by this move except its path.
-- `envs/prod/` — not created yet; arrives with infra-04.
+- `envs/prod/` — the production stack. infra-02 adds the foundations (VPC, ECR, assets bucket, SQS, SSM parameters); infra-03 and infra-04 add data stores, edge and compute. State lives in the bootstrap bucket under `prod/terraform.tfstate`; copy `backend.hcl.example` to `backend.hcl` before `terraform init -backend-config=backend.hcl`.

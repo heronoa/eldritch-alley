@@ -14,3 +14,6 @@ coverage/
 *.tfstate.*
 .terraform/
 *.tfvars
+*.tfplan
+crash.log
+backend.hcl
