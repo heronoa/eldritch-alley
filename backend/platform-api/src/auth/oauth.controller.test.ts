@@ -124,7 +124,7 @@ describe.skipIf(!hasDatabase)('the OAuth routes', () => {
     });
 
     it('answers 404 for Keycloak when the deployment has no realm', async () => {
-      // The switch is off, so the route the realm would own does not exist — the same refusal an
+      // The realm is not configured, so the route it would own does not exist — the same refusal an
       // unknown provider has always had, and not a button that leads nowhere.
       const response = await fetch(`${app.url}/auth/keycloak`, { redirect: 'manual' });
 
@@ -333,19 +333,19 @@ describe.skipIf(!hasDatabase)('the OAuth routes', () => {
       expect(await response.json()).toEqual({ providers: ['github', 'google'] });
     });
 
-    it('is only Keycloak when the realm is configured alongside the direct pairs', async () => {
+    it('lists the realm beside the direct pairs that are configured', async () => {
       const withRealm = await startTestApp({ databaseUrl, keycloak: true });
       started.push(withRealm);
 
-      // The direct credentials are still in the environment (the harness sets them), and they are not
-      // built: the realm brokers those providers, and two doors would mean two accounts.
+      // The direct credentials are still in the environment (the harness sets them), so they are built
+      // too: the buttons are independent, and the realm neither replaces them nor hides them.
       expect(await (await fetch(`${withRealm.url}/auth/providers`)).json()).toEqual({
-        providers: ['keycloak'],
+        providers: ['keycloak', 'github', 'google'],
       });
 
       const direct = await fetch(`${withRealm.url}/auth/github`, { redirect: 'manual' });
-      expect(direct.status).toBe(404);
-      expect((await direct.json()).code).toBe('unknown_provider');
+      expect(direct.status).toBe(302);
+      expect(new URL(direct.headers.get('location') ?? '').origin).toBe('https://github.com');
     });
 
     it('is only the provider that is configured', async () => {

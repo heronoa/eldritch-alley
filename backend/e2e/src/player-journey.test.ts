@@ -693,10 +693,10 @@ describe.skipIf(!hasDatabase)('the player’s journey', () => {
       expect(setCookies(attempt)).toEqual([]);
     });
 
-    it('signs a player in through a configured realm, and offers no direct provider', async () => {
-      // The switch the deployment owns: when the realm is configured it is the only door, and the direct
-      // providers are not built even though their credentials are in the same environment. The realm is a
-      // fake here, because a test cannot run Keycloak; everything around it is the real platform.
+    it('signs a player in through a configured realm, beside the direct providers', async () => {
+      // Each button follows its own credentials: the realm is one more door, and configuring it does not
+      // hide the direct providers that are also configured. Both are fakes here, because a test cannot
+      // reach GitHub or run Keycloak; everything around them is the real platform.
       const realmProfile: ProviderProfile = {
         providerUserId: 'kc-1',
         email: 'someone@sso.test',
@@ -707,17 +707,19 @@ describe.skipIf(!hasDatabase)('the player’s journey', () => {
       const withRealm = await startTestApp({
         databaseUrl,
         keycloak: true,
-        // The override is the set the factory produced: Keycloak alone. A `github` entry here would be
-        // the state the factory exists to prevent, because the harness also leaves the direct
-        // credentials in the environment — and `keycloak: true` is what proves they produce no button.
-        providers: { keycloak: new FakeProvider('keycloak', () => realmProfile) },
+        // Both configured buttons are in the set the factory produces; the fakes let the test drive
+        // each one without the network. Google is left out to show the list follows what is configured.
+        providers: {
+          keycloak: new FakeProvider('keycloak', () => realmProfile),
+          github: new FakeProvider('github', () => GITHUB_PROFILE),
+        },
       });
 
       try {
         expect(await (await fetch(`${withRealm.url}/auth/providers`)).json()).toEqual({
-          providers: ['keycloak'],
+          providers: ['keycloak', 'github'],
         });
-        expect((await fetch(`${withRealm.url}/auth/github`, { redirect: 'manual' })).status).toBe(404);
+        expect((await fetch(`${withRealm.url}/auth/github`, { redirect: 'manual' })).status).toBe(302);
 
         const first = await signIn(withRealm.url, 'keycloak');
         expect(first.response.status).toBe(302);

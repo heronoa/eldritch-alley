@@ -49,8 +49,8 @@ export const OAUTH_PROVIDERS = 'OAUTH_PROVIDERS';
 /**
  * The order the buttons are drawn in and the order `GET /auth/providers` answers in. Written down rather
  * than taken from the object's own order, so that the list does not move between two deployments that
- * differ only in which providers they have. Keycloak comes first because, when it is configured, it is
- * the only name that will survive the filter.
+ * differ only in which providers they have. Keycloak comes first so that a realm, which is the newest
+ * way in, does not push the familiar buttons down the dialog.
  */
 export const PROVIDER_NAMES: readonly OAuthProviderName[] = ['keycloak', 'github', 'google'];
 
@@ -96,37 +96,34 @@ interface Credential {
 /**
  * The providers this deployment signs in with, built from the environment while the container starts.
  *
- * A provider that is not configured is a provider that is off: it is not built, it is not in the list
- * `GET /auth/providers` answers with, and `GET /auth/<name>` answers 404. That is what lets the project
- * run with no OAuth application at all — the state a person cloning the repository is in, and the state
- * CI runs in (§ 8, D7).
+ * Every credential stands on its own: a provider that is configured is built, and a provider that is
+ * not is off — not in the list `GET /auth/providers` answers with, and `GET /auth/<name>` answers 404.
+ * That is what lets the project run with no OAuth application at all, the state a person cloning the
+ * repository is in and the state CI runs in (§ 8, D7).
  *
- * Keycloak is a switch over that rule, not a third option beside it. When its three values are set it
- * is the **only** provider built, even if GitHub and Google are configured too: the realm brokers them,
- * and offering both doors at once would give one player two accounts. When the three are absent the
- * direct providers are built exactly as before, so a deployment without a realm loses nothing.
+ * The realm is one more entry in that rule, not a switch over it. When its three values are set,
+ * Keycloak is built beside whichever direct providers are configured; when they are absent it is off
+ * and the direct providers are untouched. The owner wants each button to follow its own configuration:
+ * putting a realm in front of the deployment must not hide the apps that are already there.
  */
 export function oauthProvidersFromEnvironment(): OAuthProviders {
+  const providers: OAuthProviders = {};
+
   const keycloak = keycloakSettings();
   if (keycloak !== undefined) {
-    return {
-      keycloak: new KeycloakProvider({ ...keycloak, redirectUri: callbackUrl('keycloak') }),
-    };
+    providers.keycloak = new KeycloakProvider({ ...keycloak, redirectUri: callbackUrl('keycloak') });
   }
 
-  const configured = DIRECT_PROVIDER_NAMES.map(credentialOf).filter(
+  for (const { name, clientId, clientSecret } of DIRECT_PROVIDER_NAMES.map(credentialOf).filter(
     (one): one is Credential => one !== undefined,
-  );
-  if (configured.length === 0) return {};
-
-  const providers: OAuthProviders = {};
-  for (const { name, clientId, clientSecret } of configured) {
+  )) {
     providers[name] = build(name, {
       clientId,
       clientSecret,
       redirectUri: callbackUrl(name),
     });
   }
+
   return providers;
 }
 
@@ -148,7 +145,7 @@ function callbackUrl(name: OAuthProviderName): string {
  * missing. The three are never deliberately split, so some without the rest is a typo — and a typo that
  * surfaced at the first sign-in would read as the provider's own fault rather than as a missing line in
  * `.env`. The check runs before the direct providers are looked at, which is what makes a half-filled
- * Keycloak stop the boot instead of quietly falling back to GitHub and Google.
+ * Keycloak stop the boot instead of quietly behaving as though the realm were off.
  */
 function keycloakSettings(): KeycloakSettings | undefined {
   const clientId = readOptional(process.env[KEYCLOAK_CLIENT_ID]);

@@ -44,7 +44,7 @@ function pair(provider: 'GITHUB' | 'GOOGLE'): Partial<Record<Variable, string>> 
   } as Partial<Record<Variable, string>>;
 }
 
-/** The realm's three values, which are one switch rather than a pair. */
+/** The realm's three values, which are one set rather than a pair. */
 function realm(overrides: Partial<Record<Variable, string>> = {}): Partial<Record<Variable, string>> {
   return {
     OAUTH_KEYCLOAK_CLIENT_ID: 'keycloak-client-id',
@@ -129,8 +129,8 @@ describe('oauthProvidersFromEnvironment', () => {
     expect(() => oauthProvidersFromEnvironment()).not.toThrow();
   });
 
-  describe('the Keycloak switch', () => {
-    it('builds only Keycloak when the realm is configured, even with both direct pairs there', () => {
+  describe('Keycloak beside the direct providers', () => {
+    it('builds all three when the realm and both direct pairs are configured', () => {
       configure({
         OAUTH_REDIRECT_BASE_URL: REDIRECT_BASE_URL,
         ...pair('GITHUB'),
@@ -138,9 +138,9 @@ describe('oauthProvidersFromEnvironment', () => {
         ...realm(),
       });
 
-      // One door, not three: the realm brokers Google and GitHub, and offering the direct buttons too
-      // would give one player two accounts depending on which button they pressed.
-      expect(Object.keys(oauthProvidersFromEnvironment())).toEqual(['keycloak']);
+      // Each button follows its own credentials: a realm in front of the deployment adds a way in and
+      // hides nothing that was already there.
+      expect(Object.keys(oauthProvidersFromEnvironment())).toEqual(['keycloak', 'github', 'google']);
     });
 
     it('builds Keycloak when only the realm is configured', () => {
@@ -148,16 +148,22 @@ describe('oauthProvidersFromEnvironment', () => {
       expect(Object.keys(oauthProvidersFromEnvironment())).toEqual(['keycloak']);
     });
 
-    it('does not look at a half-configured direct provider while the realm is configured', () => {
-      // The direct providers are not built at all under the switch, so their half pairs are not read and
-      // cannot stop a boot that has a working realm.
+    it('builds the direct providers the environment configures beside the realm', () => {
+      configure({ OAUTH_REDIRECT_BASE_URL: REDIRECT_BASE_URL, ...pair('GITHUB'), ...realm() });
+
+      expect(Object.keys(oauthProvidersFromEnvironment())).toEqual(['keycloak', 'github']);
+    });
+
+    it('still refuses a half-configured direct provider beside the realm', () => {
+      // The direct pairs are read whether or not a realm exists, so a typo in one of them stops the
+      // boot instead of quietly dropping a button the deployment meant to offer.
       configure({
         OAUTH_REDIRECT_BASE_URL: REDIRECT_BASE_URL,
         OAUTH_GITHUB_CLIENT_ID: 'github-client-id',
         ...realm(),
       });
 
-      expect(Object.keys(oauthProvidersFromEnvironment())).toEqual(['keycloak']);
+      expect(() => oauthProvidersFromEnvironment()).toThrow(/OAUTH_GITHUB_CLIENT_SECRET/);
     });
 
     it('refuses half a realm, naming every variable that is missing', () => {

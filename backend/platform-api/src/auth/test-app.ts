@@ -133,14 +133,14 @@ export async function setAuthEnvironment(
     process.env.OAUTH_GOOGLE_CLIENT_SECRET = 'google-client-secret';
 
     // Deleted rather than left alone, for the same reason as above: a developer's own `.env` may hold a
-    // realm, and a case that means to exercise the direct providers must not be switched over to
-    // Keycloak by a file outside the suite.
+    // realm, and a case that means to exercise only the direct providers must not gain a button from a
+    // file outside the suite.
     delete process.env.OAUTH_KEYCLOAK_CLIENT_ID;
     delete process.env.OAUTH_KEYCLOAK_CLIENT_SECRET;
     delete process.env.OAUTH_KEYCLOAK_ISSUER;
 
-    // `keycloak: true` keeps the direct values in place as well, because the precedence rule is exactly
-    // the case of both being configured and only one being exposed.
+    // `keycloak: true` keeps the direct values in place as well, because each provider stands on its own
+    // and the case worth having is the deployment that configures a realm beside the direct pairs.
     if (options.keycloak === true) {
       process.env.OAUTH_KEYCLOAK_CLIENT_ID = 'keycloak-client-id';
       process.env.OAUTH_KEYCLOAK_CLIENT_SECRET = 'keycloak-client-secret';
@@ -156,8 +156,8 @@ export async function startTestApp(options: {
   /** `false` asks for a platform with none of the OAuth variables in the environment. */
   oauth?: boolean;
   /**
-   * Also configures the realm, keeping the direct providers configured alongside it — the shape the
-   * precedence rule is about. Ignored when `oauth` is `false`.
+   * Also configures the realm, keeping the direct providers configured alongside it — the shape a
+   * deployment that adopts SSO without dropping its OAuth apps has. Ignored when `oauth` is `false`.
    */
   keycloak?: boolean;
   /**

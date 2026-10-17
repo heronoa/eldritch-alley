@@ -91,8 +91,8 @@ services:
       OAUTH_GITHUB_CLIENT_SECRET: ${OAUTH_GITHUB_CLIENT_SECRET:-}
       OAUTH_GOOGLE_CLIENT_ID: ${OAUTH_GOOGLE_CLIENT_ID:-}
       OAUTH_GOOGLE_CLIENT_SECRET: ${OAUTH_GOOGLE_CLIENT_SECRET:-}
-      # A configured realm is the only provider offered: it brokers the direct ones, which stop being
-      # built. Leave the three blank and the direct pairs above are exactly what they are today.
+      # A configured realm is one more provider, independent of the direct pairs above: it is offered
+      # beside them and hides none of them. Leave the three blank and it is off.
       OAUTH_KEYCLOAK_CLIENT_ID: ${OAUTH_KEYCLOAK_CLIENT_ID:-}
       OAUTH_KEYCLOAK_CLIENT_SECRET: ${OAUTH_KEYCLOAK_CLIENT_SECRET:-}
       OAUTH_KEYCLOAK_ISSUER: ${OAUTH_KEYCLOAK_ISSUER:-}

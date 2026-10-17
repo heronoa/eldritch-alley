@@ -17,15 +17,17 @@ next delivery keeps.
 
 ## Decision
 
-1. **Keycloak is optional, and when it is configured it is the only provider the platform exposes.** It
-   brokers Google and GitHub, so the player sees one button and the platform sees one provider; the
-   upstream identity provider is never learned or stored. When the three `OAUTH_KEYCLOAK_*` variables
-   are absent, GitHub and Google are built exactly as ADR 0018 left them. The environment is the feature
-   flag, not a build target.
-2. **A configured realm replaces the direct providers; it is not a fourth button.** The direct providers
-   are not built even when their credentials are present, because two doors would give one player two
-   accounts depending on which one they used. Their existing `identities` rows stay readable, so turning
-   the realm off restores them with no migration.
+1. **Keycloak is optional, and it is independent of the direct providers.** When the three
+   `OAUTH_KEYCLOAK_*` variables are set, Keycloak is built as one more provider; when they are absent it
+   is off, and GitHub and Google are built exactly as ADR 0018 left them. The upstream identity provider
+   Keycloak brokers is never learned or stored. The environment is the feature flag, not a build target.
+2. **Each configured credential is its own button.** A realm does not replace the direct providers, even
+   though it may broker them: configuring Keycloak beside GitHub and Google offers all three. The owner
+   rejected the alternative — a realm that hides the direct pairs — because adopting SSO must not remove
+   the apps a deployment already configured. Two ways in do not by themselves make two accounts: the
+   shared rule below links the second one when both sides verified the same address. The direct
+   providers' existing `identities` rows stay readable either way, and turning the realm off changes no
+   data.
 3. **The realm is configured, not discovered.** The issuer is the realm's URL, and the three standard
    endpoints are composed from it while the container starts — the same reasoning ADR 0018 decision 8
    gives for GitHub and Google. Half a credential stops the boot, naming what is missing.
@@ -52,10 +54,11 @@ next delivery keeps.
 
 ## Consequences
 
-- A deployment with a realm offers one button and inherits the realm's providers, policies and MFA; a
-  deployment without one keeps today's two buttons and loses nothing.
-- Switching the realm on hides the direct buttons but deletes no identity: switching it off brings them
-  back. There is no session migration because there is no session table.
+- A deployment with a realm adds a button and inherits the realm's providers, policies and MFA; the
+  direct buttons it already had stay where they are. A deployment without a realm keeps today's two
+  buttons and loses nothing.
+- Switching the realm on or off changes the buttons and no data: there is no session migration because
+  there is no session table.
 - A deleted account loses every way in at once, including password reset. Its game tickets issued before
   deletion remain valid for at most five minutes, which is the window ADR 0018 already accepts for a
   ticket and is shorter than any token the other designs considered.
