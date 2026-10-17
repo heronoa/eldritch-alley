@@ -311,6 +311,38 @@
   margin-top: 18px;
 }
 
+/* The security card's method line: how the account signs in. It stays a hint — muted and small — and
+   is written here, above the exit it introduces, so the contrast matrix reads it from this rule. */
+.account-security-methods {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+/* The exit from the account. The problem's red, edged and never filled: it is a warning, not the
+   primary action, so hover underlines the label instead of flooding the button and the focus ring is
+   the dialog's ink. Sign out stays a plain link, which keeps the two distinguishable at rest and with
+   the keyboard. */
+.account-danger {
+  padding: 8px 12px;
+  cursor: pointer;
+  font: 600 13px/1.4 var(--body);
+  color: #e07a6f;
+  background: none;
+  border: 1px solid #e07a6f;
+}
+
+.account-danger:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.account-danger:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
 /* The history: a page of rows, then a button that asks for the next one. */
 .history-rows {
   display: flex;

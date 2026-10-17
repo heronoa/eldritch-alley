@@ -4,8 +4,8 @@
 **Roadmap:** [ROADMAP.md](../../ROADMAP.md) § M4. Accounts and persistence
 **Spec:** [sso.login.input.md](../inputs/sso.login.input.md)
 **Branches:** `feat/keycloak-provider` (m1), `feat/account-deletion` (m2), `feat/client-sso` (m3–m5)
-**Status:** in progress — milestones 0–3 done and approved (2026-10-17), m4 implemented and awaiting
-approval (2026-10-17); m5 is not implemented
+**Status:** in progress — milestones 0–4 done and approved (2026-10-17); m5 implemented and awaiting
+approval (2026-10-17)
 
 ## What this delivery covers
 
@@ -39,8 +39,8 @@ player to the title as a guest. The account dialog gains the security card where
 | # | Plan | Status | PR |
 |---|------|--------|----|
 | 3 | [sso-login-m3-logic.plan.md](./sso-login-m3-logic.plan.md) | [x] approved (2026-10-17) | — |
-| 4 | [sso-login-m4-integration.plan.md](./sso-login-m4-integration.plan.md) | [~] implemented (2026-10-17), awaiting approval | — |
-| 5 | [sso-login-m5-design.plan.md](./sso-login-m5-design.plan.md) | [ ] pending | — |
+| 4 | [sso-login-m4-integration.plan.md](./sso-login-m4-integration.plan.md) | [x] approved (2026-10-17) | — |
+| 5 | [sso-login-m5-design.plan.md](./sso-login-m5-design.plan.md) | [~] implemented (2026-10-17), awaiting approval | — |
 
 Milestone 0 is a documentation commit and not a milestone of its own, as m4-01's index correction was.
 Milestones 1–2 are backend vertical slices: there is no repository layer to add, because the schema

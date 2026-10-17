@@ -1,5 +1,5 @@
-// The account (m4-04) — the contrast matrix of the control, the three cards and the two mailed-link
-// pages.
+// The account (m4-04) — the contrast matrix of the control, the five cards and the two mailed-link
+// pages. The security card and the deletion confirmation joined the matrix in m5.
 //
 // The colours are read from the two stylesheets themselves, so a palette edit cannot leave this test
 // checking values the page no longer uses: `account.css` is the sheet under test and `title.css` is
@@ -97,6 +97,32 @@ describe('the account contrast matrix', () => {
   it('keeps the problem line at 4.5:1 on the card it is said on', () => {
     expect(contrastRatio(colour(accountCss, '.account-problem', 'color'), game)).toBeGreaterThanOrEqual(4.5);
     expect(contrastRatio(colour(accountCss, '.account-problem', 'color'), game)).toBeCloseTo(6.59, 2);
+  });
+
+  it('keeps the security card’s method line at 4.5:1 on the card', () => {
+    const methods = colour(accountCss, '.account-security-methods', 'color');
+
+    expect(methods).toBe(muted);
+    expect(contrastRatio(methods, game)).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio(methods, game)).toBeCloseTo(6.3, 2);
+  });
+
+  it('keeps the exit recognisable: its red at 4.5:1 for the label and 3:1 for the edge', () => {
+    const danger = colour(accountCss, '.account-danger', 'color');
+
+    expect(contrastRatio(danger, game)).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio(danger, game)).toBeCloseTo(6.59, 2);
+
+    // The border is a graphic pair, so its floor is 3:1. It is written as a shorthand, so the colour
+    // is read out of it rather than assumed.
+    const border = /^1px solid (#[0-9a-fA-F]{6})$/.exec(declared(accountCss, '.account-danger', 'border'));
+    if (border === null) throw new Error('the danger border is not written as a 1px solid colour');
+    expect(contrastRatio(parseInt(border[1].slice(1), 16), game)).toBeGreaterThanOrEqual(3);
+  });
+
+  it('keeps the danger’s focus ring in the dialog’s ink, at 3:1 on the card', () => {
+    expect(ring(accountCss, '.account-danger:focus-visible')).toBe(ink);
+    expect(contrastRatio(ink, game)).toBeGreaterThanOrEqual(3);
   });
 
   it('keeps the fields and the rows readable on the night they sit in', () => {
