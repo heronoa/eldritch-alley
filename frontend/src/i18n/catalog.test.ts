@@ -70,6 +70,13 @@ describe('the en-US catalog', () => {
     expect(untranslatedOnboarding).toEqual([]);
   });
 
+  it('translates the account screens and the mailed-link pages, which m4-04 ships', () => {
+    const untranslated = missingKeys('en-US').filter(
+      (key) => key.startsWith('account.') || key.startsWith('mail.'),
+    );
+    expect(untranslated).toEqual([]);
+  });
+
   it('carries the English copy the owner reviews before this milestone closes', () => {
     expect(enUS['title.document']).toBe('Eldritch Alley: Tactics');
     expect(enUS['title.meta']).toBe('BUREAU OF OCCULT AFFAIRS · INCIDENT NO. 2026/0001');

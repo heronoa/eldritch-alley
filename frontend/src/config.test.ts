@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { gameServerEndpoint, highlightCoversDefault } from './config';
+import { apiBaseUrl, gameServerEndpoint, highlightCoversDefault } from './config';
 
 describe('gameServerEndpoint', () => {
   it('uses the development server when none is declared under vite dev', () => {
@@ -53,5 +53,34 @@ describe('highlightCoversDefault', () => {
     expect(() =>
       highlightCoversDefault({ DEV: false, VITE_HIGHLIGHT_COVERS: 'maybe' }),
     ).toThrow(/VITE_HIGHLIGHT_COVERS/);
+  });
+});
+
+describe('apiBaseUrl', () => {
+  it('uses the development platform when none is declared under vite dev', () => {
+    expect(apiBaseUrl({ DEV: true })).toBe('http://localhost:3000');
+    expect(apiBaseUrl({ DEV: true, VITE_API_URL: '' })).toBe('http://localhost:3000');
+  });
+
+  it('throws when no platform is declared outside development', () => {
+    expect(() => apiBaseUrl({ DEV: false })).toThrow(/VITE_API_URL is not set/);
+    expect(() => apiBaseUrl({ DEV: false, VITE_API_URL: '' })).toThrow(/is not set/);
+  });
+
+  it('returns the declared platform, in development or not', () => {
+    const declared = 'https://api.eldritch.heronoa.com.br';
+    expect(apiBaseUrl({ DEV: false, VITE_API_URL: declared })).toBe(declared);
+    expect(apiBaseUrl({ DEV: true, VITE_API_URL: declared })).toBe(declared);
+    expect(apiBaseUrl({ DEV: false, VITE_API_URL: 'http://localhost:3000' })).toBe('http://localhost:3000');
+  });
+
+  it('rejects a value that is not a URL', () => {
+    expect(() => apiBaseUrl({ DEV: false, VITE_API_URL: 'api' })).toThrow(/is not a URL/);
+  });
+
+  it('rejects a URL that is not HTTP, where the WebSocket rule rejects what is not WS', () => {
+    expect(() => apiBaseUrl({ DEV: false, VITE_API_URL: 'wss://api.eldritch.heronoa.com.br' })).toThrow(
+      /must be http:\/\/ or https:\/\//,
+    );
   });
 });

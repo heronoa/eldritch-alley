@@ -3,7 +3,7 @@
 **Created:** 2026-10-16
 **Roadmap:** [ROADMAP.md](../../ROADMAP.md) § M4. Accounts and persistence
 **Spec:** [m4-accounts-and-persistence.spec.md](../inputs/m4-accounts-and-persistence.spec.md)
-**Status:** in progress — m4-01 approved (2026-10-16), m4-02 in progress, m4-03 delivered (2026-10-16)
+**Status:** in progress — m4-01 approved (2026-10-16), m4-02 in progress, m4-03 delivered (2026-10-16), m4-04 delivered (2026-10-17)
 
 ## What this delivery covers
 
@@ -25,15 +25,17 @@ agents go into a match, agent death and level-up. They stay in M4 as a later del
 | 1 | [m4-01-persistence.plan.md](./m4-01-persistence.plan.md) | [x] approved (2026-10-16) | — |
 | 2 | [m4-02-auth.plan.md](./m4-02-auth.plan.md) | [~] in progress | — |
 | 3 | [m4-03-match-recording.plan.md](./m4-03-match-recording.plan.md) | [x] delivered (2026-10-16) | — |
-| 4 | [m4-04-client.plan.md](./m4-04-client.plan.md) | [ ] pending | — |
+| 4 | [m4-04-client.plan.md](./m4-04-client.plan.md) | [x] delivered (2026-10-17) | — |
 | 5 | [m4-05-contact-release-privacy.plan.md](./m4-05-contact-release-privacy.plan.md) | [ ] pending | — |
 
 The PR column is filled when the pull request opens. Milestone 0 is the first commit of m4-01's branch
 and not a PR of its own, as the gate below decided.
 
 Milestones 4 and 5 are frontend work, and each is delivered in three steps — **logic → integration →
-design** — as the onboarding delivery was (`.ia_context/plans/onboarding.index.md`): three commits,
-three PRs, each reviewed on its own. The plan of each milestone carries the split.
+design** — as the onboarding delivery was (`.ia_context/plans/onboarding.index.md`). **Owner decision
+(2026-10-17):** for m4-04 the three steps are three commits on the same branch, `feat/client-login`,
+reviewed as one PR. That supersedes the "three commits, three PRs" the milestone was planned with; m4-05
+has no decision yet. The plan of each milestone carries the split.
 
 ## Milestone gate, checked on 2026-10-16
 
@@ -66,7 +68,8 @@ persistence work touches.
 - **m4-05 depends on m4-01 and m4-02.** It is independent of m4-03 and m4-04 except for the profile
   panel, which m4-04 builds; the checkbox goes into that panel, so m4-05's design step lands after
   m4-04's.
-- Each milestone is one branch and one PR (m4-04 and m4-05: three each), in the order above.
+- Each milestone is one branch and one PR, in the order above. The three steps of a frontend milestone
+  share that branch and that PR (owner, 2026-10-17, for m4-04; m4-05 is not decided).
 
 ## Decisions taken (owner, 2026-10-16)
 
