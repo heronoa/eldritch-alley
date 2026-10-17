@@ -15,6 +15,7 @@
     "migrate:check": "npm run build && mikro-orm migration:check --config dist/mikro-orm.config.js"
   },
   "dependencies": {
+    "@aws-sdk/client-sqs": "^3.1152.0",
     "@mikro-orm/core": "^6.6.17",
     "@mikro-orm/migrations": "^6.6.17",
     "@mikro-orm/postgresql": "^6.6.17",
