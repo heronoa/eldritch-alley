@@ -228,7 +228,7 @@ function renderProviders(copy: AccountCopy): void {
     button.addEventListener('click', () => {
       // A navigation, not a request: the platform answers with a redirect to the provider, which a
       // cross-origin `fetch` could not follow.
-      window.location.assign(oauthStart(platformUrl, name));
+      window.location.assign(oauthStart(platformUrl, name, getLocale()));
     });
     return button;
   });

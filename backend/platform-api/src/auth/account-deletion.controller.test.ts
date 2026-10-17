@@ -68,8 +68,12 @@ describe.skipIf(!hasDatabase)('DELETE /auth/account', () => {
     });
   }
 
-  function remove(session: string | undefined, body: unknown): Promise<Response> {
-    const headers: Record<string, string> = { 'content-type': 'application/json' };
+  function remove(
+    session: string | undefined,
+    body: unknown,
+    extra: Record<string, string> = {},
+  ): Promise<Response> {
+    const headers: Record<string, string> = { 'content-type': 'application/json', ...extra };
     if (session !== undefined) headers.cookie = `${SESSION_COOKIE}=${session}`;
     return fetch(`${app.url}/auth/account`, {
       method: 'DELETE',
@@ -378,6 +382,21 @@ describe.skipIf(!hasDatabase)('DELETE /auth/account', () => {
   });
 
   describe('the confirmation of what happened', () => {
+    it('writes the record in the language the request asked for', async () => {
+      const { email, session } = await aPasswordAccount();
+
+      const response = await remove(
+        session,
+        { ...CONFIRM, password: PASSWORD },
+        { 'accept-language': 'pt-BR' },
+      );
+
+      expect(response.status).toBe(204);
+      expect(app.mailer.sent.at(-1)?.to).toBe(email);
+      expect(app.mailer.sent.at(-1)?.subject).toBe('Sua conta foi excluída — Eldritch Alley: Tactics');
+      expect(app.mailer.sent.at(-1)?.text).toContain('foi excluída');
+    });
+
     it('sends no message when the account has no address to send one to', async () => {
       const { session } = await anSsoAccount({ email: null });
       const sentBefore = app.mailer.sent.length;

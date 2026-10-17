@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { setLocale } from '../i18n/translate';
 import { createApi, oauthStart, type Api } from './client';
 import { ApiError, failureOf, isRefused } from './errors';
 
@@ -106,6 +107,26 @@ describe('the platform client', () => {
     }
   });
 
+  it('tells the platform which language to write its mail in, on every call', async () => {
+    const { api, calls } = apiOver((url) =>
+      url.endsWith('/me') ? { body: { user: PROFILE, agents: [] } } : { status: 204 },
+    );
+
+    setLocale('pt-BR');
+    try {
+      await api.me();
+      // A request with a body carries the header too: a password reset is exactly the call whose mail
+      // has to be written in the language the player is reading.
+      await api.deleteAccount({ confirm: 'DELETE' });
+    } finally {
+      setLocale('en-US');
+    }
+
+    for (const call of calls) {
+      expect(new Headers(call.init.headers).get('accept-language')).toBe('pt-BR');
+    }
+  });
+
   it('joins a route to the base URL whether or not the build wrote the trailing slash', async () => {
     const fetchImpl = (async () => ({ ok: true, status: 200, json: async () => ({ status: 'sent' }) }) as unknown as Response) as unknown as typeof fetch;
     const withoutSlash = createApi('https://api.test', fetchImpl);
@@ -141,9 +162,13 @@ describe('the provider list', () => {
     await expect(broken.api.providers()).resolves.toEqual([]);
   });
 
-  it('navigates to a provider instead of fetching it', () => {
-    expect(oauthStart('https://api.test/', 'github')).toBe('https://api.test/auth/github');
-    expect(oauthStart('https://api.test', 'goo gle')).toBe('https://api.test/auth/goo%20gle');
+  it('navigates to a provider instead of fetching it, with the language in the query', () => {
+    expect(oauthStart('https://api.test/', 'github', 'pt-BR')).toBe(
+      'https://api.test/auth/github?locale=pt-BR',
+    );
+    expect(oauthStart('https://api.test', 'goo gle', 'en-US')).toBe(
+      'https://api.test/auth/goo%20gle?locale=en-US',
+    );
   });
 });
 

@@ -4,6 +4,7 @@
 // The shapes are the platform's own (`backend/platform-api/src`), copied as the contract and checked at
 // the boundary: a body that does not have them is an `unknown` failure, so a proxy's HTML page cannot
 // arrive at a panel and be drawn as a row.
+import { getLocale } from '../i18n/translate';
 import { ApiError } from './errors';
 
 /**
@@ -110,9 +111,15 @@ export function normalizeBase(baseUrl: string): string {
 /**
  * Where a provider button navigates. It is a page load and not a `fetch`: the platform answers with a
  * redirect to the provider, which a cross-origin request could not follow.
+ *
+ * The locale rides in the query because a navigation cannot set a header, and the platform mails the
+ * player afterwards: the notice that a new way in was added has to be written in the language the
+ * player was reading when they clicked.
  */
-export function oauthStart(baseUrl: string, provider: string): string {
-  return `${normalizeBase(baseUrl)}/auth/${encodeURIComponent(provider)}`;
+export function oauthStart(baseUrl: string, provider: string, locale: string): string {
+  const url = new URL(`${normalizeBase(baseUrl)}/auth/${encodeURIComponent(provider)}`);
+  url.searchParams.set('locale', locale);
+  return url.href;
 }
 
 export function createApi(baseUrl: string, fetchImpl: typeof fetch = fetch): Api {
@@ -127,9 +134,11 @@ export function createApi(baseUrl: string, fetchImpl: typeof fetch = fetch): Api
         credentials: 'include',
         // A mailed link puts its token in the page's URL; there is no reason to hand it to anyone else.
         referrerPolicy: 'no-referrer',
+        // The platform writes its mail in the language the player reads in, and this header is the only
+        // place a request can say which one that is. The choice lives in the browser, not on the account.
         headers: hasBody
-          ? { 'content-type': 'application/json', accept: 'application/json' }
-          : { accept: 'application/json' },
+          ? { 'content-type': 'application/json', accept: 'application/json', 'accept-language': getLocale() }
+          : { accept: 'application/json', 'accept-language': getLocale() },
         body: hasBody ? JSON.stringify(init.body) : undefined,
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });

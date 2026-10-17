@@ -1,7 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LogMailer, SmtpMailer } from './adapters';
 import { mailerFromEnvironment } from './mailer-from-environment';
-import { resetLink, resetMessage, verificationLink, verificationMessage } from './messages';
+import {
+  accountDeletedMessage,
+  linkedAccountMessage,
+  resetLink,
+  resetMessage,
+  verificationLink,
+  verificationMessage,
+} from './messages';
 
 // The same rule the providers got (§ 8): an account on somebody else's server is never the reason the
 // project will not boot. Without the five values the platform writes the message to the log and sends
@@ -83,7 +90,13 @@ describe('mailerFromEnvironment', () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     try {
       await expect(
-        mailer.send(verificationMessage('player@example.com', verificationLink('https://eldritch.test', 'tok'))),
+        mailer.send(
+          verificationMessage(
+            'player@example.com',
+            verificationLink('https://eldritch.test', 'tok'),
+            'en-US',
+          ),
+        ),
       ).resolves.toBeUndefined();
     } finally {
       log.mockRestore();
@@ -95,7 +108,11 @@ describe('the two messages', () => {
   const ORIGIN = 'https://eldritch.test';
 
   it('goes to the address it was built for, and carries the link', () => {
-    const message = verificationMessage('player@example.com', verificationLink(ORIGIN, 'a-token'));
+    const message = verificationMessage(
+      'player@example.com',
+      verificationLink(ORIGIN, 'a-token'),
+      'en-US',
+    );
 
     expect(message.to).toBe('player@example.com');
     expect(message.subject.length).toBeGreaterThan(0);
@@ -120,6 +137,66 @@ describe('the two messages', () => {
     expect(reset.origin).toBe(ORIGIN);
     expect(reset.searchParams.get('token')).toBe('a-token');
     expect(reset.pathname).not.toBe(verification.pathname);
-    expect(resetMessage('player@example.com', reset.href).text).toContain(reset.href);
+    expect(resetMessage('player@example.com', reset.href, 'en-US').text).toContain(reset.href);
+  });
+});
+
+describe('the mail in both languages', () => {
+  const ORIGIN = 'https://eldritch.test';
+  const LINK = verificationLink(ORIGIN, 'a-token');
+
+  it('confirms an address in the language it was asked in, and keeps the link intact in both', () => {
+    const english = verificationMessage('player@example.com', LINK, 'en-US');
+    const portuguese = verificationMessage('player@example.com', LINK, 'pt-BR');
+
+    expect(english.subject).toBe('Confirm your address — Eldritch Alley: Tactics');
+    expect(english.text).toContain('Confirm this address');
+    expect(portuguese.subject).toBe('Confirme seu endereço — Eldritch Alley: Tactics');
+    expect(portuguese.text).toContain('Confirme este endereço');
+    expect(english.text).toContain(LINK);
+    expect(portuguese.text).toContain(LINK);
+  });
+
+  it('offers a new password in the language it was asked in', () => {
+    const english = resetMessage('player@example.com', LINK, 'en-US');
+    const portuguese = resetMessage('player@example.com', LINK, 'pt-BR');
+
+    expect(english.subject).toBe('Choose a new password — Eldritch Alley: Tactics');
+    expect(english.text).toContain('Choose it here:');
+    expect(portuguese.subject).toBe('Escolha uma nova senha — Eldritch Alley: Tactics');
+    expect(portuguese.text).toContain('Escolha aqui:');
+  });
+
+  it('records a deleted account in the language it was asked in, and names no link', () => {
+    const english = accountDeletedMessage('player@example.com', 'en-US');
+    const portuguese = accountDeletedMessage('player@example.com', 'pt-BR');
+
+    expect(english.subject).toBe('Your account was deleted — Eldritch Alley: Tactics');
+    expect(english.text).toContain('has been deleted');
+    expect(portuguese.subject).toBe('Sua conta foi excluída — Eldritch Alley: Tactics');
+    expect(portuguese.text).toContain('foi excluída');
+    for (const message of [english, portuguese]) {
+      expect(message.text).not.toContain('http');
+      expect(message.text).not.toContain('token');
+    }
+  });
+
+  it('names the provider in words, and translates the one a player would not recognise', () => {
+    const english = linkedAccountMessage('player@example.com', 'keycloak', 'en-US');
+    const portuguese = linkedAccountMessage('player@example.com', 'keycloak', 'pt-BR');
+
+    expect(english.subject).toBe('A new way in — Eldritch Alley: Tactics');
+    expect(english.text).toContain('entered with single sign-on');
+    expect(english.text).not.toContain('keycloak');
+    expect(portuguese.subject).toBe('Uma nova forma de entrar — Eldritch Alley: Tactics');
+    expect(portuguese.text).toContain('acessada com login único');
+    expect(portuguese.text).not.toContain('keycloak');
+  });
+
+  it('keeps the names that are brands the same in both languages', () => {
+    for (const locale of ['en-US', 'pt-BR'] as const) {
+      expect(linkedAccountMessage('player@example.com', 'github', locale).text).toContain('GitHub');
+      expect(linkedAccountMessage('player@example.com', 'google', locale).text).toContain('Google');
+    }
   });
 });

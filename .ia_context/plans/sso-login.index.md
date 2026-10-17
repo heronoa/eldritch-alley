@@ -99,7 +99,7 @@ places where following it literally would undo accepted decisions or invent tabl
 | SPA PKCE + bearer in `sessionStorage` | Server-side flow + HttpOnly cookie | The cookie stays (D1) |
 | `passport-google-oauth20`, `passport-github2` | `openid-client` with PKCE | `openid-client` for Keycloak too |
 | `oidc-client-ts`, `JwtAuthGuard`, `/auth/sso/exchange` | Not needed in this architecture | Not built |
-| `.hbs` mail templates | Plain-text `EmailMessage` through a `Mailer` port | Plain text, in English, like the other messages |
+| `.hbs` mail templates | Plain-text `EmailMessage` through a `Mailer` port | Plain text, in pt-BR or en-US, chosen by the request |
 | Toast, `/settings/security` route, linked-account management | DOM cards, no router | The security card (D6); linking/unlinking is out of scope |
 | `VITE_KC_*` | The client never sees provider credentials | Server-only `OAUTH_KEYCLOAK_*` |
 

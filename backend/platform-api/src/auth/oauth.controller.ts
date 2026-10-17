@@ -15,6 +15,7 @@ import type { Request, Response } from 'express';
 import { calculatePKCECodeChallenge, randomPKCECodeVerifier, randomState } from 'openid-client';
 import { apiError } from '../app';
 import { MAILER, type Mailer } from '../email/mailer';
+import { resolveEmailLocale, type EmailLocale } from '../email/locale';
 import { linkedAccountMessage } from '../email/messages';
 import { AuthService, normalizeAddress } from './auth.service';
 import {
@@ -76,8 +77,19 @@ export class OAuthController {
     return { providers: PROVIDER_NAMES.filter((name) => this.providers[name] !== undefined) };
   }
 
+  /**
+   * Sends the browser to the provider, with the language it reads in kept in the flow cookie.
+   *
+   * The word arrives as a query because this is a navigation and not a `fetch`: the client cannot set a
+   * header on it. It is read from the start and never from the callback, which is a redirect the
+   * provider writes and whose headers are not the player's.
+   */
   @Get(':provider')
-  async start(@Param('provider') name: string, @Res() response: Response): Promise<void> {
+  async start(
+    @Param('provider') name: string,
+    @Query('locale') locale: string | undefined,
+    @Res() response: Response,
+  ): Promise<void> {
     const provider = this.provider(name);
 
     const state = randomState();
@@ -86,7 +98,10 @@ export class OAuthController {
 
     // The verifier travels in the cookie and never in the URL: a verifier in the address bar is a
     // verifier in the browser's history, in the referrer and in every log on the way.
-    const flow = await signFlow({ provider: provider.name, state, codeVerifier }, this.config);
+    const flow = await signFlow(
+      { provider: provider.name, state, codeVerifier, locale: resolveEmailLocale(locale) },
+      this.config,
+    );
 
     response.setHeader('Set-Cookie', flowCookie(flow, this.config));
     response.redirect(HttpStatus.FOUND, provider.authorizationUrl(state, codeChallenge));
@@ -117,9 +132,13 @@ export class OAuthController {
     const profile = await this.exchange(provider, code, flow.codeVerifier);
     const { user, linked } = await this.auth.signIn(provider.name, profile);
 
+    // The start wrote the language into the signed flow; the header is only a fallback for a flow that
+    // predates it, which lasts at most ten minutes.
+    const locale = flow.locale ?? resolveEmailLocale(request.headers['accept-language']);
+
     // A link is a new way into an account that already existed. The person who owns the address is the
     // one who can tell whether it was them, so the notice goes there and nowhere else.
-    if (linked) await this.notifyLinkedAccount(profile, provider.name);
+    if (linked) await this.notifyLinkedAccount(profile, provider.name, locale);
 
     const session = await signSession(
       // A fresh session id per sign-in: nothing is stored against it yet, and it is the name a
@@ -165,12 +184,13 @@ export class OAuthController {
   private async notifyLinkedAccount(
     profile: ProviderProfile,
     provider: OAuthProviderName,
+    locale: EmailLocale,
   ): Promise<void> {
     const to = normalizeAddress(profile.email);
     if (to === null) return;
 
     try {
-      await this.mailer.send(linkedAccountMessage(to, provider));
+      await this.mailer.send(linkedAccountMessage(to, provider, locale));
     } catch (error) {
       this.logger.error('could not send the linked-account notice', error as Error);
     }

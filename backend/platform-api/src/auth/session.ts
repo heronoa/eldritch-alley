@@ -1,5 +1,6 @@
 import { SignJWT, jwtVerify } from 'jose';
 import { readRequired } from '../config';
+import { isEmailLocale, type EmailLocale } from '../email/locale';
 
 /**
  * The two cookies this platform sets, and their flags in one place. Both are signed with the same
@@ -31,11 +32,19 @@ export interface SessionPayload {
   issuedAt: number;
 }
 
-/** What the browser carries between the redirect and the callback: the flow's own two secrets. */
+/**
+ * What the browser carries between the redirect and the callback: the flow's own two secrets, and the
+ * language the player reads in.
+ *
+ * The language rides along because the start is a navigation and the callback is a redirect — neither
+ * has a body to carry a preference, and the notice the callback may have to mail is written after the
+ * browser has already been sent away. Signing it costs nothing and keeps it out of reach of an edit.
+ */
 export interface FlowPayload {
   provider: string;
   state: string;
   codeVerifier: string;
+  locale?: EmailLocale;
 }
 
 export const SESSION_CONFIG = 'SESSION_CONFIG';
@@ -89,6 +98,7 @@ export async function signFlow(flow: FlowPayload, config: SessionConfig): Promis
     provider: flow.provider,
     state: flow.state,
     codeVerifier: flow.codeVerifier,
+    ...(flow.locale === undefined ? {} : { locale: flow.locale }),
     issuedAt: Date.now(),
   })
     .setProtectedHeader({ alg: ALGORITHM })
@@ -107,7 +117,16 @@ export async function readFlow(value: string, config: SessionConfig): Promise<Fl
     return null;
   }
 
-  return { provider: claims.provider, state: claims.state, codeVerifier: claims.codeVerifier };
+  // The cookie is signed by this service, so a language it does not write in is a mismatch between
+  // versions and not a preference: refusing the flow is safer than mailing in a language nobody chose.
+  if (claims.locale !== undefined && !isEmailLocale(claims.locale)) return null;
+
+  return {
+    provider: claims.provider,
+    state: claims.state,
+    codeVerifier: claims.codeVerifier,
+    ...(claims.locale === undefined ? {} : { locale: claims.locale }),
+  };
 }
 
 export function flowCookie(value: string, config: SessionConfig): string {

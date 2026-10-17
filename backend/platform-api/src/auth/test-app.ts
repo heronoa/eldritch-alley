@@ -236,13 +236,18 @@ export function asRequestCookie(cookies: string[]): string {
 /**
  * The whole flow with a provider that needs no network: take the redirect, keep the cookies it set,
  * and follow it to the callback with the `state` it handed out.
+ *
+ * `locale` is what the client puts in the start's query when the player reads in a language other than
+ * the fallback; it travels in the signed flow cookie from there, exactly as it does in production.
  */
 export async function signIn(
   appUrl: string,
   provider: ProviderName,
   code = 'the-authorization-code',
+  locale?: string,
 ): Promise<{ response: Response; cookies: string[] }> {
-  const start = await fetch(`${appUrl}/auth/${provider}`, { redirect: 'manual' });
+  const query = locale === undefined ? '' : `?locale=${encodeURIComponent(locale)}`;
+  const start = await fetch(`${appUrl}/auth/${provider}${query}`, { redirect: 'manual' });
   const cookies = setCookies(start);
   const location = new URL(start.headers.get('location') ?? '');
 

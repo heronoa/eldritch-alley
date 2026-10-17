@@ -13,6 +13,7 @@ import type { Request, Response } from 'express';
 import { randomUUID } from 'node:crypto';
 import { apiError } from '../app';
 import type { User } from '../db/entities/user.entity';
+import { resolveEmailLocale, type EmailLocale } from '../email/locale';
 import { clientAddress } from './client-address';
 import { checkPasswordPolicy } from './password';
 import { PasswordService, type Credentials, type Registration } from './password.service';
@@ -37,17 +38,17 @@ export class PasswordController {
   /** Always the same answer, whatever happened: this route never says whether an address is taken. */
   @Post('register')
   @HttpCode(HttpStatus.ACCEPTED)
-  async register(@Body() body: unknown): Promise<Sent> {
+  async register(@Body() body: unknown, @Req() request: Request): Promise<Sent> {
     const input = readRegistration(body);
     checkPolicy(input.password);
-    await this.passwords.register(input);
+    await this.passwords.register(input, localeOf(request));
     return SENT;
   }
 
   @Post('verify/resend')
   @HttpCode(HttpStatus.ACCEPTED)
-  async resend(@Body() body: unknown): Promise<Sent> {
-    await this.passwords.resendVerification(address(readBody(body).email));
+  async resend(@Body() body: unknown, @Req() request: Request): Promise<Sent> {
+    await this.passwords.resendVerification(address(readBody(body).email), localeOf(request));
     return SENT;
   }
 
@@ -85,8 +86,8 @@ export class PasswordController {
   /** The same answer for a known and for an unknown address; the only difference is the mailbox. */
   @Post('forgot')
   @HttpCode(HttpStatus.ACCEPTED)
-  async forgot(@Body() body: unknown): Promise<Sent> {
-    await this.passwords.forgot(address(readBody(body).email));
+  async forgot(@Body() body: unknown, @Req() request: Request): Promise<Sent> {
+    await this.passwords.forgot(address(readBody(body).email), localeOf(request));
     return SENT;
   }
 
@@ -192,4 +193,13 @@ function checkPolicy(password: string): void {
 
 function invalidBody(message: string): HttpException {
   return apiError(HttpStatus.BAD_REQUEST, 'invalid_body', message);
+}
+
+/**
+ * The language the client asked its mail to be written in. It is a header and not a body field because
+ * it describes the request itself — every browser sends one already, and a request that sends none gets
+ * the fallback, which is the language the client falls back to as well.
+ */
+function localeOf(request: Request): EmailLocale {
+  return resolveEmailLocale(request.headers['accept-language']);
 }
