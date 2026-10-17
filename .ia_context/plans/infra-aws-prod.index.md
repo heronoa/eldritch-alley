@@ -20,7 +20,7 @@ Resolved with Heron on 2026-10-16, before infra-01 was written:
 |---|------|--------|----|
 | 1 | [infra-01-bootstrap-and-ci.plan.md](./infra-01-bootstrap-and-ci.plan.md) | [x] code written, pending Heron's review and apply | — |
 | 2 | [infra-02-foundations.plan.md](./infra-02-foundations.plan.md) (network, ECR, assets bucket, SQS, SSM parameters) | [ ] plan written, pending Heron's answers to its open questions and approval; code not written | — |
-| 3 | infra-03-data-stores.plan.md (RDS, ElastiCache) | [ ] not written | — |
+| 3 | [infra-03-data-stores.plan.md](./infra-03-data-stores.plan.md) (RDS, ElastiCache) | [ ] plan written, pending Heron's answers to its open questions and approval; code not written | — |
 | 4 | infra-04-edge-and-compute.plan.md (ALB, ACM, WAF web ACL, Cloudflare records, ECS cluster, the two services, migrate family, at zero tasks) | [ ] not written | — |
 | 5 | infra-05-pipelines.plan.md (infra-apply.yml, deploy.yml, teardown.yml) | [ ] not written | — |
 | 6 | infra-06-observability-and-docs.plan.md (alarms, budget, README, ADRs) | [ ] not written | — |
