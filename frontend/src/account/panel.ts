@@ -26,6 +26,8 @@ export interface ProfileView {
   readonly agents: readonly AgentView[];
   /** The line shown in place of the list when the squad is empty. */
   readonly noAgents: string;
+  /** The release-e-mail consent: what the checkbox is called, and whether it is on (m4-05, D6). */
+  readonly releaseEmails: { readonly label: string; readonly checked: boolean };
   readonly signOutLabel: string;
   readonly historyLabel: string;
   /** The profile's action that opens the security card. */
@@ -39,6 +41,7 @@ export function profileView(state: AccountState, copy: AccountCopy): ProfileView
     title: copy.profileTitle,
     agentsHeading: copy.agentsHeading,
     noAgents: copy.noAgents,
+    releaseEmails: { label: copy.releaseEmailsLabel, checked: false },
     signOutLabel: copy.signOut,
     historyLabel: copy.historyLabel,
     securityLabel: copy.securityLabel,
@@ -63,6 +66,11 @@ export function profileView(state: AccountState, copy: AccountCopy): ProfileView
     name: user.displayName,
     email: user.email,
     avatarUrl: user.avatarUrl,
+    // A platform that does not report the consent reads as off, which is the safe side of a consent.
+    releaseEmails: {
+      label: copy.releaseEmailsLabel,
+      checked: state.account.releaseEmails?.optedIn ?? false,
+    },
     // The order is the platform's: it lists the squad by class, and the panel does not reorder it.
     agents: agents.map((agent) => ({
       key: agent.id,

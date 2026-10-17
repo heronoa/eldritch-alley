@@ -46,6 +46,7 @@
     <link rel="stylesheet" href="/src/title/title.css" />
     <link rel="stylesheet" href="/src/onboarding/onboarding.css" />
     <link rel="stylesheet" href="/src/account/account.css" />
+    <link rel="stylesheet" href="/src/contact/contact.css" />
   </head>
   <body>
     <!-- Everything the title screen owns. A mailed link lands on the same document, and `boot.ts`
@@ -78,7 +79,7 @@
         <button class="account-control" id="account-control" type="button" aria-label="Conta">Entrar</button>
       </div>
       <div class="granted" id="granted" aria-live="polite">PARTIDA AUTORIZADA</div>
-      <footer><button class="how-to-play" id="how-to-play" type="button">Como jogar</button><span id="footer-version">v0.1</span><span id="footer-place">Belém · madrugada</span></footer>
+      <footer><button class="how-to-play" id="how-to-play" type="button">Como jogar</button><button class="footer-link" id="contact-open" type="button">Contato</button><a class="footer-link" id="privacy-link" href="/privacidade.html">Privacidade</a><span id="footer-version">v0.1</span><span id="footer-place">Belém · madrugada</span></footer>
       <!-- Why the player is not in a match, over the title and over the city. It opens only when the
            client has something to say, and its three lines are written from the catalog — the empty
            paragraphs here are what a page whose script never runs shows, which is nothing, because
@@ -166,6 +167,8 @@
             <p class="account-hint" id="auth-check-mail-body"></p>
             <button class="account-link" id="auth-check-mail-back" type="button">Voltar</button>
           </div>
+          <!-- The policy, where the sign-up consent is asked for (m4-05, D4). -->
+          <p class="account-hint account-privacy"><a class="account-link" id="auth-privacy" href="/privacidade.html">Política de privacidade</a></p>
         </div>
       </div>
 
@@ -188,6 +191,12 @@
           <ul class="account-agents" id="profile-agents"></ul>
           <p class="account-hint" id="profile-no-agents" hidden>Nenhum agente registrado</p>
           <p class="account-problem" id="profile-problem" role="alert" hidden></p>
+          <!-- The release e-mails are the player's own choice, so the box starts unchecked and only a
+               deliberate press turns it on (m4-05, D6). The label is written from the catalog. -->
+          <label class="account-consent">
+            <input id="profile-release-emails" type="checkbox" />
+            <span id="profile-release-emails-label">Receber novidades e novas versões por e-mail</span>
+          </label>
           <div class="account-actions">
             <button class="account-link" id="profile-history" type="button">Histórico</button>
             <button class="account-link" id="profile-security" type="button">Segurança</button>
@@ -251,6 +260,42 @@
               <button class="account-link" id="delete-cancel" type="button">Cancelar</button>
             </div>
           </form>
+        </div>
+      </div>
+
+      <!-- The contact form: three fields, the challenge's own box and the link to the policy. The
+           Portuguese below is what a page whose script never runs shows; `contact-panel.ts` writes every
+           line from the catalog and draws Cloudflare's widget into the empty box. -->
+      <div class="account-card" id="contact" role="dialog" aria-modal="true" aria-labelledby="contact-title" hidden>
+        <div class="account-card-body">
+          <div class="account-card-head">
+            <p class="account-card-title" id="contact-title">Contato</p>
+            <button class="account-close" id="contact-close" type="button" aria-label="Fechar">Fechar</button>
+          </div>
+          <form class="account-form" id="contact-form" novalidate>
+            <label class="account-field" id="contact-name-field">
+              <span id="contact-name-label">Seu nome</span>
+              <input id="contact-name" type="text" autocomplete="name" maxlength="120" />
+            </label>
+            <label class="account-field" id="contact-email-field">
+              <span id="contact-email-label">Endereço de e-mail</span>
+              <input id="contact-email" type="email" autocomplete="email" />
+            </label>
+            <label class="account-field" id="contact-message-field">
+              <span id="contact-message-label">Mensagem</span>
+              <textarea id="contact-message" rows="6" maxlength="5000"></textarea>
+            </label>
+            <div class="contact-turnstile" id="contact-turnstile"></div>
+            <p class="account-problem" id="contact-problem" role="alert" hidden></p>
+            <button class="cta" id="contact-submit" type="submit">Enviar</button>
+            <a class="account-link" id="contact-privacy" href="/privacidade.html">Política de privacidade</a>
+          </form>
+          <!-- The answer a stored message gets, whether or not the notification reached the owner. -->
+          <div class="contact-success" id="contact-success" hidden>
+            <p class="account-card-title" id="contact-success-heading">Mensagem enviada</p>
+            <p class="account-hint" id="contact-success-body">Obrigado. Vamos responder pelo endereço que você deixou.</p>
+            <button class="account-link" id="contact-success-close" type="button">Fechar</button>
+          </div>
         </div>
       </div>
     </div>

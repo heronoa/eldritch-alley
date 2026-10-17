@@ -16,6 +16,7 @@ export interface BuildEnv {
   VITE_GAME_SERVER?: string;
   VITE_API_URL?: string;
   VITE_HIGHLIGHT_COVERS?: string;
+  VITE_TURNSTILE_SITE_KEY?: string;
   DEV: boolean;
 }
 
@@ -81,6 +82,16 @@ export function apiBaseUrl(env: BuildEnv): string {
   }
 
   return declared;
+}
+
+/**
+ * The public site key Cloudflare's Turnstile widget is drawn with, or `null` when the build has none.
+ * The challenge is verified on the platform, not here: the key only loads the widget, and a build
+ * without one still shows the form — the local flow's verifier accepts the fallback token.
+ */
+export function turnstileSiteKey(env: BuildEnv): string | null {
+  const declared = env.VITE_TURNSTILE_SITE_KEY?.trim() ?? '';
+  return declared === '' ? null : declared;
 }
 
 /**

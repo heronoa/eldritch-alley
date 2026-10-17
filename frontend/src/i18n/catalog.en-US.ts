@@ -120,6 +120,8 @@ export const enUS: Record<MessageKey, string> = {
   'account.history.rounds': '{rounds} rounds',
   'account.history.won': 'Victory',
   'account.history.lost': 'Defeat',
+  // The release e-mails (m4-05, D6): the consent is off until the player presses it.
+  'account.releaseEmails.label': 'Receive release news and new versions by email',
 
   // The security card and the deletion confirmation. The confirmation word is not copy: `DELETE` is
   // spelled the same in both languages because it is the token the platform checks
@@ -156,6 +158,27 @@ export const enUS: Record<MessageKey, string> = {
   'mail.missing.heading': 'Incomplete link',
   'mail.missing.body': 'This address brought no token. Open the link from the email again.',
   'mail.back': 'Back to the start',
+
+  // The contact form (m4-05).
+  'contact.open': 'Contact',
+  'contact.title': 'Contact',
+  'contact.field.name': 'Your name',
+  'contact.field.email': 'Email address',
+  'contact.field.message': 'Message',
+  'contact.submit': 'Send',
+  'contact.sending': 'Sending…',
+  'contact.close': 'Close',
+  'contact.privacyLabel': 'Privacy policy',
+  'contact.sent.heading': 'Message sent',
+  'contact.sent.body': 'Thank you. We will reply to the address you left.',
+  'contact.problem.name': 'Write your name',
+  'contact.problem.email': 'Enter a valid email address',
+  'contact.problem.message': 'Write a message of up to 5000 characters',
+  'contact.problem.rateLimited': 'Too many messages. Try again later.',
+  'contact.problem.challengeFailed': 'The challenge did not pass. Try again.',
+  'contact.problem.offline': 'The service did not answer. Try again.',
+  'contact.problem.unknown': 'The message could not be sent.',
+  'privacy.link': 'Privacy',
 
   // The battle log. One sentence per event, and the placeholders are filled by `interpolate`.
   'log.event.moved': '{actor} moved from {from} to {to}',

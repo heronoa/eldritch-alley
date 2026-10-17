@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import type { EntityManager } from '@mikro-orm/postgresql';
+import { Redis } from 'ioredis';
 import { AccountDeletionService } from './auth/account-deletion.service';
 import { AuthController } from './auth/auth.controller';
 import { AuthService } from './auth/auth.service';
@@ -10,9 +12,26 @@ import { OAUTH_PROVIDERS, oauthProvidersFromEnvironment } from './auth/provider'
 import { SESSION_CONFIG, sessionConfigFromEnvironment } from './auth/session';
 import { SessionGuard, UserSessionGuard } from './auth/session.guard';
 import { FAILURE_THROTTLE, InMemoryFailureThrottle } from './auth/throttle';
-import { readMatchEndedQueueUrl, readPollIntervalMs } from './config';
-import { DatabaseModule } from './db/database.module';
-import { MAILER } from './email/mailer';
+import {
+  readContactRateLimit,
+  readContactRateWindowSeconds,
+  readMatchEndedQueueUrl,
+  readOptional,
+  readPollIntervalMs,
+  readRequired,
+} from './config';
+import { ContactController } from './contact/contact.controller';
+import { ContactService } from './contact/contact.service';
+import {
+  InMemoryCounterStore,
+  RATE_LIMITER,
+  RateLimiter,
+  RedisCounterStore,
+  type CounterStore,
+} from './contact/rate-limit';
+import { TURNSTILE_VERIFIER, turnstileFromEnvironment, type TurnstileVerifier } from './contact/turnstile';
+import { DatabaseModule, ENTITY_MANAGER } from './db/database.module';
+import { MAILER, type Mailer } from './email/mailer';
 import { mailerFromEnvironment } from './email/mailer-from-environment';
 import { HealthController } from './health/health.controller';
 import { MatchEndedConsumer } from './matches/match-ended.consumer';
@@ -20,6 +39,31 @@ import { MatchesController } from './matches/matches.controller';
 import { MatchesService } from './matches/matches.service';
 import { MeController } from './me/me.controller';
 import { MATCH_ENDED_POLL_INTERVAL_MS, MATCH_ENDED_QUEUE, sqsQueueFromEnvironment } from './queue/queue';
+import { ReleaseController } from './release/release.controller';
+import { ReleaseService } from './release/release.service';
+
+/**
+ * The counter the contact form uses. Redis when `REDIS_URL` is configured, because a limit that two
+ * instances each keep in their own memory is a limit twice as large; the process's memory otherwise, so
+ * a contributor with no Redis still gets a limit (D1).
+ */
+function rateLimiterFromEnvironment(): RateLimiter {
+  const redisUrl = readOptional(process.env.REDIS_URL);
+  const counters: CounterStore =
+    redisUrl === undefined
+      ? new InMemoryCounterStore()
+      : new RedisCounterStore(() => new Redis(redisUrl));
+
+  return new RateLimiter(counters, {
+    limit: readContactRateLimit(process.env.CONTACT_RATE_LIMIT),
+    windowSeconds: readContactRateWindowSeconds(process.env.CONTACT_RATE_WINDOW_SECONDS),
+  });
+}
+
+/** The two values the contact route reads, checked at boot rather than on the first message. */
+function contactOption(name: string): string {
+  return readRequired(process.env[name], name);
+}
 
 /**
  * The whole platform in one module. Every configuration value is read by its own factory while the
@@ -42,6 +86,8 @@ import { MATCH_ENDED_POLL_INTERVAL_MS, MATCH_ENDED_QUEUE, sqsQueueFromEnvironmen
     AuthController,
     MeController,
     MatchesController,
+    ContactController,
+    ReleaseController,
   ],
   providers: [
     { provide: SESSION_CONFIG, useFactory: sessionConfigFromEnvironment },
@@ -57,6 +103,26 @@ import { MATCH_ENDED_POLL_INTERVAL_MS, MATCH_ENDED_QUEUE, sqsQueueFromEnvironmen
       useFactory: () => readPollIntervalMs(process.env.MATCH_ENDED_POLL_INTERVAL_MS),
     },
     { provide: FAILURE_THROTTLE, useFactory: () => new InMemoryFailureThrottle() },
+    { provide: TURNSTILE_VERIFIER, useFactory: turnstileFromEnvironment },
+    { provide: RATE_LIMITER, useFactory: rateLimiterFromEnvironment },
+    {
+      provide: ContactService,
+      useFactory: (
+        em: EntityManager,
+        mailer: Mailer,
+        turnstile: TurnstileVerifier,
+        rateLimiter: RateLimiter,
+      ) =>
+        new ContactService(
+          em,
+          mailer,
+          turnstile,
+          rateLimiter,
+          contactOption('CONTACT_IP_SALT'),
+          contactOption('CONTACT_NOTIFY_TO'),
+        ),
+      inject: [ENTITY_MANAGER, MAILER, TURNSTILE_VERIFIER, RATE_LIMITER],
+    },
     AuthService,
     AccountDeletionService,
     PasswordService,
@@ -64,6 +130,7 @@ import { MATCH_ENDED_POLL_INTERVAL_MS, MATCH_ENDED_QUEUE, sqsQueueFromEnvironmen
     UserSessionGuard,
     MatchesService,
     MatchEndedConsumer,
+    ReleaseService,
   ],
 })
 export class AppModule {}

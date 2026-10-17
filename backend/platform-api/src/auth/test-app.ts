@@ -8,6 +8,8 @@ import { Test, type TestingModuleBuilder } from '@nestjs/testing';
 import { exportPKCS8, exportSPKI, generateKeyPair } from 'jose';
 import { AppModule } from '../app.module';
 import { configureApp } from '../app';
+import { RATE_LIMITER, RateLimiter } from '../contact/rate-limit';
+import { TURNSTILE_VERIFIER, type TurnstileVerifier } from '../contact/turnstile';
 import { runMigrations } from '../db/migrate';
 import { MAILER, type EmailMessage, type Mailer } from '../email/mailer';
 import { EMAIL_VARIABLES } from '../email/mailer-from-environment';
@@ -128,6 +130,16 @@ export async function setAuthEnvironment(
   // wants the choice between the two adapters makes it without a container (src/email/mailer.test.ts).
   for (const name of EMAIL_VARIABLES) delete process.env[name];
 
+  // The contact form's values. The salt and the recipient are required at boot, so they are test values
+  // here; the challenge and the limiter are replaced by the case, and the variables that would make the
+  // container build a real Cloudflare client or a Redis connection are deleted.
+  process.env.CONTACT_IP_SALT = 'test-ip-salt';
+  process.env.CONTACT_NOTIFY_TO = 'owner@eldritch.test';
+  delete process.env.TURNSTILE_SECRET;
+  delete process.env.REDIS_URL;
+  delete process.env.CONTACT_RATE_LIMIT;
+  delete process.env.CONTACT_RATE_WINDOW_SECONDS;
+
   // `oauth: false` is the platform a contributor clones: no provider configured, and it still comes up.
   if (options.oauth === false) {
     for (const name of OAUTH_VARIABLES) delete process.env[name];
@@ -177,6 +189,10 @@ export async function startTestApp(options: {
    * publishes into, so that one object is both halves of the conversation.
    */
   queue?: MatchEndedQueue;
+  /** The challenge the contact route asks. Absent means one that accepts every token. */
+  turnstile?: TurnstileVerifier;
+  /** The contact form's counter. Absent means a limiter the case cannot inspect, which is enough. */
+  rateLimiter?: RateLimiter;
 }): Promise<TestApp> {
   await setAuthEnvironment(options.databaseUrl, { oauth: options.oauth, keycloak: options.keycloak });
   // The container does not create tables — the migrations do, and in production that is a step of its
@@ -196,6 +212,12 @@ export async function startTestApp(options: {
     .useValue(queue);
   if (options.providers !== undefined) {
     builder = builder.overrideProvider(OAUTH_PROVIDERS).useValue(options.providers);
+  }
+  if (options.turnstile !== undefined) {
+    builder = builder.overrideProvider(TURNSTILE_VERIFIER).useValue(options.turnstile);
+  }
+  if (options.rateLimiter !== undefined) {
+    builder = builder.overrideProvider(RATE_LIMITER).useValue(options.rateLimiter);
   }
 
   const moduleRef = await builder.compile();

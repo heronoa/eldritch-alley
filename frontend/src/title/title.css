@@ -301,10 +301,35 @@ footer {
   right: 16px;
   bottom: 12px;
   display: flex;
+  gap: 12px;
   justify-content: space-between;
   font-size: 11px;
   color: #6a6f80;
   pointer-events: none;
+}
+
+/* The footer's contact control and policy link (m4-05): the muted ink, which clears the footer's own
+   grey, and the pointer given back for each of them. */
+.footer-link {
+  padding: 0;
+  cursor: pointer;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  text-decoration: none;
+  background: none;
+  border: 0;
+  pointer-events: auto;
+}
+
+.footer-link:hover {
+  color: var(--ink);
+  text-decoration: underline;
+}
+
+.footer-link:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
 }
 
 /* Where the match is drawn, once the server has confirmed the session. It covers the title and the

@@ -9,7 +9,9 @@
 // the card that is open, and the card has no way of being told otherwise. The title does not import this
 // file, so there is no cycle.
 import { oauthStart, type ProviderName } from '../api/client';
-import { getLocale } from '../i18n';
+import { failureOf } from '../api/errors';
+import { getLocale, t } from '../i18n';
+import { privacyPath } from '../privacy/version';
 import { onLocaleChange } from '../title/title';
 import {
   canSubmit,
@@ -69,6 +71,7 @@ const authCheckMail = byId<HTMLDivElement>('auth-check-mail');
 const authCheckMailHeading = byId<HTMLParagraphElement>('auth-check-mail-heading');
 const authCheckMailBody = byId<HTMLParagraphElement>('auth-check-mail-body');
 const authCheckMailBack = byId<HTMLButtonElement>('auth-check-mail-back');
+const authPrivacy = byId<HTMLAnchorElement>('auth-privacy');
 
 /** The three tabs, by the step each one opens. */
 const tabs: Readonly<Record<'sign-in' | 'sign-up' | 'forgot', HTMLButtonElement>> = {
@@ -88,6 +91,8 @@ const profileAgentsHeading = byId<HTMLParagraphElement>('profile-agents-heading'
 const profileAgents = byId<HTMLUListElement>('profile-agents');
 const profileNoAgents = byId<HTMLParagraphElement>('profile-no-agents');
 const profileProblem = byId<HTMLParagraphElement>('profile-problem');
+const profileRelease = byId<HTMLInputElement>('profile-release-emails');
+const profileReleaseLabel = byId<HTMLSpanElement>('profile-release-emails-label');
 const profileHistory = byId<HTMLButtonElement>('profile-history');
 const profileSecurity = byId<HTMLButtonElement>('profile-security');
 const profileSignOut = byId<HTMLButtonElement>('profile-sign-out');
@@ -283,6 +288,8 @@ function renderAuth(): void {
   authCheckMailHeading.textContent = copy.checkMailHeading;
   authCheckMailBody.textContent = copy.checkMailBody;
   authCheckMailBack.textContent = copy.checkMailBack;
+  authPrivacy.href = privacyPath(getLocale());
+  authPrivacy.textContent = t('contact.privacyLabel');
 
   if (onForm) renderProviders(copy);
 }
@@ -403,6 +410,8 @@ function renderProfile(): void {
   profileNoAgents.textContent = view.noAgents;
   profileHistory.textContent = view.historyLabel;
   profileSecurity.textContent = view.securityLabel;
+  profileReleaseLabel.textContent = view.releaseEmails.label;
+  profileRelease.checked = view.releaseEmails.checked;
   profileSignOut.textContent = view.signOutLabel;
   profileProblem.hidden = true;
   profileProblem.textContent = '';
@@ -413,6 +422,30 @@ profileAvatar.addEventListener('error', () => {
   profileAvatar.hidden = true;
   profileAvatar.removeAttribute('src');
 });
+
+/**
+ * The release-e-mail consent (m4-05, D6). The checkbox is the decision: it is written to the platform
+ * on every press, and a refused write is undone on the screen so the box never claims a consent the
+ * platform did not record.
+ */
+async function saveReleaseConsent(optedIn: boolean): Promise<void> {
+  const state = currentAccount();
+  if (state.status !== 'signed-in') return;
+
+  profileRelease.disabled = true;
+  try {
+    const saved = await api.setReleaseEmails(optedIn);
+    setAccount({ status: 'signed-in', account: { ...state.account, releaseEmails: saved } });
+  } catch (error) {
+    const copy = accountCopy();
+    profileProblem.textContent =
+      failureOf(error) === 'offline' ? copy.problems.offline : copy.problems.unknown;
+    profileProblem.hidden = false;
+    profileRelease.checked = !optedIn;
+  } finally {
+    profileRelease.disabled = false;
+  }
+}
 
 async function leave(): Promise<void> {
   const copy = accountCopy();
@@ -643,6 +676,7 @@ authForm.addEventListener('submit', (event) => {
 profileHistory.addEventListener('click', openHistory);
 profileSecurity.addEventListener('click', openSecurity);
 profileSignOut.addEventListener('click', () => void leave());
+profileRelease.addEventListener('change', () => void saveReleaseConsent(profileRelease.checked));
 
 historyMore.addEventListener('click', () => void fetchPage());
 

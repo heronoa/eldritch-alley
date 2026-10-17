@@ -109,3 +109,31 @@ export function readPollIntervalMs(raw: string | undefined): number {
 function valueOrNothing(raw: string | undefined): string {
   return raw?.trim() ? `"${raw.trim()}"` : 'nothing';
 }
+
+/**
+ * A whole positive number from the environment, or the fallback when the variable says nothing. Used
+ * by the contact form's limit, where a typo has to stop the boot rather than quietly widen the limit.
+ */
+export function readPositiveInteger(
+  raw: string | undefined,
+  name: string,
+  fallback: number,
+): number {
+  if (raw === undefined || raw.trim() === '') return fallback;
+
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < 1) {
+    throw new Error(`${name} must be a whole positive number, got ${raw}`);
+  }
+  return value;
+}
+
+/** How many contact messages one address may send in one window. Five is the spec's floor. */
+export function readContactRateLimit(raw: string | undefined): number {
+  return readPositiveInteger(raw, 'CONTACT_RATE_LIMIT', 5);
+}
+
+/** The window the contact limit counts over, in seconds. Ten minutes by default. */
+export function readContactRateWindowSeconds(raw: string | undefined): number {
+  return readPositiveInteger(raw, 'CONTACT_RATE_WINDOW_SECONDS', 600);
+}

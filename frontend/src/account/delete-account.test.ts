@@ -25,6 +25,8 @@ function apiOver(answer: (input: { confirm: string; password?: string }) => Prom
       calls.push(input);
       await answer(input);
     },
+    contact: async () => {},
+    setReleaseEmails: async () => ({ optedIn: false, consentedAt: null }),
     matches: async () => ({ matches: [], nextCursor: null }),
     register: async () => ({ status: 'sent' }),
     verify: async () => ({ verified: true }),
