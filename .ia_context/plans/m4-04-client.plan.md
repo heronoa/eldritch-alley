@@ -3,7 +3,7 @@
 **Milestone:** m4-04
 **Parent feature:** m4-accounts-and-persistence
 **Created:** 2026-10-16
-**Status:** pending
+**Status:** delivered (2026-10-17, branch `feat/client-login`)
 **ADR:** none. ADR 0009 already covers the localization these screens follow, and the client's own decisions here are screens, not architecture
 
 ## 1. Objective
@@ -16,15 +16,23 @@ for a game ticket and joins with it; when nobody is signed in, the join is exact
 
 ## 2. Delivery order
 
-Three steps, three PRs, in the order the planning workflow asks for and the onboarding delivery already
-followed (`.ia_context/plans/onboarding.index.md`). Each is reviewed on its own, and the next starts
-after the previous is approved.
+Three steps, in the order the planning workflow asks for and the onboarding delivery already followed
+(`.ia_context/plans/onboarding.index.md`). **Owner decision (2026-10-17): the three steps are committed
+one per commit on the same branch, `feat/client-login`, and reviewed as one PR.** That supersedes the
+"three PRs, one branch each" this section carried when the plan was written; the index is corrected to
+match.
 
 | Step | What it delivers | Files |
 |---|---|---|
-| **1 · Logic** | The pure modules: talking to the platform, the account state, the history's pagination. No DOM, no Phaser | `frontend/src/api/`, `frontend/src/account/session.ts`, `account/history.ts`, `account/types.ts`, `frontend/src/config.ts`, their tests |
-| **2 · Integration** | The wiring: the sign-in panel on the title, the ticket in the join, the profile and history panels over a real document | `frontend/index.html`, `frontend/src/title/title.ts`, `title/connect-flow.ts`, `title/copy.ts`, `frontend/src/net/session.ts`, the i18n catalogs, their tests |
-| **3 · Design** | The styles and the contrast floor, in the `visual-identity` convention | `frontend/src/account/account.css`, `frontend/src/account/contrast.test.ts` |
+| **1 · Logic** | The pure modules: talking to the platform, the account state, the history's pagination, the sign-in flow, the copy and the two panel views. No DOM, no Phaser | `frontend/src/api/`, `frontend/src/account/{types,session,history,auth-flow,copy,panel,history-panel}.ts`, `frontend/src/config.ts`, their tests |
+| **2 · Integration** | The wiring: the boot screen, the ticket in the join, the DOM halves of the dialog, the profile, the history and the two mailed-link pages, the markup and the catalogs | `frontend/src/boot.ts`, `boot-screen.ts`, `frontend/src/net/{session,join-with-ticket}.ts`, `frontend/src/title/title.ts`, `frontend/src/account/{account,mail,mail-page,live}.ts`, `frontend/index.html`, the i18n catalogs, the env files, their tests |
+| **3 · Design** | The styles, the contrast floor and the stacking check, in the `visual-identity` convention | `frontend/src/account/{account.css,contrast.test.ts,layers.test.ts}` |
+
+Two files this plan listed for Integration were **not** touched, and the reasons are the plan's own:
+`title/connect-flow.ts` keeps its `idle → connecting → ready/failed` machine, because the wait for the
+ticket fits inside `connecting` and the ticket rule belongs to the network (`net/join-with-ticket.ts`);
+`title/copy.ts` keeps the title's lines, because the account's copy is `account/copy.ts`. `title.css`
+needed no anchor point: the account's cards stand outside `main.title` and carry their own sheet.
 
 ## 3. Files changed
 
@@ -41,16 +49,16 @@ after the previous is approved.
 | `frontend/src/account/contrast.test.ts` | create | The contrast floor, as `title/contrast.test.ts` does it |
 | `frontend/src/config.ts` | modify | `VITE_API_URL` and `apiBaseUrl(env)`, with the same rule `gameServerEndpoint` has |
 | `frontend/src/config.test.ts` | modify | Section 5 |
-| `frontend/src/title/title.ts` | modify | The sign-in button, the panel it opens, the account loaded once on boot |
-| `frontend/src/title/copy.ts` | modify | The lines the new controls read |
-| `frontend/src/title/connect-flow.ts` | modify | The ticket before the join, and the fallback to a guest join |
-| `frontend/src/net/session.ts` | modify | `connect(options?: { ticket?: string })`, passed to `joinOrCreate` |
-| `frontend/src/net/session.test.ts` | modify | Section 5 |
-| `frontend/index.html` | modify | The sign-in control, the panels' markup, and the Portuguese fallback text the page shows before its script runs |
-| `frontend/src/i18n/catalog.pt-BR.ts`, `catalog.en-US.ts` | modify | The new keys, both locales |
+| `frontend/src/title/title.ts` | modify | The account loaded once on boot, and the join with a ticket |
+| `frontend/src/title/connect-flow.ts` | **not changed** | The wait for the ticket fits inside `connecting`; the ticket rule lives in `net/join-with-ticket.ts` |
+| `frontend/src/title/copy.ts` | **not changed** | The account's lines live in `account/copy.ts` |
+| `frontend/src/net/session.ts` | modify | `open(options?: { ticket?: string })`, passed to `joinOrCreate` |
+| `frontend/src/net/session.test.ts` | modify | Section 5, plus `net/join-with-ticket.test.ts` |
+| `frontend/index.html` | modify | The account control, the three cards, the mail page, and the Portuguese fallback text the page shows before its script runs |
+| `frontend/src/i18n/catalog.pt-BR.ts`, `catalog.en-US.ts` | modify | The new `account.*` and `mail.*` keys, both locales |
 | `frontend/.env.example`, `frontend/.env.production` | modify | `VITE_API_URL`, with the development and production values |
-| `frontend/src/title/title.css` | modify | Only the anchor points the new panel needs; the panel's own styles are in `account.css` |
-| `.ia_context/plans/m4-accounts-and-persistence.index.md` | modify | The milestone marked with its PRs |
+| `frontend/src/title/title.css` | **not changed** | The account's sheet carries its own anchors; `account.css` borrows the title's tokens |
+| `.ia_context/plans/m4-accounts-and-persistence.index.md` | modify | The milestone marked delivered, and the single-branch decision |
 
 ## 4. Contract of the layer
 
@@ -208,3 +216,33 @@ is said out loud. Registration always answers `202`, whether or not the address 
 page must say the same thing in both cases — "check your mailbox" is the whole answer, and it is the
 only one that does not turn the form into a way to ask which addresses have accounts.
 
+
+## 9. How the milestone closed (2026-10-17)
+
+The three steps were applied on `feat/client-login` and left uncommitted for the owner, one commit per
+step as § 2 now says. What shipped, beyond this plan's original sketch, is named in § 2.
+
+**The pure half is where the decisions live.** `api/client.ts` (one `credentials: 'include'`),
+`account/session.ts` (the store), `account/history.ts` (pagination), `account/auth-flow.ts` (the steps
+of the dialog), `account/copy.ts`, `account/panel.ts`, `account/history-panel.ts`, `account/mail.ts`,
+`net/join-with-ticket.ts` and `boot-screen.ts` are all tested in node. The DOM halves — `account/account.ts`,
+`account/mail-page.ts`, `boot.ts` — are thin by the repository's convention and are not tested.
+
+**Tests.** 1023 frontend tests pass (`npm test -w @eldritch-alley/frontend`), 18 of them from this
+milestone's design step: twelve in `account/contrast.test.ts` (every pair on the title's palette, the
+borrowed tokens, and no invented colour) and six in `account/layers.test.ts` (the cards in the notice's
+layer, the control in the switcher's, the board above both, and the control and the cards outside
+`main.title`). The build (`tsc --noEmit && vite build`) passes, and the emitted chunks show the mail page
+in its own chunk — the title's Phaser bundle is not loaded on a mailed link.
+
+**The gap the suite cannot close.** There is no DOM in any test here, so the items of § 5 that name
+elements are asserted on the pure views they render (`profileView`, `historyView`, `mailView`,
+`screenFor`) and on `index.html` read as text, as `onboarding/layers.test.ts` already reads it. The
+browser run stays the owner's manual proof: register, read the token in the `LogMailer` log, sign in,
+see the profile and the squad, play a match, see it in the history, sign out, and start a match with the
+platform off. The OAuth buttons need the real applications registered (m4-02 § 8) and are exercised by
+neither the suite nor the run without them.
+
+**Still open.** The divergence m4-03 recorded — `/me` answers 401 for an account deleted behind the
+session's back while `/me/matches` answers 200 empty — is unchanged. The client asks `/me` first, so it
+signs out and never draws that empty history; the decision between DT-92 and m4-05 remains the owner's.

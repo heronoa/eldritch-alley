@@ -8,7 +8,11 @@
 // move in `motion.ts`. What is left here is the DOM.
 import { buildEnv, gameServerEndpoint } from '../config';
 import { getLocale, saveLocale, setLocale, type Locale } from '../i18n';
+import { cardIsOpen } from '../account/modal';
+import { api } from '../account/live';
+import { currentAccount, loadAccount, setAccount } from '../account/session';
 import { joinFailure } from '../net/join-failure';
+import { joinWithTicket } from '../net/join-with-ticket';
 import { Session } from '../net/session';
 import { claim, HEARTBEAT_MS, release, tryClaim } from '../net/tab-lock';
 import { createCity, type CityView } from './city-render';
@@ -195,6 +199,11 @@ let flow: Flow = IDLE;
 // is what `getLocale` resolves. Every line below the title is written from here.
 render();
 
+// Who is signed in, asked once as the page loads. Nothing polls: the account control and the panels
+// follow the store, and a sign-in or a sign-out in them writes it back. A platform that does not answer
+// leaves the title as a guest, which is the state a guest can play in.
+void loadAccount(api).then(({ state }) => setAccount(state));
+
 /**
  * Whether the title owns the screen. While the match is on it does not: the page's keys are the
  * match's then, and the city stays where the title left it.
@@ -361,10 +370,10 @@ function resume(): void {
 
 /** What a press does: the stamp goes up, the session is opened, and the flow follows both. */
 async function press(): Promise<void> {
-  // A press belongs to the title only while the title is on screen and the notice is down: during a
-  // match, Enter is the match's key, and with the card up it belongs to the card's close button, which
-  // has the focus and gets the browser's own click.
-  if (!onScreen || failureReason(flow) !== null) return;
+  // A press belongs to the title only while the title is on screen, the notice is down and no card of
+  // the account is over it: during a match, Enter is the match's key, with the card up it belongs to
+  // the card's close button, and inside a form it belongs to the form.
+  if (!onScreen || cardIsOpen() || failureReason(flow) !== null) return;
 
   const before = flow;
   flow = next(flow, 'press', performance.now());
@@ -384,13 +393,19 @@ async function press(): Promise<void> {
   }
   startHeartbeat();
 
-  const opening = new Session(endpoint);
+  let opening: Session;
   try {
-    // Resumes the match this page was in before a reload, when there is one to resume.
-    await opening.open();
+    opening = await joinWithTicket({
+      // A guest never asks the platform anything; a signed-in player sends the ticket, and a ticket
+      // the room refuses costs one guest join instead (D1–D3 of the milestone).
+      signedIn: currentAccount().status === 'signed-in',
+      create: () => new Session(endpoint),
+      // Asked at press time, not at load: a ticket has minutes, and the press is the only moment it is
+      // worth anything. A request that fails is the same as no ticket, and the player still plays.
+      ticket: async () => (await api.gameTicket()).ticket,
+    });
   } catch (error) {
-    // A session that never reached a room is worth dropping, so a retry starts from nothing.
-    opening.close();
+    // The session that failed is already closed by `joinWithTicket`; the seat this tab claimed is not.
     endLock();
     fail(error);
     return;

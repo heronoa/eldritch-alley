@@ -16,6 +16,27 @@ export type JoinFailure = 'occupied' | 'unavailable';
 /** What the battle room answers when its one human seat is already taken. */
 const ROOM_FULL = 'room full';
 
+/** Colyseus' `AUTH_FAILED`: the room's `onAuth` answered `null`. */
+const AUTH_FAILED = 525;
+
+/**
+ * What the SDK writes when `onAuth` refuses — the error the matchmaker throws with `AUTH_FAILED`. The
+ * words matter as much as the number: Cloudflare reuses 525 for its own TLS handshake timeout, and a
+ * network failure is not a ticket the room refused.
+ */
+const AUTH_WORDS = /onAuth failed/;
+
+/**
+ * Whether a caught value is the room refusing the ticket that came with the join. It is a code *and*
+ * a text, for the same reason `REFUSALS` in `session.ts` is: a number the transport also uses for
+ * something else proves nothing on its own.
+ */
+export function isTicketRefusal(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const { code, message } = error as { code?: unknown; message?: unknown };
+  return code === AUTH_FAILED && typeof message === 'string' && AUTH_WORDS.test(message);
+}
+
 /**
  * Which failure a caught value describes: `'occupied'` when the room refused the seat because
  * another session holds it, `'unavailable'` for everything else.

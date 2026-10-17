@@ -74,10 +74,13 @@ const fake = vi.hoisted(() => {
    */
   const calls = { joinOrCreate: 0, reconnect: 0 };
   const refuse: { join: boolean; reconnect: Error | null } = { join: false, reconnect: null };
+  /** What each `joinOrCreate` carried, so the ticket can be followed to the wire. */
+  const joins: { roomName: unknown; options: unknown }[] = [];
 
   class FakeClient {
-    async joinOrCreate(): Promise<FakeRoom> {
+    async joinOrCreate(roomName: unknown, options: unknown): Promise<FakeRoom> {
       calls.joinOrCreate += 1;
+      joins.push({ roomName, options });
       if (refuse.join) throw new Error('the room refused the seat');
       return makeRoom();
     }
@@ -89,7 +92,7 @@ const fake = vi.hoisted(() => {
     }
   }
 
-  return { rooms, calls, refuse, FakeClient };
+  return { rooms, calls, refuse, joins, FakeClient };
 });
 
 vi.mock('@colyseus/sdk', () => ({ Client: fake.FakeClient }));
@@ -129,6 +132,7 @@ describe('Session against a room', () => {
     fake.rooms.length = 0;
     fake.calls.joinOrCreate = 0;
     fake.calls.reconnect = 0;
+    fake.joins.length = 0;
     fake.refuse.join = false;
     fake.refuse.reconnect = null;
     store.clear();
@@ -261,6 +265,35 @@ describe('Session against a room', () => {
 
       expect(fake.calls.joinOrCreate).toBe(1);
       expect(fake.calls.reconnect).toBe(0);
+    });
+
+    it('carries the ticket to the room when it opens a new seat', async () => {
+      const session = new Session('ws://localhost:2567');
+
+      await session.open({ ticket: 'tkt-1' });
+
+      expect(fake.joins).toEqual([{ roomName: 'battle', options: { ticket: 'tkt-1' } }]);
+    });
+
+    it('carries no options for a guest', async () => {
+      const session = new Session('ws://localhost:2567');
+
+      await session.open();
+
+      expect(fake.joins).toEqual([{ roomName: 'battle', options: {} }]);
+    });
+
+    // A resume already holds its seat: the ticket is for a join, and sending it would be a second one.
+    it('ignores the options when it resumes a stored match', async () => {
+      const playing = new Session('ws://localhost:2567');
+      await playing.connect();
+      fake.joins.length = 0;
+
+      const afterReload = new Session('ws://localhost:2567');
+      await afterReload.open({ ticket: 'tkt-1' });
+
+      expect(fake.calls.reconnect).toBe(1);
+      expect(fake.joins).toEqual([]);
     });
 
     it('joins a new room when the stored token is refused, and the new token replaces the old one', async () => {
