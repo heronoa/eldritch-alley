@@ -33,6 +33,18 @@ export interface MatchCursor {
 }
 
 /**
+ * What a delivery of a `match-ended` message did. The three are all "handled" to the consumer, which
+ * deletes the message either way; only a throw is "try again".
+ */
+export type MatchStoreOutcome =
+  /** This call wrote the match. */
+  | 'stored'
+  /** The match was already there — the same message delivered twice. */
+  | 'duplicate'
+  /** The account the message names no longer exists, which a deleted account makes a real state. */
+  | 'user-gone';
+
+/**
  * The cursor as it travels. Opaque to the client and deliberately not signed: it carries a position and
  * never a player, and the query fixes the player from the session, so a cursor someone made up — or
  * borrowed from another account — can only ever ask for a page of the caller's own matches. A signature
@@ -77,29 +89,32 @@ export class MatchesService {
   constructor(@Inject(ENTITY_MANAGER) private readonly em: EntityManager) {}
 
   /**
-   * Stores one match, with the units that fought in it and its events. Returns true when this call was
-   * the one that stored it, and false when it was already there.
+   * Stores one match, with the units that fought in it and its events. The outcome says whether this
+   * call wrote it, found it already written, or found nobody to write it for.
    *
-   * Throws rather than returning false when the message cannot be stored at all — an account this
-   * platform does not have. The distinction is what keeps the queue honest: `false` means "done, this
-   * was already handled" and lets the message be deleted, while a throw leaves it for a redelivery, so
-   * a platform whose database is behind loses no matches.
+   * `'user-gone'` is an answer and not a failure: an account can be deleted between the match ending and
+   * the message being consumed, and the match server cannot know. Retrying would only redeliver it until
+   * the dead-letter queue collected it, so the consumer deletes it — like a duplicate. A throw still
+   * means "try again": a database that did not answer loses no matches that way.
    */
-  async store(message: MatchEndedMessage): Promise<boolean> {
-    return this.em.transactional(async (tx) => {
-      // The player first, and by hand rather than by letting the foreign key complain: a match nobody
-      // can be shown is a message to keep, and the error is worth naming the player the match server
-      // sent. It also means the match id is never written against an account that is not there.
-      const player = await tx.findOne(User, { id: message.userId }, { fields: ['id'] });
-      if (player === null) {
-        throw new Error(`match ${message.id} names player ${message.userId}, who has no account here`);
-      }
+  async store(message: MatchEndedMessage): Promise<MatchStoreOutcome> {
+    // A unit of work of its own, and therefore an identity map of its own: the root entity manager keeps
+    // what it has loaded, and a `User` it loaded for a previous delivery would answer this one after the
+    // account has been deleted — the read would never reach the database that knows better.
+    const em = this.em.fork();
 
-      if (!(await this.insertMatch(tx, message))) return false;
+    return em.transactional(async (tx) => {
+      // The player first, and by hand rather than by letting the foreign key complain: the match id is
+      // never written against an account that is not there. The account being gone is read as an
+      // outcome here; the comment on `MatchStoreOutcome` explains why it is not an error.
+      const player = await tx.findOne(User, { id: message.userId }, { fields: ['id'] });
+      if (player === null) return 'user-gone';
+
+      if (!(await this.insertMatch(tx, message))) return 'duplicate';
 
       await this.insertAgents(tx, message);
       await this.insertEvents(tx, message);
-      return true;
+      return 'stored';
     });
   }
 

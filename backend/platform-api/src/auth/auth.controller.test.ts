@@ -1,6 +1,6 @@
 import { importSPKI, jwtVerify } from 'jose';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createScratchDatabase, dropScratchDatabase, hasDatabase } from '../db/test-database';
+import { createScratchDatabase, dropScratchDatabase, hasDatabase, withClient } from '../db/test-database';
 import { FakeProvider } from './fake.provider';
 import { GAME_TICKET_ISSUER } from './game-ticket';
 import type { ProviderProfile } from './provider';
@@ -120,6 +120,29 @@ describe.skipIf(!hasDatabase)('the session routes', () => {
         headers: { cookie: asRequestCookie([cleared!]) },
       });
       expect(after.status).toBe(401);
+    });
+  });
+
+  /**
+   * A cookie outlives the row it names. Once the account is gone, the routes that act for it answer as
+   * they do without a cookie — and logout is the exception that has to keep working (ADR 0022). This
+   * case runs last because it deletes the account the rest of the file used.
+   */
+  describe('with the account deleted', () => {
+    it('refuses the game ticket, but logout still clears the cookie', async () => {
+      const me = await fetch(`${app.url}/me`, { headers: { cookie: `${SESSION_COOKIE}=${session}` } });
+      const { user } = await me.json();
+      await withClient(databaseUrl, (client) =>
+        client.query('delete from "users" where "id" = $1', [user.id]),
+      );
+
+      const ticket = await post('/auth/game-ticket', `${SESSION_COOKIE}=${session}`);
+      expect(ticket.status).toBe(401);
+
+      const logout = await post('/auth/logout', `${SESSION_COOKIE}=${session}`);
+      expect(logout.status).toBe(204);
+      const cleared = setCookies(logout).find((one) => one.startsWith(`${SESSION_COOKIE}=`));
+      expect(cleared).toContain('Max-Age=0');
     });
   });
 });

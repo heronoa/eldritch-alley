@@ -16,7 +16,7 @@ import { SESSION_CONFIG, type SessionConfig } from './session';
 import { FAILURE_THROTTLE, type FailureThrottle } from './throttle';
 
 /** The `identities.provider` a password account is written under. Never a button; never a provider. */
-const PASSWORD_PROVIDER: ProviderName = 'password';
+export const PASSWORD_PROVIDER: ProviderName = 'password';
 
 export interface Registration {
   email: string;

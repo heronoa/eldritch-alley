@@ -199,6 +199,8 @@ function toClientAction(action: Action): ClientAction {
 interface Me {
   user: { id: string; displayName: string; email: string | null; avatarUrl: string | null };
   agents: { id: string; class: string; level: number; status: string }[];
+  /** Whether the account can be entered with a password — what the deletion dialog asks before showing one. */
+  hasPassword: boolean;
 }
 
 interface History {
@@ -295,6 +297,19 @@ describe.skipIf(!hasDatabase)('the player’s journey', () => {
     return fetch(`${app.url}${path}`, {
       redirect: 'manual',
       headers: cookie === undefined ? {} : { cookie: `${SESSION_COOKIE}=${cookie}` },
+    });
+  }
+
+  /** The erasure request: a confirmation and, for an account that has one, its password. */
+  function removeAccount(session: string | undefined, body: unknown): Promise<Response> {
+    return fetch(`${app.url}/auth/account`, {
+      method: 'DELETE',
+      headers: {
+        'content-type': 'application/json',
+        ...(session === undefined ? {} : { cookie: `${SESSION_COOKIE}=${session}` }),
+      },
+      body: JSON.stringify(body),
+      redirect: 'manual',
     });
   }
 
@@ -812,26 +827,106 @@ describe.skipIf(!hasDatabase)('the player’s journey', () => {
       }
     });
 
-    it('answers 401 to a cookie whose account is gone, in the shape every error has', async () => {
+    it('answers 401 to a cookie whose account is gone, on every route that acts for the player', async () => {
       const session = await signUp(anAddress());
       const { user } = await me(session);
 
-      // Deleted behind the session's back, which is what the account-deletion flow will do. The cookie is
+      // Deleted behind the session's back, which is what the account-deletion flow does. The cookie is
       // still a perfectly good signature; there is simply nobody left that it names.
       await withClient(databaseUrl, (client) => client.query('delete from users where id = $1', [user.id]));
 
-      const profile = await get('/me', session);
-      expect(profile.status).toBe(401);
-      const body = await profile.json();
-      expect(body.code).toBe('unauthenticated');
-      expect(typeof body.message).toBe('string');
+      // The same 401 everywhere a player would be told who they are or what they did: a stale cookie and
+      // no cookie are one fact to the client (ADR 0022). The history is included — it used to answer an
+      // empty page here, and a route that quietly answers from an account that does not exist is the
+      // hole the guard closes.
+      for (const path of ['/me', '/me/matches']) {
+        const response = await get(path, session);
+        expect(response.status).toBe(401);
+        const body = await response.json();
+        expect(body.code).toBe('unauthenticated');
+        expect(typeof body.message).toBe('string');
+      }
 
-      // The history answers 200 with an empty page instead, and that difference is deliberate here rather
-      // than an oversight: this route never reads a user row — it reads `matches` by the id the session
-      // names — and the cascade took the matches with the account, so there is nothing left to hand over.
-      // It is not a leak: the id comes from the cookie, and a cookie is not something a case can forge.
-      // The client calls `/me` first and signs out on the 401 it gets, so a player never sees this page.
-      expect(await historyOf(session)).toEqual({ matches: [], nextCursor: null });
+      // A ticket would be a way to take the match server's word for a player the platform no longer has.
+      expect((await post('/auth/game-ticket', undefined, session)).status).toBe(401);
+
+      // Signing out still works, because clearing the cookie is all a logout does and refusing would leave
+      // it in the browser until it aged out.
+      expect((await post('/auth/logout', undefined, session)).status).toBe(204);
+    });
+  });
+
+  describe('deleting the account', () => {
+    /**
+     * The whole of the input's T9: the account and everything it owns go, from a request its owner made,
+     * and the address is free to start again. The match is played rather than seeded so that the rows
+     * the cascade has to take — matches, the agents that fought, the events — are the real ones.
+     */
+    it('erases the account, its squad and its battle, drops a late match, and lets the address register again', async () => {
+      const email = anAddress();
+      const session = await signUp(email);
+      const player = await me(session);
+      // The account chose a password, so the deletion dialog would ask for it.
+      expect(player.hasPassword).toBe(true);
+
+      const { message } = await playAMatch(session);
+      expect((await historyOf(session)).matches.map((match) => match.id)).toEqual([message.id]);
+
+      const deleted = await removeAccount(session, { confirm: 'DELETE', password: PASSWORD });
+      expect(deleted.status).toBe(204);
+      // The answer clears the cookie that asked for the deletion, so this device is signed out too.
+      expect(setCookies(deleted).join('; ')).toMatch(/Max-Age=0/);
+
+      // The cookie is still a valid signature, and every route that acts for the player says 401.
+      expect((await get('/me', session)).status).toBe(401);
+      expect((await get('/me/matches', session)).status).toBe(401);
+      expect((await post('/auth/game-ticket', undefined, session)).status).toBe(401);
+
+      // The cascade took every row, read from the database because no route will name a deleted account.
+      const rows = await withClient(databaseUrl, async (client) => {
+        const user = await client.query('select count(*)::int as n from users where id = $1', [player.user.id]);
+        const agents = await client.query('select count(*)::int as n from agents where user_id = $1', [
+          player.user.id,
+        ]);
+        const matches = await client.query('select count(*)::int as n from matches where id = $1', [
+          message.id,
+        ]);
+        const events = await client.query('select count(*)::int as n from match_events where match_id = $1', [
+          message.id,
+        ]);
+        return { user: user.rows[0].n, agents: agents.rows[0].n, matches: matches.rows[0].n, events: events.rows[0].n };
+      });
+      expect(rows).toEqual({ user: 0, agents: 0, matches: 0, events: 0 });
+
+      // A match that ended while the deletion was in flight: the queue still holds it, and the platform
+      // drops it instead of retrying a message nobody will ever be able to receive. Published directly
+      // because the room has already handed this player's only match over.
+      await queue.publish(message);
+      await app.drain();
+      expect(await queue.receive(10)).toEqual([]);
+
+      // The address is free. Registering it again is a new account — a new id, and the starter squad —
+      // not a resurrection of the old one.
+      const again = await signUp(email);
+      const fresh = await me(again);
+      expect(fresh.user.id).not.toBe(player.user.id);
+      expect(fresh.user.email).toBe(email);
+      expect(fresh.agents).toHaveLength(3);
+      expect(fresh.agents.some((agent) => player.agents.some((old) => old.id === agent.id))).toBe(false);
+    }, 120_000);
+
+    it('deletes an account that has no password with the confirmation alone', async () => {
+      const { response } = await signIn(app.url, 'github');
+      expect(response.status).toBe(302);
+      const session = cookieValue(setCookies(response), SESSION_COOKIE) ?? '';
+
+      // A provider-only account has nothing to prove beyond the session: asking for a password would make
+      // deletion impossible for the people who never chose one.
+      expect((await me(session)).hasPassword).toBe(false);
+      const deleted = await removeAccount(session, { confirm: 'DELETE' });
+
+      expect(deleted.status).toBe(204);
+      expect((await get('/me', session)).status).toBe(401);
     });
   });
 

@@ -83,11 +83,14 @@ describe.skipIf(!hasDatabase)('GET /me', () => {
     const response = await me(firstSession);
     expect(response.status).toBe(200);
 
-    const { user, agents } = await response.json();
+    const { user, agents, hasPassword } = await response.json();
     expect(user.displayName).toBe('First Player');
     expect(user.email).toBe('first@example.com');
     expect(user.avatarUrl).toBe('https://avatars.example/first.png');
     expect(typeof user.id).toBe('string');
+
+    // Signed in through GitHub only: there is no password to prove, so the deletion dialog will not ask.
+    expect(hasPassword).toBe(false);
 
     expect(agents).toHaveLength(3);
     expect(agents.map((agent: { class: string }) => agent.class).sort()).toEqual([

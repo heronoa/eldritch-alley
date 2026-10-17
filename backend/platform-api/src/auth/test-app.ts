@@ -3,7 +3,7 @@
 // the cases talk to it with `fetch`. Nothing is mocked except the two OAuth providers, which would
 // otherwise need the network; the database is a scratch one, as in `src/db/test-database.ts`.
 
-import type { INestApplication } from '@nestjs/common';
+import type { INestApplication, Type } from '@nestjs/common';
 import { Test, type TestingModuleBuilder } from '@nestjs/testing';
 import { exportPKCS8, exportSPKI, generateKeyPair } from 'jose';
 import { AppModule } from '../app.module';
@@ -48,6 +48,12 @@ export interface TestApp {
    * sleeps.
    */
   drain(): Promise<void>;
+  /**
+   * A provider from the running container. A case that has to assert on state no route exposes — the
+   * failure throttle's counters, or a match written through the same service the consumer uses — reads it
+   * here instead of building a second container the application does not share.
+   */
+  get<T>(token: string | symbol | Type<T>): T;
   close(): Promise<void>;
 }
 
@@ -202,6 +208,7 @@ export async function startTestApp(options: {
     url: await app.getUrl(),
     mailer,
     drain: () => consumer.drain(),
+    get: <T>(token: string | symbol | Type<T>): T => moduleRef.get<T, T>(token),
     close: () => app.close(),
   };
 }

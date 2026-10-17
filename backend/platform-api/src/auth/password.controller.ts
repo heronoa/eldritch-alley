@@ -13,6 +13,7 @@ import type { Request, Response } from 'express';
 import { randomUUID } from 'node:crypto';
 import { apiError } from '../app';
 import type { User } from '../db/entities/user.entity';
+import { clientAddress } from './client-address';
 import { checkPasswordPolicy } from './password';
 import { PasswordService, type Credentials, type Registration } from './password.service';
 import { SESSION_CONFIG, sessionCookie, signSession, type SessionConfig } from './session';
@@ -191,13 +192,4 @@ function checkPolicy(password: string): void {
 
 function invalidBody(message: string): HttpException {
   return apiError(HttpStatus.BAD_REQUEST, 'invalid_body', message);
-}
-
-/**
- * Who is asking, for the failure counter. Behind the deployment's proxy this is the proxy's address
- * unless `trust proxy` is configured — a limit per address still holds, a limit per host does not, and
- * the ADR records that the counter is only as good as the proxy in front of it.
- */
-function clientAddress(request: Request): string {
-  return request.ip ?? request.socket?.remoteAddress ?? 'unknown';
 }

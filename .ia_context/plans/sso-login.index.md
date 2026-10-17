@@ -3,16 +3,19 @@
 **Created:** 2026-10-17
 **Roadmap:** [ROADMAP.md](../../ROADMAP.md) § M4. Accounts and persistence
 **Spec:** [sso.login.input.md](../inputs/sso.login.input.md)
-**Branch:** `feat/sso-login`
-**Status:** pending — milestone 0 done (2026-10-17); milestones 1–5 are not implemented
+**Branches:** `feat/keycloak-provider` (m1), `feat/account-deletion` (m2); the frontend milestones each
+follow on a branch of their own
+**Status:** in progress — milestone 0 done (2026-10-17), m1 approved (2026-10-17), m2 implemented and
+awaiting approval (2026-10-17); milestones 3–5 are not implemented
 
 ## What this delivery covers
 
-An **optional** Keycloak in front of sign-in. When it is configured, it is the only way in that the
-title offers, and it brokers Google and GitHub: one button, one integration, and the same account no
-matter which upstream provider the player chose. When it is **not** configured, the project behaves
-exactly as it does today — the direct Google and GitHub buttons are still there and the platform signs
-people in with them.
+An **optional** Keycloak in front of sign-in. It brokers Google and GitHub: one button, one integration,
+and the same account no matter which upstream provider the player chose. **Each provider stands on its
+own**: every button the backend is configured for appears on the title, and Keycloak being on or off
+changes nothing about the direct Google and GitHub buttons. A deployment that configures only Keycloak
+gets only that button; a deployment that configures only the direct pairs behaves exactly as it does
+today. The environment is the feature flag.
 
 Sign-in stays the server-side OAuth code flow with PKCE and the `ea_session` cookie (ADR 0018). No token
 reaches the client, nothing is kept in `sessionStorage`, and no route learns to read an `Authorization`
@@ -29,8 +32,8 @@ player to the title as a guest. The account dialog gains the security card where
 | # | Plan | Status | PR |
 |---|------|--------|----|
 | 0 | Index correction (see the gate below) | [x] done (2026-10-17) | — |
-| 1 | [sso-login-m1-keycloak-provider.plan.md](./sso-login-m1-keycloak-provider.plan.md) | [ ] pending | — |
-| 2 | [sso-login-m2-account-deletion.plan.md](./sso-login-m2-account-deletion.plan.md) | [ ] pending | — |
+| 1 | [sso-login-m1-keycloak-provider.plan.md](./sso-login-m1-keycloak-provider.plan.md) | [x] approved (2026-10-17) | — |
+| 2 | [sso-login-m2-account-deletion.plan.md](./sso-login-m2-account-deletion.plan.md) | [~] implemented (2026-10-17), awaiting approval | — |
 
 ### Frontend
 
@@ -45,8 +48,9 @@ Milestones 1–2 are backend vertical slices: there is no repository layer to ad
 already carries what both need. Milestones 3–5 follow the workflow's order — logic → integration →
 design — and each depends on the one before it.
 
-The owner decided on 2026-10-17 that the whole delivery is **one branch and one pull request**, with one
-commit or one commit series per milestone, as m4-04 did. The PR column is filled when it opens.
+The owner opted, in practice, for **one branch per backend milestone** — `feat/keycloak-provider` for m1
+and `feat/account-deletion` for m2 — each ready as its own pull request. The frontend milestones follow
+the same rule. The PR column is filled when one opens.
 
 ## Milestone gate, checked on 2026-10-17
 
@@ -71,7 +75,7 @@ lifted into a commit or a PR of its own if the review wants `CLAUDE.md` rule 5 k
 | # | Question | Answer |
 |---|---|---|
 | D1 | Where the Keycloak dance runs | **Server-side, as one more `OAuthProvider`**, behind the existing flow and the `ea_session` cookie. No SPA PKCE, no `oidc-client-ts`, no local JWT, no `/auth/sso/exchange`, no `JwtAuthGuard` |
-| D2 | What happens to the direct providers | **Kept.** Keycloak is a switch: when it is configured it is the only provider exposed, and Google/GitHub stand down without being deleted; when it is not configured they are the only providers, exactly as today. The environment is the feature flag |
+| D2 | What happens to the direct providers | **Independent of Keycloak.** Every provider configured in the backend appears in the frontend, and each stands on its own: configuring a realm does not hide the Google and GitHub buttons, and dropping it does not touch them. The environment is the feature flag — a provider is a button exactly when its variables are set |
 | D3 | Provider identifiers | `github`, `google` and `keycloak` are the values of `identities.provider` and of `GET /auth/providers`. `password` remains a way in and never a button (ADR 0021). **No new per-provider columns and no migration**: `identities` already holds the provider id, the address and its verification, one row per way in |
 | D4 | Linking rule | The existing rule stands: the `(provider, provider_user_id)` pair first, then an address verified **on both sides**. The input's "find the user by address" was not adopted — `users.email` is nullable and not unique. An unverified password account still refuses the link |
 | D5 | Account deletion | One cascading delete of the user; the session is revoked by making every user-scoped route check that the account still exists; a match that ends after the account is gone is dropped instead of retrying forever |
@@ -128,11 +132,20 @@ It can be added when a screen actually needs to show it.
 - **m4-05 depends on nothing here**, but the policy it writes must mention self-service deletion; the note
   lives in this index and not in a hidden TODO.
 
+### Handoff to m4-05
+
+m2 implements `DELETE /auth/account`, and the frontend milestones (m3–m5) surface it as the security card
+of the account dialog. The privacy policy m4-05 writes must say that a signed-in player deletes the
+account from that card, that the
+deletion is immediate and irreversible — squad, battle history and every way in are erased — and that a
+confirmation is mailed to the address before the row holding it disappears. An account that signs in only
+through a provider is deleted on the confirmation alone; one with a password also proves it.
+
 ## Test strategy
 
 | Case | Where | Why there |
 |---|---|---|
-| Keycloak authorization URL, claim mapping, provider precedence | `backend/platform-api` | The provider is a pure unit and the precedence is the controller's list |
+| Keycloak authorization URL, claim mapping, independent provider list | `backend/platform-api` | The provider is a pure unit and the list is built from what the environment configures |
 | Linking unchanged, notice mail once | `backend/platform-api` | The rule and the mailer live there |
 | Deletion: confirm, password, cascade, revocation, throttle | `backend/platform-api` | The route, the guard and the database |
 | Match ended for a deleted player | `backend/platform-api` | The consumer is there |
@@ -160,4 +173,4 @@ It can be added when a screen actually needs to show it.
 
 | ADR | Decision | Milestone | State |
 |---|---|---|---|
-| 0022 | SSO through Keycloak as an optional provider behind the existing session; self-service deletion and the revocation it carries | m1 | to be written in m1 |
+| 0022 | SSO through Keycloak as an optional, independent provider behind the existing session; self-service deletion and the revocation it carries | m1 | written (2026-10-17) |
