@@ -59,3 +59,48 @@ output "ssm_parameter_arns" {
   description = "SSM parameter ARNs keyed by name"
   value       = module.ssm_parameters.parameter_arns
 }
+
+output "db_endpoint" {
+  description = "Database address"
+  value       = module.rds.endpoint
+}
+
+output "db_port" {
+  description = "Database port"
+  value       = module.rds.port
+}
+
+output "db_name" {
+  description = "Database name"
+  value       = module.rds.db_name
+}
+
+output "db_username" {
+  description = "Database master user name"
+  value       = module.rds.username
+}
+
+output "db_master_secret_arn" {
+  description = "ARN of the Secrets Manager secret holding the database master password"
+  value       = module.rds.master_secret_arn
+}
+
+output "redis_endpoint" {
+  description = "Redis primary endpoint"
+  value       = module.redis.primary_endpoint_address
+}
+
+output "redis_port" {
+  description = "Redis port"
+  value       = module.redis.port
+}
+
+output "platform_api_security_group_id" {
+  description = "Security group for platform-api and migrate tasks"
+  value       = aws_security_group.platform_api.id
+}
+
+output "game_server_security_group_id" {
+  description = "Security group for game-server tasks"
+  value       = aws_security_group.game_server.id
+}

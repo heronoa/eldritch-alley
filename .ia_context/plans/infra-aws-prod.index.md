@@ -20,7 +20,7 @@ Resolved with Heron on 2026-10-16, before infra-01 was written:
 |---|------|--------|----|
 | 1 | [infra-01-bootstrap-and-ci.plan.md](./infra-01-bootstrap-and-ci.plan.md) | [x] code written, pending Heron's review and apply | — |
 | 2 | [infra-02-foundations.plan.md](./infra-02-foundations.plan.md) (network, ECR, assets bucket, SQS, SSM parameters) | [ ] plan written, pending Heron's answers to its open questions and approval; code not written | — |
-| 3 | [infra-03-data-stores.plan.md](./infra-03-data-stores.plan.md) (RDS, ElastiCache) | [ ] plan written, pending Heron's answers to its open questions and approval; code not written | — |
+| 3 | [infra-03-data-stores.plan.md](./infra-03-data-stores.plan.md) (RDS, ElastiCache) | [x] code written and validated locally (mocked provider), pending Heron's review and apply (Q6, apply timing, still open) | — |
 | 4 | infra-04-edge-and-compute.plan.md (ALB, ACM, WAF web ACL, Cloudflare records, ECS cluster, the two services, migrate family, at zero tasks) | [ ] not written | — |
 | 5 | infra-05-pipelines.plan.md (infra-apply.yml, deploy.yml, teardown.yml) | [ ] not written | — |
 | 6 | infra-06-observability-and-docs.plan.md (alarms, budget, README, ADRs) | [ ] not written | — |
@@ -35,9 +35,16 @@ Resolved with Heron on 2026-10-16, before infra-01 was written:
 - infra-05 needs working images in ECR (infra-02) and services defined but at zero tasks (infra-04).
 - infra-06 is written last on purpose, per the spec's own delivery order, even though some of its ADRs document decisions already baked into infra-01–04.
 
-## Known gap carried from the spec
+## Application state (corrected 2026-10-17)
 
-`platform-api` on `develop` currently has no MikroORM, no `DATABASE_URL` consumption, no migrate command and no SQS consumer (checked: only a `HealthController` exists). Heron confirmed (2026-10-16) this work is in progress on a separate branch, not abandoned. `.ia_context/inputs/m4-accounts-and-persistence.spec.md` does not exist in this repo yet. This means:
+The first version of this index said `platform-api` had no persistence. That described the `feat/init-terraform` branch, which is behind `develop`. Checked on `develop` (read-only) on 2026-10-17, confirmed by Heron:
 
-- infra-03 (RDS) and the SQS part of infra-02 are being built **ahead of** the application code that will use them. That is consistent with the spec ("If M4 drops SQS, drop this module") and with `ecs-service` starting at `desired_count = 0`.
-- The "Coordination with the application" items in the spec (how `DATABASE_URL` is assembled, the migrate command itself) cannot be finalized until the M4 application plan exists. infra-03 and infra-04 will state this as an open dependency rather than guess at a command.
+- `platform-api` has MikroORM, entities, a migrate command (`npm run migrate`, `src/migrate.ts`, advisory lock per the M4 spec), accounts, OAuth and the SQS consumer.
+- `.ia_context/inputs/m4-accounts-and-persistence.spec.md` exists on `develop`. It names the environment variables the infrastructure has to provide, including `OAUTH_GITHUB_CLIENT_SECRET`, `OAUTH_GOOGLE_CLIENT_SECRET`, `SESSION_SECRET`, `COOKIE_DOMAIN`, `TURNSTILE_SECRET`, `EMAIL_FROM` and `CONTACT_NOTIFY_TO`. The email provider's own settings are still undecided there ("the provider is chosen later").
+
+What this changes:
+
+- infra-02's SSM parameter list (its Q3) is **incomplete**: the two OAuth client secrets now have known names and can be added as one line each to `ssm_parameters`. The email credentials stay out until the provider is chosen. Not applied to infra-02's code; that is a small follow-up.
+- `DATABASE_URL` is still a decision for infra-04. `platform-api` reads only `DATABASE_URL`, a `postgres://` string; it does not accept `DB_HOST` and `DB_PASSWORD`. The spec's option (a) therefore needs a small application change that does not exist yet, and option (b) puts the password in state.
+- The M4 spec says the session cookie is "scoped to the parent domain", while the AWS spec asks for a host-only cookie (coordination item 7). infra-04 must pick one and say so.
+- infra-03 (RDS) and the SQS part of infra-02 are no longer built ahead of the application; the application work they serve already exists. `ecs-service` still starts at `desired_count = 0`, because the images are not in ECR yet.
