@@ -13,6 +13,12 @@ export interface SignInResult {
   user: User;
   /** Whether this sign-in is what created the account. The caller does not need it; a test does. */
   created: boolean;
+  /**
+   * Whether this sign-in added a way in to an account that already existed. True only for the
+   * `addIdentity` branch: a known pair adds nothing and a new account has nothing to be told about.
+   * The callback reads it to send the notice that tells the owner about a new way in.
+   */
+  linked: boolean;
 }
 
 /**
@@ -40,7 +46,11 @@ export class AuthService {
       { populate: ['user'] },
     );
     if (known !== null) {
-      return { user: await this.recordSignIn(em, known, profile, email), created: false };
+      return {
+        user: await this.recordSignIn(em, known, profile, email),
+        created: false,
+        linked: false,
+      };
     }
 
     // Nothing so far knows this pair. The address can still add a way in — but only a verified one on
@@ -54,7 +64,11 @@ export class AuthService {
             { populate: ['user'], orderBy: { createdAt: 'asc' } },
           );
     if (linkable !== null) {
-      return { user: await this.addIdentity(em, linkable.user, provider, profile, email), created: false };
+      return {
+        user: await this.addIdentity(em, linkable.user, provider, profile, email),
+        created: false,
+        linked: true,
+      };
     }
 
     return em.transactional(async (tx) => {
@@ -79,7 +93,7 @@ export class AuthService {
       }
 
       await tx.flush();
-      return { user, created: true } satisfies SignInResult;
+      return { user, created: true, linked: false } satisfies SignInResult;
     });
   }
 

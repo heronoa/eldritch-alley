@@ -18,10 +18,12 @@ import { OAUTH_PROVIDERS, type OAuthProvider, type ProviderName } from './provid
 /** The origin the client would be served from, and the one CORS has to allow. */
 export const CLIENT_ORIGIN = 'https://eldritch.test';
 export const SESSION_COOKIE = 'ea_session';
+/** The realm a case configures when it wants the Keycloak switch on. */
+export const KEYCLOAK_ISSUER = 'https://sso.eldritch.test/realms/homelab';
 
 /**
  * Every variable that configures a provider, the redirect base included. A case that asks for a
- * platform with no provider configured has to have all five **deleted** and not merely left alone:
+ * platform with no provider configured has to have all eight **deleted** and not merely left alone:
  * `process.env` outlives a case, so a value an earlier case set would be the value under test (§ 8).
  */
 export const OAUTH_VARIABLES = [
@@ -30,6 +32,9 @@ export const OAUTH_VARIABLES = [
   'OAUTH_GITHUB_CLIENT_SECRET',
   'OAUTH_GOOGLE_CLIENT_ID',
   'OAUTH_GOOGLE_CLIENT_SECRET',
+  'OAUTH_KEYCLOAK_CLIENT_ID',
+  'OAUTH_KEYCLOAK_CLIENT_SECRET',
+  'OAUTH_KEYCLOAK_ISSUER',
 ] as const;
 
 export interface TestApp {
@@ -90,7 +95,7 @@ export async function testTicketKeys(): Promise<{ privateKey: string; publicKey:
  */
 export async function setAuthEnvironment(
   databaseUrl: string | undefined,
-  options: { oauth?: boolean } = {},
+  options: { oauth?: boolean; keycloak?: boolean } = {},
 ): Promise<void> {
   const { privateKey } = await testTicketKeys();
   if (databaseUrl === undefined) delete process.env.DATABASE_URL;
@@ -126,6 +131,21 @@ export async function setAuthEnvironment(
     process.env.OAUTH_GITHUB_CLIENT_SECRET = 'github-client-secret';
     process.env.OAUTH_GOOGLE_CLIENT_ID = 'google-client-id';
     process.env.OAUTH_GOOGLE_CLIENT_SECRET = 'google-client-secret';
+
+    // Deleted rather than left alone, for the same reason as above: a developer's own `.env` may hold a
+    // realm, and a case that means to exercise only the direct providers must not gain a button from a
+    // file outside the suite.
+    delete process.env.OAUTH_KEYCLOAK_CLIENT_ID;
+    delete process.env.OAUTH_KEYCLOAK_CLIENT_SECRET;
+    delete process.env.OAUTH_KEYCLOAK_ISSUER;
+
+    // `keycloak: true` keeps the direct values in place as well, because each provider stands on its own
+    // and the case worth having is the deployment that configures a realm beside the direct pairs.
+    if (options.keycloak === true) {
+      process.env.OAUTH_KEYCLOAK_CLIENT_ID = 'keycloak-client-id';
+      process.env.OAUTH_KEYCLOAK_CLIENT_SECRET = 'keycloak-client-secret';
+      process.env.OAUTH_KEYCLOAK_ISSUER = KEYCLOAK_ISSUER;
+    }
   }
 }
 
@@ -133,8 +153,18 @@ export async function startTestApp(options: {
   databaseUrl: string;
   /** Partial, because a platform may be configured with one provider or with none (§ 8). */
   providers?: Partial<Record<ProviderName, OAuthProvider>>;
-  /** `false` asks for a platform with none of the five OAuth variables in the environment. */
+  /** `false` asks for a platform with none of the OAuth variables in the environment. */
   oauth?: boolean;
+  /**
+   * Also configures the realm, keeping the direct providers configured alongside it — the shape a
+   * deployment that adopts SSO without dropping its OAuth apps has. Ignored when `oauth` is `false`.
+   */
+  keycloak?: boolean;
+  /**
+   * The recorder the route cases read messages from. A case that needs a mailer which refuses replaces
+   * it with a `FakeMailer` of its own; a plain `Mailer` would leave `TestApp.mailer` unable to answer.
+   */
+  mailer?: FakeMailer;
   /**
    * The queue the consumer reads from. Absent means one of this harness's own, which is what a case that
    * only cares that a message *is* stored passes. The end-to-end case passes the object the match server
@@ -142,12 +172,12 @@ export async function startTestApp(options: {
    */
   queue?: MatchEndedQueue;
 }): Promise<TestApp> {
-  await setAuthEnvironment(options.databaseUrl, { oauth: options.oauth });
+  await setAuthEnvironment(options.databaseUrl, { oauth: options.oauth, keycloak: options.keycloak });
   // The container does not create tables — the migrations do, and in production that is a step of its
   // own — so the scratch database is brought up to the schema the application expects before it starts.
   await runMigrations({ databaseUrl: options.databaseUrl });
 
-  const mailer = new FakeMailer();
+  const mailer = options.mailer ?? new FakeMailer();
   const queue = options.queue ?? new InMemoryMatchEndedQueue();
   let builder: TestingModuleBuilder = Test.createTestingModule({ imports: [AppModule] })
     // Replaced always, and not only when a case asks: nothing in the suite may open a socket to a mail

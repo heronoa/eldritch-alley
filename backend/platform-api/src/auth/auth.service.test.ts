@@ -71,6 +71,7 @@ describe.skipIf(!hasDatabase)('AuthService', () => {
 
       expect(again.user.id).toBe(first.user.id);
       expect(again.created).toBe(false);
+      expect(again.linked).toBe(false);
       expect(await identitiesOf(first.user.id)).toHaveLength(1);
     });
 
@@ -86,6 +87,7 @@ describe.skipIf(!hasDatabase)('AuthService', () => {
 
       expect(second.user.id).toBe(first.user.id);
       expect(second.created).toBe(false);
+      expect(second.linked).toBe(true);
       expect(await identitiesOf(first.user.id)).toHaveLength(2);
       expect(await agentsOf(first.user.id)).toHaveLength(3);
     });
@@ -102,6 +104,7 @@ describe.skipIf(!hasDatabase)('AuthService', () => {
 
       expect(second.user.id).not.toBe(first.user.id);
       expect(second.created).toBe(true);
+      expect(second.linked).toBe(false);
     });
 
     it('creates a new user when the address is unverified on the side arriving now', async () => {
@@ -116,6 +119,7 @@ describe.skipIf(!hasDatabase)('AuthService', () => {
 
       expect(second.user.id).not.toBe(first.user.id);
       expect(second.created).toBe(true);
+      expect(second.linked).toBe(false);
     });
 
     it('creates a new user, and never links, when the provider reports no address at all', async () => {
@@ -124,6 +128,7 @@ describe.skipIf(!hasDatabase)('AuthService', () => {
 
       expect(first.created).toBe(true);
       expect(second.user.id).not.toBe(first.user.id);
+      expect(second.linked).toBe(false);
       expect(await identitiesOf(first.user.id)).toHaveLength(1);
     });
 
@@ -154,6 +159,7 @@ describe.skipIf(!hasDatabase)('AuthService', () => {
       );
 
       expect(second.user.id).toBe(first.user.id);
+      expect(second.linked).toBe(true);
       expect(await identitiesOf(first.user.id)).toHaveLength(2);
     });
   });

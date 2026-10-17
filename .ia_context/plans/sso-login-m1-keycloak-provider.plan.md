@@ -8,10 +8,10 @@
 
 ## 1. Objective
 
-Keycloak becomes one more OAuth provider behind the flow m4-02 already built. When it is configured it
-is the **only** provider the platform exposes, and it brokers Google and GitHub; when it is not, the
-direct Google and GitHub providers are exactly what they are today. The contract this milestone hands to
-the client is the existing one: a list of provider names, one redirect, one callback, one cookie.
+Keycloak becomes one more OAuth provider behind the flow m4-02 already built. It is independent of the
+direct providers: when it is configured it joins the list of buttons, and when it is not the direct
+Google and GitHub providers are exactly what they are today. The contract this milestone hands to the
+client is the existing one: a list of provider names, one redirect, one callback, one cookie.
 
 A first sign-in that links a new SSO identity to an existing account sends a notice to the address, so
 that the owner of the account learns about a new way in.
@@ -21,19 +21,19 @@ that the owner of the account learns about a new way in.
 | File | Operation | What changes |
 |------|-----------|--------------|
 | `backend/platform-api/src/auth/keycloak.provider.ts` | create | `KeycloakProvider` over `openid-client`: the realm's four endpoints, the `openid profile email` scope, PKCE S256, and the ID-token claims mapped to `ProviderProfile`. The claim mapping is a pure exported function so a test can read it without a network |
-| `backend/platform-api/src/auth/provider.ts` | modify | `'keycloak'` enters `OAuthProviderName` and `PROVIDER_NAMES`; `OAUTH_KEYCLOAK_CLIENT_ID`, `OAUTH_KEYCLOAK_CLIENT_SECRET` and `OAUTH_KEYCLOAK_ISSUER` join the credential table; the factory builds `KeycloakProvider`; `oauthProvidersFromEnvironment` applies the precedence rule (Keycloak configured ⇒ only Keycloak; Keycloak absent ⇒ the direct providers, as today) |
+| `backend/platform-api/src/auth/provider.ts` | modify | `'keycloak'` enters `OAuthProviderName` and `PROVIDER_NAMES`; `OAUTH_KEYCLOAK_CLIENT_ID`, `OAUTH_KEYCLOAK_CLIENT_SECRET` and `OAUTH_KEYCLOAK_ISSUER` join the credential table; the factory builds `KeycloakProvider`; `oauthProvidersFromEnvironment` builds every configured provider independently (the realm joins the direct pairs, it does not replace them) |
 | `backend/platform-api/src/db/entities/identity.entity.ts` | modify | `ProviderName` gains `'keycloak'`. The column is `text`; **no migration** |
 | `backend/platform-api/src/auth/auth.service.ts` | modify | `SignInResult` gains `linked: boolean` — true only when an identity was added to a user that already existed. `created` keeps its meaning |
 | `backend/platform-api/src/auth/oauth.controller.ts` | modify | After a sign-in that linked, send the notice through `MAILER`; a mail failure is logged and does not fail the sign-in. The controller already owns the callback, so the notice lives where the link is observed |
 | `backend/platform-api/src/email/messages.ts` | modify | `linkedAccountMessage(to, provider)` — plain text, English, no link to click, no token |
-| `.env.example` | modify | The three Keycloak variables and the precedence sentence: setting them turns the direct buttons off |
+| `.env.example` | modify | The three Keycloak variables and the independence sentence: setting them adds a button and hides none |
 | `docker-compose.yml` | modify | The three variables passed through to `platform-api` the way the other `OAUTH_*` pairs are |
 | `docs/adr/0022-sso-through-keycloak.md` | create | The decision record (see § 5) |
 | `docs/adr/README.md` | modify | The 0022 row |
 | `backend/platform-api/src/auth/keycloak.provider.test.ts` | create | Section 4 |
-| `backend/platform-api/src/auth/provider.test.ts` | modify | Precedence and the new credential pair |
+| `backend/platform-api/src/auth/provider.test.ts` | modify | Independence and the new credential pair |
 | `backend/platform-api/src/auth/auth.service.test.ts` | modify | `linked` on the three outcomes |
-| `backend/platform-api/src/auth/oauth.controller.test.ts` | modify | Keycloak start/callback, the notice, and the direct providers standing down |
+| `backend/platform-api/src/auth/oauth.controller.test.ts` | modify | Keycloak start/callback, the notice, and the direct providers still listed beside it |
 | `backend/e2e/src/player-journey.test.ts` | modify | One case with a fake Keycloak and a fake GitHub in the same container |
 
 ## 3. Layer contract
@@ -42,21 +42,20 @@ that the owner of the account learns about a new way in.
 is the same three plus `'password'`. `PROVIDER_NAMES` lists `keycloak` first, then the two direct ones,
 so the answer to `GET /auth/providers` is stable when it changes shape.
 
-**`oauthProvidersFromEnvironment(): OAuthProviders`** — the switch the owner asked for:
+**`oauthProvidersFromEnvironment(): OAuthProviders`** — every credential stands on its own:
 
-- Keycloak fully configured (id, secret and issuer) → `{ keycloak }`. GitHub and Google are not built
-  even when their four variables are present. Their old identities remain readable; only the button and
-  the route are gone.
+- Keycloak fully configured (id, secret and issuer) → `{ keycloak }` joins the direct providers,
+  if any are configured. A realm does not replace or hide them.
 - Keycloak partly configured → throws while the container is built, naming the missing variable. A typo
   must stop the boot, not the first sign-in.
-- Keycloak absent → `{ github?, google? }`, built exactly as today.
+- Each direct pair fully configured → `{ github?, google? }`, built exactly as today.
 - Nothing configured → `{}`, and `GET /auth/providers` answers `[]`.
 
 **Routes** (unchanged shapes):
 
 | Route | Answer |
 |---|---|
-| `GET /auth/providers` | `{ providers: OAuthProviderName[] }` — `['keycloak']` or the configured direct ones |
+| `GET /auth/providers` | `{ providers: OAuthProviderName[] }` — every configured provider, Keycloak first |
 | `GET /auth/keycloak` | 302 to `${issuer}/protocol/openid-connect/auth` with `state`, `code_challenge`, S256; sets `ea_oauth` |
 | `GET /auth/keycloak/callback` | the existing callback: state and PKCE verified, identity linked or created, `ea_session` set, 302 to `CLIENT_ORIGIN` |
 | any other provider | the existing refusal |
@@ -85,9 +84,10 @@ platform never sees one), read roles or groups, support MFA or federated logout,
 **Unit — `provider.test.ts`:**
 
 - [ ] Keycloak alone → `['keycloak']`.
-- [ ] Keycloak plus GitHub and Google → `['keycloak']`; the direct providers are not built.
+- [ ] Keycloak plus GitHub and Google → `['keycloak', 'github', 'google']`; all three are built.
 - [ ] Keycloak absent → GitHub and Google as before.
 - [ ] Half a Keycloak credential → throws and names the missing variable.
+- [ ] Half a direct pair beside a valid realm → throws, naming the missing half.
 - [ ] Keycloak needs `OAUTH_REDIRECT_BASE_URL` only when a provider is actually configured.
 
 **Unit — `auth.service.test.ts`:**
@@ -99,8 +99,8 @@ platform never sees one), read roles or groups, support MFA or federated logout,
 
 **Route — `oauth.controller.test.ts`:**
 
-- [ ] With Keycloak configured, `GET /auth/providers` answers `['keycloak']` even when the direct
-      providers are configured alongside it; `GET /auth/github` is refused.
+- [ ] With Keycloak configured beside the direct providers, `GET /auth/providers` answers all of them,
+      and `GET /auth/github` still works.
 - [ ] A Keycloak start redirects to the realm and carries the flow cookie.
 - [ ] A Keycloak callback signs in, sets the cookie, redirects to the client, and `/me` answers.
 - [ ] Linking to an existing account sends exactly one notice, to the verified address; a second sign-in
@@ -110,8 +110,8 @@ platform never sees one), read roles or groups, support MFA or federated logout,
 
 **E2E — `player-journey.test.ts`:**
 
-- [ ] The container is given a fake Keycloak and a fake GitHub; the providers route lists only Keycloak;
-      the callback signs the player in; a second callback finds the same account.
+- [ ] The container is given a fake Keycloak and a fake GitHub; the providers route lists both; the
+      Keycloak callback signs the player in; a second callback finds the same account.
 
 **Edge cases included above:** unverified address, missing address, mail failure, half configuration,
 direct providers configured but inactive.
@@ -146,10 +146,10 @@ OAUTH_KEYCLOAK_ISSUER=http://localhost:8080/realms/homelab   # production: https
 client reads them: the issuer lives in the API's `OAUTH_KEYCLOAK_ISSUER`, and the redirect is the API's
 callback. They can be removed in the first frontend milestone; the plan does not use them.
 
-**ADR 0022 records:** Keycloak is optional and, when present, the only exposed provider; the session stays
-the signed cookie and no token reaches the client; the linking rule is unchanged; the direct providers
-stay for deployments without a realm; deletion is self-service and revokes by account existence; the
-provider-id pair remains the only account key.
+**ADR 0022 records:** Keycloak is optional and independent of the direct providers, each configured
+credential being its own button; the session stays the signed cookie and no token reaches the client;
+the linking rule is unchanged; deletion is self-service and revokes by account existence; the provider-id
+pair remains the only account key.
 
 ## 6. Out of scope
 
