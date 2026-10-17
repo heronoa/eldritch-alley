@@ -3,7 +3,7 @@
 **Milestone:** m4-03
 **Parent feature:** m4-accounts-and-persistence
 **Created:** 2026-10-16
-**Status:** delivered (2026-10-16) — the decisions taken while implementing are D7–D11. The end-to-end
+**Status:** approved (2026-10-17) — delivered on 2026-10-16 and merged in PR #27. The decisions taken while implementing are D7–D11. The end-to-end
 player journey that exercises this milestone lives in `backend/e2e` and is described in section 8
 **ADR:** none. The pieces that constrain the future are in ADR 0019 (the database decides idempotence) and in section 3 (the message carries everything a replay needs)
 

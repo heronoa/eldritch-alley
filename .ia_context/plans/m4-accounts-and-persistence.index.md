@@ -3,7 +3,7 @@
 **Created:** 2026-10-16
 **Roadmap:** [ROADMAP.md](../../ROADMAP.md) § M4. Accounts and persistence
 **Spec:** [m4-accounts-and-persistence.spec.md](../inputs/m4-accounts-and-persistence.spec.md)
-**Status:** in progress — m4-01 approved (2026-10-16), m4-02 in progress, m4-03 delivered (2026-10-16), m4-04 delivered (2026-10-17)
+**Status:** in progress — m4-01 to m4-04 approved and merged (2026-10-17), m4-05 pending
 
 ## What this delivery covers
 
@@ -23,9 +23,9 @@ agents go into a match, agent death and level-up. They stay in M4 as a later del
 |---|------|--------|----|
 | 0 | Index correction (M3 and M3.5) — first commit of m4-01 | [x] delivered | — |
 | 1 | [m4-01-persistence.plan.md](./m4-01-persistence.plan.md) | [x] approved (2026-10-16) | — |
-| 2 | [m4-02-auth.plan.md](./m4-02-auth.plan.md) | [~] in progress | — |
-| 3 | [m4-03-match-recording.plan.md](./m4-03-match-recording.plan.md) | [x] delivered (2026-10-16) | — |
-| 4 | [m4-04-client.plan.md](./m4-04-client.plan.md) | [x] delivered (2026-10-17) | — |
+| 2 | [m4-02-auth.plan.md](./m4-02-auth.plan.md) | [x] approved (2026-10-17, merged in PR #27) | #27 |
+| 3 | [m4-03-match-recording.plan.md](./m4-03-match-recording.plan.md) | [x] approved (2026-10-17, merged in PR #27) | #27 |
+| 4 | [m4-04-client.plan.md](./m4-04-client.plan.md) | [x] approved (2026-10-17, merged in PR #28) | #28 |
 | 5 | [m4-05-contact-release-privacy.plan.md](./m4-05-contact-release-privacy.plan.md) | [ ] pending | — |
 
 The PR column is filled when the pull request opens. Milestone 0 is the first commit of m4-01's branch
@@ -52,6 +52,10 @@ because the indexes are the thing that is out of date.
 are corrected by the first commit of the m4-01 branch. A reviewer who wants `CLAUDE.md` rule 5 kept
 strictly can lift that commit into a PR of its own before m4-01 opens; it touches nothing the
 persistence work touches.
+
+**Re-checked on 2026-10-17 (owner):** m4-01 to m4-04 are approved and merged — PR #26 for m4-01, PR #27
+for m4-02 and m4-03, PR #28 for m4-04. This index and the three plan headers were updated to say so;
+m4-05 is the only milestone still pending.
 
 ## Dependency notes
 
