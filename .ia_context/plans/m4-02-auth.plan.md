@@ -3,7 +3,7 @@
 **Milestone:** m4-02
 **Parent feature:** m4-accounts-and-persistence
 **Created:** 2026-10-16
-**Status:** in progress (2026-10-16) — m4-01 was approved by the owner the same day
+**Status:** approved (2026-10-17) — m4-01 was approved by the owner on 2026-10-16; merged in PR #27
 **ADR:** [0018](../../docs/adr/0018-oauth-sign-in-session-and-ticket.md) · [0020](../../docs/adr/0020-persistent-squad-and-starter-set.md) · [0021](../../docs/adr/0021-password-sign-in-with-a-verified-address.md) (supersedes 0018 § 1, added by the § 9 amendment)
 
 ## 1. Objective

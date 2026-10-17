@@ -3,7 +3,7 @@
 **Milestone:** m4-04
 **Parent feature:** m4-accounts-and-persistence
 **Created:** 2026-10-16
-**Status:** delivered (2026-10-17, branch `feat/client-login`)
+**Status:** approved (2026-10-17) — delivered on `feat/client-login` and merged in PR #28
 **ADR:** none. ADR 0009 already covers the localization these screens follow, and the client's own decisions here are screens, not architecture
 
 ## 1. Objective
