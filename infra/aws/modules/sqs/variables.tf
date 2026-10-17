@@ -1,5 +1,5 @@
 variable "name" {
-  description = "Name of the main queue. The dead-letter queue is named <name>-dlq."
+  description = "Name of the main queue, without the .fifo suffix (the module adds it). The dead-letter queue is <name>-dlq.fifo."
   type        = string
 }
 

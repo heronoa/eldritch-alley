@@ -83,3 +83,63 @@ run "state_bucket_blocks_all_public_access" {
     error_message = "all four public-access-block settings must be true on the state bucket"
   }
 }
+
+# infra-04 creates ECS roles. The deploy role registers task definitions, which
+# passes the execution role as well as the task role.
+run "deploy_role_can_pass_execution_and_task_roles_only" {
+  command = apply
+
+  assert {
+    condition = contains(flatten([
+      for s in jsondecode(aws_iam_role_policy.deploy_ecr_and_ecs.policy).Statement : flatten([s.Resource]) if s.Sid == "PassRoleToEcsTasks"
+    ]), "arn:aws:iam::*:role/eldritch-prod-*-task")
+    error_message = "the deploy role must still pass the task roles"
+  }
+
+  assert {
+    condition = contains(flatten([
+      for s in jsondecode(aws_iam_role_policy.deploy_ecr_and_ecs.policy).Statement : flatten([s.Resource]) if s.Sid == "PassRoleToEcsTasks"
+    ]), "arn:aws:iam::*:role/eldritch-prod-*-execution")
+    error_message = "the deploy role must also pass the execution roles"
+  }
+
+  assert {
+    condition = !contains(flatten([
+      for s in jsondecode(aws_iam_role_policy.deploy_ecr_and_ecs.policy).Statement : flatten([s.Resource]) if s.Sid == "PassRoleToEcsTasks"
+    ]), "*")
+    error_message = "PassRole must never be granted on every role"
+  }
+}
+
+run "apply_role_has_the_iam_actions_the_provider_needs_for_roles" {
+  command = apply
+
+  assert {
+    condition = alltrue([
+      for a in ["iam:UpdateAssumeRolePolicy", "iam:ListRoleTags", "iam:UntagRole", "iam:GetInstanceProfile", "iam:ListInstanceProfilesForRole", "iam:TagInstanceProfile"] :
+      contains(flatten([for s in jsondecode(aws_iam_role_policy.apply_scoped_iam.policy).Statement : flatten([s.Action]) if s.Effect == "Allow"]), a)
+    ])
+    error_message = "the apply role needs these IAM actions to create and read the ECS roles"
+  }
+}
+
+# `role/eldritch-*` matches the CI roles themselves, so without a deny the apply
+# role could widen its own permissions. An explicit deny wins over the allow.
+run "apply_role_cannot_modify_the_ci_roles" {
+  command = apply
+
+  assert {
+    condition = contains(flatten([
+      for s in jsondecode(aws_iam_role_policy.apply_scoped_iam.policy).Statement : flatten([s.Resource]) if s.Effect == "Deny"
+    ]), "arn:aws:iam::*:role/eldritch-prod-ci-*")
+    error_message = "a Deny statement must cover the eldritch-prod-ci-* roles"
+  }
+
+  assert {
+    condition = alltrue([
+      for a in ["iam:PutRolePolicy", "iam:AttachRolePolicy", "iam:DetachRolePolicy", "iam:DeleteRolePolicy", "iam:UpdateAssumeRolePolicy", "iam:DeleteRole"] :
+      contains(flatten([for s in jsondecode(aws_iam_role_policy.apply_scoped_iam.policy).Statement : flatten([s.Action]) if s.Effect == "Deny"]), a)
+    ])
+    error_message = "the deny must cover every action that could change a CI role's permissions or trust"
+  }
+}

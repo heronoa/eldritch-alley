@@ -4,7 +4,7 @@
 **Source spec:** [aws-terraform-deploy.spec.md](../inputs/aws-terraform-deploy.spec.md)
 **Milestone:** 4 of 6
 **Created:** 2026-10-17
-**Status:** pending approval. **Nothing in this plan is written as code or applied to AWS.**
+**Status:** code written and locally validated on 2026-10-17 (`fmt`, `validate`, `terraform test` with mocked providers, no credentials used anywhere). Pending Heron's review and `apply`. **Nothing in this plan has been applied to AWS.** Written with the recommended default for every open question (section 4), since Heron approved the plan without answering them; each one is easy to change (a variable or one module).
 
 Written ahead of the index's usual gate (infra-02 and infra-03 applied) because Heron asked for it. The plan can be reviewed now; **its code must not be applied until infra-02 and infra-03 are applied**, because it reads the VPC, the data stores and the task security groups they create.
 
@@ -338,3 +338,31 @@ First step with the ALB, the public IPv4 addresses and the WAF. **Not computed i
 1. **Part 0:** `fix(infra): make the match queue FIFO and add the missing SSM parameters`; `fix(infra): let the CI roles manage and pass the ECS roles`.
 2. **Part A:** `feat(infra): add alb module`; `feat(infra): add waf module`; `feat(infra): add edge-dns module and wire the edge into the prod stack`.
 3. **Part B:** `feat(infra): add ecs-cluster and ecs-service modules`; `feat(infra): wire the cluster, services and migrate family into the prod stack`; `docs(infra): update README and index for infra-04`.
+
+## 15. Implementation notes (what actually happened, 2026-10-17)
+
+Tests: `sqs` 4, `bootstrap` 8, `alb` 8, `waf` 6, `edge-dns` 6, `ecs-cluster` 5, `ecs-service` 16, `envs/prod` 23. The stg stack, `modules/network`, `ecr`, `ec2` and the other infra-02 and infra-03 modules are unchanged.
+
+**Questions resolved by evidence, not by choice**
+- **Q7 (Cloudflare provider):** read from the real provider, `cloudflare/cloudflare` v5.28.0 (pinned `~> 5.0`). It has `cloudflare_dns_record` (`zone_id`, `name`, `type`, `content`, `ttl` required), `cloudflare_zone_setting` (`zone_id`, `setting_id`, `value`) and the `cloudflare_ip_ranges` data source with `ipv4_cidrs`. The `http` provider is not needed.
+- **Zone SSL mode:** the provider can set it, but it is a **zone-wide** setting that also changes every other hostname in the zone (including any not part of this stack). So `manage_zone_ssl_mode` defaults to **false** and Full (strict) stays a manual runbook step unless asked. The strings `ssl` and `strict` were **not verified** against a real zone (the schema gives no enumeration).
+
+**Divergences from the plan**
+- **Chosen without Heron's answer (recommended defaults):** Q1 one plan; Q2 `DB_*` parts (no `DATABASE_URL`); Q3 `COOKIE_DOMAIN` is the API hostname; Q4 health path `/health` as a variable; Q5 IPv4 prefix list only; Q6 block mode, 1000 per 300 s; Q8 bootstrap edited; Q9 OAuth and mail off.
+- **Migrate task role has no policy**, not "the platform-api task role" as section 6.5 said: the migration needs the database and nothing else, so least privilege wins.
+- **Part 0 apply role:** the self-edit is closed with an explicit `Deny` on `eldritch-prod-ci-*` for the actions that change a role's permissions or trust, since IAM cannot exclude a pattern from an `Allow` resource.
+- **Echo outputs again:** `ecs-service` also outputs `desired_count`, `environment` and `secrets`, so the composition tests can read what the container was given. None carries a secret value.
+- **Certificate validation records are keyed by hostname**, from the inputs, not by domain name from the certificate. The usual pattern keys the `for_each` on the certificate's own attribute, which I could not verify behaves at the first plan; static keys do not depend on it.
+- **Two real bugs found by the tests, fixed:** (1) a `count` on the task role policy depended on a JSON document embedding the assets bucket ARN, which does not exist until apply; it now depends only on inputs. (2) the ALB listener rule and certificate needed their keys to be known at plan time (above).
+- **Two defects in my own tests, fixed without weakening any assertion:** `cidrcontains` is OpenTofu only; and the mocked provider generated random strings where the real one validates ARN syntax, so mocked resources were given valid ARNs.
+- **A useless root test removed** (the queue URL under mock is random); the FIFO guarantee is in the `sqs` module tests.
+
+**Not covered by `terraform test`**
+- `ignore_changes = [task_definition]` on the service and "no output shaped like a password" (review).
+- That the health path, the Cloudflare zone setting values, the WAF rule behavior and every ELB or WAF permission are accepted by the real services. The mock accepts any string; **the first real `terraform plan` and apply are the check.**
+
+**Before the first rollout (infra-05), not before this applies**
+- The application change for Q2: build the connection string from `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER` and `DB_PASSWORD`. Today `platform-api` reads only `DATABASE_URL`.
+- A health route in the game-server (DT-69), or confirmation that Colyseus 0.18 answers one at another path; then set `game_server_health_check_path`.
+- The OAuth apps' callback URLs for any provider enabled, and a mail provider if `email_enabled` is turned on.
+- infra-ci's live `plan` step will not work against `envs/prod` until it is given `CLOUDFLARE_API_TOKEN` and the zone id (`TF_VAR_cloudflare_zone_id`); it stays inert until then, as before. infra-05 owns wiring both.

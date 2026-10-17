@@ -13,3 +13,7 @@ provider "aws" {
     }
   }
 }
+
+# The API token comes from the CLOUDFLARE_API_TOKEN environment variable (locally) or
+# the `prod` GitHub environment secret of the same name (CI). Never in code or state.
+provider "cloudflare" {}

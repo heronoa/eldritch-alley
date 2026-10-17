@@ -202,11 +202,34 @@ resource "aws_iam_role_policy" "apply_scoped_iam" {
           "iam:AddRoleToInstanceProfile",
           "iam:RemoveRoleFromInstanceProfile",
           "iam:PassRole",
+          # The provider reads and updates roles with these on refresh and change.
+          "iam:UpdateAssumeRolePolicy",
+          "iam:ListRoleTags",
+          "iam:UntagRole",
+          "iam:GetInstanceProfile",
+          "iam:ListInstanceProfilesForRole",
+          "iam:TagInstanceProfile",
+          "iam:UntagInstanceProfile",
         ]
         Resource = [
           "arn:aws:iam::*:role/eldritch-*",
           "arn:aws:iam::*:instance-profile/eldritch-*",
         ]
+      },
+      {
+        # `role/eldritch-*` also matches the CI roles, so the allow above would
+        # let this role widen its own permissions. An explicit deny wins.
+        Sid    = "DenyChangingTheCiRoles"
+        Effect = "Deny"
+        Action = [
+          "iam:DeleteRole",
+          "iam:PutRolePolicy",
+          "iam:DeleteRolePolicy",
+          "iam:AttachRolePolicy",
+          "iam:DetachRolePolicy",
+          "iam:UpdateAssumeRolePolicy",
+        ]
+        Resource = "arn:aws:iam::*:role/eldritch-prod-ci-*"
       },
     ]
   })
@@ -305,13 +328,16 @@ resource "aws_iam_role_policy" "deploy_ecr_and_ecs" {
         # here.
       },
       {
-        # Placeholder: no task/execution role ARNs exist until infra-04
-        # creates them. Functionally inert until that step lands; tracked
-        # as a follow-up in infra-01's plan, not a gap to fix now.
-        Sid      = "PassRoleToEcsTasks"
-        Effect   = "Allow"
-        Action   = ["iam:PassRole"]
-        Resource = "arn:aws:iam::*:role/eldritch-prod-*-task"
+        # Registering a task definition passes both the task role and the
+        # execution role. infra-04 names them eldritch-prod-<service>-task and
+        # eldritch-prod-<service>-execution.
+        Sid    = "PassRoleToEcsTasks"
+        Effect = "Allow"
+        Action = ["iam:PassRole"]
+        Resource = [
+          "arn:aws:iam::*:role/eldritch-prod-*-task",
+          "arn:aws:iam::*:role/eldritch-prod-*-execution",
+        ]
       },
       {
         Sid      = "LogsForRunTask"

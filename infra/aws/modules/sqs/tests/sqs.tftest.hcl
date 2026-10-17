@@ -43,12 +43,28 @@ run "both_queues_are_encrypted_and_named_from_the_input" {
   }
 
   assert {
-    condition     = aws_sqs_queue.main.name == "eldritch-prod-match-ended" && aws_sqs_queue.dlq.name == "eldritch-prod-match-ended-dlq"
-    error_message = "queue names must derive from the name input"
+    condition     = aws_sqs_queue.main.name == "eldritch-prod-match-ended.fifo" && aws_sqs_queue.dlq.name == "eldritch-prod-match-ended-dlq.fifo"
+    error_message = "queue names must derive from the name input and end in .fifo"
   }
 
   assert {
     condition     = aws_sqs_queue.main.visibility_timeout_seconds == 30
     error_message = "the visibility timeout must come from the variable"
+  }
+}
+
+# The game-server publishes with MessageGroupId and MessageDeduplicationId, which a
+# standard queue rejects. A queue cannot change type, and a FIFO name must end in .fifo.
+run "both_queues_are_fifo_without_content_based_deduplication" {
+  command = apply
+
+  assert {
+    condition     = aws_sqs_queue.main.fifo_queue && aws_sqs_queue.dlq.fifo_queue
+    error_message = "both queues must be FIFO (a FIFO queue needs a FIFO dead-letter queue)"
+  }
+
+  assert {
+    condition     = aws_sqs_queue.main.content_based_deduplication == false && aws_sqs_queue.dlq.content_based_deduplication == false
+    error_message = "deduplication is by the explicit match id, never by content"
   }
 }
