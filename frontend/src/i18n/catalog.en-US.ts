@@ -65,6 +65,9 @@ export const enUS: Record<MessageKey, string> = {
   'onboarding.abilities.heading': 'Abilities',
   'onboarding.abilities.body':
     'Every class carries abilities: area magic, heals, strikes of its own. The Ability button opens the list, shows what each one costs, and draws the cells it reaches on the map before you commit.',
+  'onboarding.account.heading': 'Your account',
+  'onboarding.account.body':
+    'You can play as a guest. With an account, your squad and battle history are kept, and you continue on another device; news and new versions only arrive if you tick the option in your profile. The Sign in button sits in the top corner: you can create an account with email and password, GitHub, Google or SSO.',
 
   'onboarding.advance': 'Continue',
   'onboarding.back': 'Back',

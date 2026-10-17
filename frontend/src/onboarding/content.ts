@@ -17,7 +17,8 @@ export interface OnboardingCard {
 /**
  * The cards, in the order the player reads them: the story of the admission test first, then one topic
  * of how to play per card — the grid and its height, the initiative queue, moving and attacking,
- * ammunition and energy, cover with the hit-chance badge, and abilities.
+ * ammunition and energy, cover with the hit-chance badge, abilities, and the account that keeps the
+ * squad and the battle history.
  *
  * The `as const` is what makes the ids the catalog keys: a card added here whose text is missing from
  * `catalog.pt-BR.ts` is a compile error in `copy.ts`, not a card that opens empty on the screen.
@@ -32,6 +33,7 @@ export const ONBOARDING_CARDS = [
   { id: 'ammo-and-reload', category: 'howto' },
   { id: 'cover-and-chance', category: 'howto' },
   { id: 'abilities', category: 'howto' },
+  { id: 'account', category: 'howto' },
 ] as const satisfies readonly OnboardingCard[];
 
 /** The id of a card, which is also the middle of the keys its two lines live under. */

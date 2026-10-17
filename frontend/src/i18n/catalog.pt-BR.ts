@@ -74,6 +74,11 @@ export const ptBR = {
   'onboarding.abilities.heading': 'Habilidades',
   'onboarding.abilities.body':
     'Cada classe carrega habilidades: magias de área, curas, golpes próprios. O botão Habilidade abre a lista, mostra o custo de cada uma e desenha no mapa as casas que ela alcança antes de você confirmar.',
+  // The account card: optional for a guest, what an account keeps, and how to sign in. It closes the
+  // sequence because it is about keeping the squad, not about the first match.
+  'onboarding.account.heading': 'A sua conta',
+  'onboarding.account.body':
+    'Você pode jogar como visitante. Com uma conta, o esquadrão e o histórico de batalhas ficam guardados, e você continua de outro aparelho; avisos de novidades e novas versões só chegam se você marcar a opção no perfil. O botão Entrar fica no canto superior da tela: dá para criar a conta com e-mail e senha, GitHub, Google ou SSO.',
 
   'onboarding.advance': 'Continuar',
   'onboarding.back': 'Voltar',

@@ -120,22 +120,31 @@
   margin-top: 0;
 }
 
-/* The footer link that opens the sequence again. The footer does not take the pointer (`pointer-events:
-   none`), so the link gives it back for itself. It reads in the muted ink rather than the footer's own
-   grey, which is the title screen's recorded 4.02:1 gap. */
+/* The footer button that opens the sequence again. The footer does not take the pointer
+   (`pointer-events: none`), so the button gives it back for itself. It reads in the muted ink rather
+   than the footer's own grey, which is the title screen's recorded 4.02:1 gap. Its chrome repeats
+   `.footer-link` in `title.css`, because each sheet is read by its own contrast test; a change here is
+   a change there. */
 .how-to-play {
-  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0 10px;
   cursor: pointer;
-  font-size: 11px;
+  font: 600 12px/1 var(--body);
   letter-spacing: 0.08em;
   color: var(--muted);
-  background: none;
-  border: 0;
+  white-space: nowrap;
+  background: rgba(5, 7, 15, 0.92);
+  border: 1px solid var(--muted);
+  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.45);
   pointer-events: auto;
 }
 
 .how-to-play:hover {
   color: var(--ink);
+  border-color: var(--ink);
 }
 
 .how-to-play:focus-visible {

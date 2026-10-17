@@ -28,23 +28,25 @@
 }
 
 .account-control {
-  min-width: 34px;
-  min-height: 26px;
+  min-width: 64px;
+  min-height: 34px;
   max-width: 220px;
-  padding: 0 8px;
+  padding: 0 12px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   cursor: pointer;
-  font: 600 12px/1 var(--body);
+  font: 600 13px/1 var(--body);
   letter-spacing: 0.1em;
   color: var(--muted);
-  background: none;
-  border: 1px solid transparent;
+  background: var(--night);
+  border: 2px solid var(--muted);
+  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.45);
 }
 
 .account-control:hover {
   color: var(--ink);
+  border-color: var(--ink);
 }
 
 /* A signed-in player: the ink of the title, edged in the stamp's red — the same mark the active
@@ -426,6 +428,10 @@
   .account {
     top: 10px;
     left: 12px;
+  }
+
+  .account-control {
+    max-width: 150px;
   }
 
   .account-card {

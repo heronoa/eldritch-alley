@@ -185,19 +185,20 @@ h1 {
 }
 
 .lang button {
-  min-width: 34px;
-  min-height: 26px;
-  padding: 0 8px;
+  min-width: 40px;
+  min-height: 34px;
+  padding: 0 10px;
   cursor: pointer;
-  font: 600 12px/1 var(--body);
+  font: 600 13px/1 var(--body);
   letter-spacing: 0.1em;
   color: var(--muted);
   background: none;
-  border: 1px solid transparent;
+  border: 2px solid transparent;
 }
 
 .lang button:hover {
   color: var(--ink);
+  border-color: var(--muted);
 }
 
 /* The language on screen: the ink of the title, edged in the stamp's red. */
@@ -301,6 +302,8 @@ footer {
   right: 16px;
   bottom: 12px;
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 12px;
   justify-content: space-between;
   font-size: 11px;
@@ -309,27 +312,48 @@ footer {
 }
 
 /* The footer's contact control and policy link (m4-05): the muted ink, which clears the footer's own
-   grey, and the pointer given back for each of them. */
+   grey, and the pointer given back for each of them. The chrome — the pool of night, the edge and the
+   hard shadow — is what makes them read as controls and not as more footer text. The "Como jogar"
+   button in `onboarding.css` repeats these values, because each sheet is read by its own contrast
+   test; a change here is a change there. */
 .footer-link {
-  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0 10px;
   cursor: pointer;
-  font-size: 11px;
+  font: 600 12px/1 var(--body);
   letter-spacing: 0.08em;
   color: var(--muted);
   text-decoration: none;
-  background: none;
-  border: 0;
+  white-space: nowrap;
+  background: rgba(5, 7, 15, 0.92);
+  border: 1px solid var(--muted);
+  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.45);
   pointer-events: auto;
 }
 
 .footer-link:hover {
   color: var(--ink);
+  border-color: var(--ink);
   text-decoration: underline;
 }
 
 .footer-link:focus-visible {
   outline: 2px solid var(--ink);
   outline-offset: 2px;
+}
+
+/* A narrow screen: the three controls and the two lines wrap into centred rows instead of overflowing. */
+@media (max-width: 640px) {
+  footer {
+    left: 12px;
+    right: 12px;
+    bottom: 10px;
+    justify-content: center;
+    gap: 8px 10px;
+  }
 }
 
 /* Where the match is drawn, once the server has confirmed the session. It covers the title and the
