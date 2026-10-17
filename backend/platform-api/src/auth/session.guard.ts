@@ -1,5 +1,8 @@
+import type { EntityManager } from '@mikro-orm/postgresql';
 import { CanActivate, ExecutionContext, HttpException, HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { apiError } from '../app';
+import { ENTITY_MANAGER } from '../db/database.module';
+import { User } from '../db/entities/user.entity';
 import { SESSION_CONFIG, SESSION_COOKIE_NAME, readSession, type SessionConfig } from './session';
 
 /** What a handler reads off the request once this guard has let it through. */
@@ -31,6 +34,41 @@ export class SessionGuard implements CanActivate {
     if (session === null) throw unauthenticated();
 
     request.session = session;
+    return true;
+  }
+}
+
+/**
+ * The session guard for the routes whose meaning is "do this to the account the cookie names".
+ *
+ * A session cookie is a signature over a user id, not a pointer to a row: deleting the account leaves
+ * every outstanding cookie valid until it expires, and the account's deletion is exactly the moment its
+ * owner would most want the copies on other devices to stop working (ADR 0022). So this guard adds one
+ * question to the signature check — does the account still exist? — and answers the same 401 when it
+ * does not, which is what the client already knows how to handle.
+ *
+ * `POST /auth/logout` deliberately keeps the plain guard: signing out is never the operation a missing
+ * account has to block, and answering 401 there would leave the cookie in the browser.
+ */
+@Injectable()
+export class UserSessionGuard extends SessionGuard {
+  constructor(
+    @Inject(SESSION_CONFIG) config: SessionConfig,
+    @Inject(ENTITY_MANAGER) private readonly em: EntityManager,
+  ) {
+    super(config);
+  }
+
+  override async canActivate(context: ExecutionContext): Promise<boolean> {
+    await super.canActivate(context);
+
+    const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
+    const session = request.session;
+    // The parent either threw or wrote the session, so this is never undefined here.
+    const userId = session?.userId ?? '';
+    const user = await this.em.fork().findOne(User, { id: userId }, { fields: ['id'] });
+
+    if (user === null) throw unauthenticated();
     return true;
   }
 }

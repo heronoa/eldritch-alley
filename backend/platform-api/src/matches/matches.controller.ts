@@ -2,7 +2,7 @@ import { Controller, Get, HttpStatus, Inject, Query, UseGuards } from '@nestjs/c
 import { apiError } from '../app';
 import { CurrentUser } from '../auth/current-user';
 import type { SessionPayload } from '../auth/session';
-import { SessionGuard } from '../auth/session.guard';
+import { UserSessionGuard } from '../auth/session.guard';
 import { decodeCursor, MatchesService, type MatchCursor, type MatchHistory } from './matches.service';
 
 /**
@@ -14,7 +14,7 @@ import { decodeCursor, MatchesService, type MatchCursor, type MatchHistory } fro
  * `?userId=` a no-op rather than something a case has to prove is refused.
  */
 @Controller('me/matches')
-@UseGuards(SessionGuard)
+@UseGuards(UserSessionGuard)
 export class MatchesController {
   constructor(@Inject(MatchesService) private readonly matches: MatchesService) {}
 

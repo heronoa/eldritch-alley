@@ -3,7 +3,7 @@
 **Milestone:** m1
 **Parent feature:** sso-login
 **Created:** 2026-10-17
-**Status:** pending
+**Status:** approved (2026-10-17)
 **ADR:** 0022, written in this milestone
 
 ## 1. Objective

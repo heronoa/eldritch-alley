@@ -82,13 +82,23 @@ export class MatchEndedConsumer implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
+    let outcome: Awaited<ReturnType<MatchesService['store']>>;
     try {
-      await this.matches.store(ended);
+      outcome = await this.matches.store(ended);
     } catch (error) {
-      // Not deleted, so the queue hands it over again. `false` is not this: a match that was already
-      // stored has been dealt with, and falls through to the delete like any other.
+      // Not deleted, so the queue hands it over again. The other outcomes are not this: a match that was
+      // already stored, and one whose player has deleted their account, have both been dealt with, and
+      // fall through to the delete like any other.
       this.logger.error(`match-ended: match ${ended.id} was not stored`, error);
       return;
+    }
+
+    if (outcome === 'user-gone') {
+      // Worth one line: a match was deliberately dropped because nobody is left to show it to. The
+      // account deletion is the explanation, and the log is where a surprising one would be found.
+      this.logger.warn(
+        `match-ended: discarding match ${ended.id}: player ${ended.userId} no longer has an account`,
+      );
     }
 
     await this.queue.delete(message.handle);

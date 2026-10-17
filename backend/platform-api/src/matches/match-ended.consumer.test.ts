@@ -104,10 +104,50 @@ describe.skipIf(!hasDatabase)('MatchEndedConsumer', () => {
   });
 
   /**
+   * An account can be deleted while the match it was playing is still in the queue — or after the match
+   * ended, before the message was consumed. Nobody will ever exist to receive that match, so retrying it
+   * would only redeliver it until the dead-letter queue collected it. It is deleted, and the warning
+   * names the match so a surprising disappearance has a line to be found in.
+   */
+  it('discards a message for an account that no longer exists, instead of redelivering it', async () => {
+    const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const id = '7c5d1e4f-8a9b-4c3d-9e2f-1a3b5c7d9e0f';
+    const queue = new InMemoryMatchEndedQueue();
+    queue.deliver(bodyFor('00000000-0000-4000-8000-000000000000', id));
+
+    await consumerOver(queue).drain();
+
+    expect(await storedMatch(id)).toBe(0);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0][0]).toContain(id);
+
+    // Deleted like any handled message: the next pass finds nothing and the queue dead-letters nothing.
+    await consumerOver(queue).drain();
+    expect(queue.deadLettered).toEqual([]);
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+
+  it('discards a duplicate delivery of a match it already stored', async () => {
+    const user = await aPlayer();
+    const id = '8d6e2f5a-9b0c-4d4e-8f3a-2b4c6d8e0f1a';
+    const queue = new InMemoryMatchEndedQueue();
+    queue.deliver(bodyFor(user.id, id));
+    queue.deliver(bodyFor(user.id, id));
+
+    await consumerOver(queue).drain();
+
+    expect(await storedMatch(id)).toBe(1);
+    expect(queue.deadLettered).toEqual([]);
+  });
+
+  /**
    * A message that parses and cannot be stored is left where it is. That is the whole of the redelivery
    * contract: the consumer does not decide how many times a message is worth trying, it only declines to
    * say it is done — and the queue's redrive policy is what eventually gives up and puts it somewhere a
    * person can see it.
+   *
+   * The failure is injected rather than found in the database: an account that does not exist is no
+   * longer a failure (see the case below), and what this case is about is the store itself throwing.
    */
   it('leaves a message it could not store, and the queue gives up on it after the redrive count', async () => {
     // Silenced and kept: a failure that is deliberately left for the queue is still a failure somebody
@@ -115,11 +155,17 @@ describe.skipIf(!hasDatabase)('MatchEndedConsumer', () => {
     const error = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
     const id = '6b3c9d2e-4f5a-4b6c-9d7e-8f9a0b1c2d3e';
     const queue = new InMemoryMatchEndedQueue();
-    // Well-formed and undeliverable: the account is one this platform does not have.
     const body = bodyFor('00000000-0000-4000-8000-000000000000', id);
     queue.deliver(body);
 
-    const consumer = consumerOver(queue);
+    // A database that did not answer, or any other failure the store raises: retryable in principle, and
+    // the queue is the thing that decides when to stop retrying.
+    const failing = {
+      store: async () => {
+        throw new Error('the database is away');
+      },
+    } as unknown as MatchesService;
+    const consumer = new MatchEndedConsumer(queue, failing, 1_000);
     for (let attempt = 1; attempt <= InMemoryMatchEndedQueue.DEFAULT_MAX_RECEIVE_COUNT; attempt += 1) {
       await consumer.drain();
       expect(await storedMatch(id)).toBe(0);

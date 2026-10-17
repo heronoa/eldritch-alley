@@ -74,6 +74,25 @@ export function resetMessage(to: string, link: string): EmailMessage {
 }
 
 /**
+ * The record of an erased account. It carries no link and no token, because there is nothing left to
+ * act on and no account to sign in to: it exists so that the person who owns the address has a trace of
+ * the deletion — and so that a deletion they did not ask for is noticed.
+ */
+export function accountDeletedMessage(to: string): EmailMessage {
+  return {
+    to,
+    subject: 'Your account was deleted — Eldritch Alley: Tactics',
+    text: [
+      'The account for this address has been deleted, as asked.',
+      '',
+      'Your squad, your battle history and every way in to the account are gone. This cannot be undone.',
+      '',
+      'If this was not you, reply to this message so we can look at it.',
+    ].join('\n'),
+  };
+}
+
+/**
  * The notice an account gets when a sign-in adds a second way in. It carries no link and no token: its
  * whole job is to be read by the person who owns the address, so that a way in they did not add is
  * noticed. The provider is named in words a player recognises — "single sign-on", never "keycloak".

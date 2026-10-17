@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AccountDeletionService } from './auth/account-deletion.service';
 import { AuthController } from './auth/auth.controller';
 import { AuthService } from './auth/auth.service';
 import { GAME_TICKET_CONFIG, gameTicketConfigFromEnvironment } from './auth/game-ticket';
@@ -7,7 +8,7 @@ import { PasswordController } from './auth/password.controller';
 import { PasswordService } from './auth/password.service';
 import { OAUTH_PROVIDERS, oauthProvidersFromEnvironment } from './auth/provider';
 import { SESSION_CONFIG, sessionConfigFromEnvironment } from './auth/session';
-import { SessionGuard } from './auth/session.guard';
+import { SessionGuard, UserSessionGuard } from './auth/session.guard';
 import { FAILURE_THROTTLE, InMemoryFailureThrottle } from './auth/throttle';
 import { readMatchEndedQueueUrl, readPollIntervalMs } from './config';
 import { DatabaseModule } from './db/database.module';
@@ -57,8 +58,10 @@ import { MATCH_ENDED_POLL_INTERVAL_MS, MATCH_ENDED_QUEUE, sqsQueueFromEnvironmen
     },
     { provide: FAILURE_THROTTLE, useFactory: () => new InMemoryFailureThrottle() },
     AuthService,
+    AccountDeletionService,
     PasswordService,
     SessionGuard,
+    UserSessionGuard,
     MatchesService,
     MatchEndedConsumer,
   ],

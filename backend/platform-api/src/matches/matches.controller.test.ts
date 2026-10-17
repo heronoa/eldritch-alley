@@ -254,6 +254,20 @@ describe.skipIf(!hasDatabase)('GET /me/matches', () => {
     }
   });
 
+  /**
+   * A session cookie is a signature over a user id, not a pointer to a row. Once the account is gone the
+   * history route answers exactly as it does without a cookie, rather than the empty page a query over a
+   * missing player would produce — the two are one fact to the client (ADR 0022).
+   */
+  it('refuses the history of an account that no longer exists', async () => {
+    await em.nativeDelete(User, { id: players.Charlie });
+
+    const response = await history(sessions.Charlie);
+
+    expect(response.status).toBe(401);
+    expect((await response.json()).code).toBe('unauthenticated');
+  });
+
   it('answers an empty last page for a cursor at the end of the list', async () => {
     const first = await page(sessions.Alpha);
     const second = await page(sessions.Alpha, first.nextCursor ?? '');

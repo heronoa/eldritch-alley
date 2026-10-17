@@ -122,7 +122,7 @@ describe.skipIf(!hasDatabase)('MatchesService', () => {
   it('stores the match, the units that fought in it and its events', async () => {
     const { user, agents } = await aPlayer();
 
-    expect(await service.store(messageFor(user))).toBe(true);
+    expect(await service.store(messageFor(user))).toBe('stored');
 
     const stored = await matchRow(MATCH_ID);
     expect(stored).toBeDefined();
@@ -159,8 +159,8 @@ describe.skipIf(!hasDatabase)('MatchesService', () => {
     const { user } = await aPlayer();
     const message = messageFor(user, { id: '3c7b1f2a-8d4e-4a91-b0c2-5e6f7a8b9c0d' });
 
-    expect(await service.store(message)).toBe(true);
-    expect(await service.store(message)).toBe(false);
+    expect(await service.store(message)).toBe('stored');
+    expect(await service.store(message)).toBe('duplicate');
 
     expect(await agentsOf(message.id)).toHaveLength(3);
     expect(await eventsOf(message.id)).toHaveLength(3);
@@ -175,26 +175,24 @@ describe.skipIf(!hasDatabase)('MatchesService', () => {
     const { user } = await aPlayer(['sniper', 'priest']);
     const id = '11111111-2222-4333-8444-555555555555';
 
-    expect(await service.store(messageFor(user, { id }))).toBe(true);
+    expect(await service.store(messageFor(user, { id }))).toBe('stored');
 
     expect((await agentsOf(id)).map((row) => row.unit_id)).toEqual(['A-priest', 'A-sniper']);
   });
 
   /**
-   * A match for an account this platform does not have is a failure and not a silent skip: throwing is
-   * what leaves the message on the queue, so a platform whose database is behind redelivers instead of
-   * leaving a hole in somebody's history.
+   * A match for an account this platform no longer has is `'user-gone'`, not an error: the account can
+   * be deleted while the match is being played, and retrying the message would never find anybody to
+   * store it for. The consumer reads this as "handled" and deletes the message.
    */
-  it('refuses a match for a player it does not have, and leaves nothing behind', async () => {
+  it('answers user-gone for a player it does not have, and writes nothing', async () => {
     const { user } = await aPlayer();
     const orphan = messageFor(user, {
       id: '99999999-8888-4777-8666-555555555555',
       userId: '00000000-0000-4000-8000-000000000000',
     });
 
-    // The failure names the player the match server sent, rather than leaving a foreign key violation to
-    // be read backwards out of the driver's message.
-    await expect(service.store(orphan)).rejects.toThrow(/00000000-0000-4000-8000-000000000000/);
+    expect(await service.store(orphan)).toBe('user-gone');
 
     expect(await matchRow(orphan.id)).toBeUndefined();
     expect(await eventsOf(orphan.id)).toEqual([]);
@@ -204,7 +202,7 @@ describe.skipIf(!hasDatabase)('MatchesService', () => {
     const { user } = await aPlayer();
     const id = '22222222-3333-4444-8555-666666666666';
 
-    expect(await service.store(messageFor(user, { id, events: [] }))).toBe(true);
+    expect(await service.store(messageFor(user, { id, events: [] }))).toBe('stored');
 
     expect(await matchRow(id)).toBeDefined();
     expect(await eventsOf(id)).toEqual([]);

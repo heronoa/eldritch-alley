@@ -1,11 +1,15 @@
+import type { EntityManager } from '@mikro-orm/postgresql';
+import { HttpException, type ExecutionContext } from '@nestjs/common';
 import { describe, expect, it } from 'vitest';
 import {
+  SESSION_COOKIE_NAME,
   clearSessionCookie,
   readSession,
   sessionCookie,
   signSession,
   type SessionConfig,
 } from './session';
+import { UserSessionGuard } from './session.guard';
 
 // The session is a signed cookie and nothing else: there is no server-side store to consult, so every
 // property here is a property of the value itself (index decision D3).
@@ -80,6 +84,53 @@ describe('the session value', () => {
   it('is refused when it is not a signed value at all', async () => {
     expect(await readSession('', config)).toBeNull();
     expect(await readSession('not.a.jwt', config)).toBeNull();
+  });
+});
+
+/**
+ * The guard that checks the account still exists. A signed cookie outlives the row it names, and the
+ * routes that act for a player must not act for one who is gone (ADR 0022). The database is replaced by
+ * two answers — the row, or nothing — because what is under test here is the guard's question and not
+ * the query.
+ */
+describe('UserSessionGuard', () => {
+  function entityManagerAnswering(user: unknown): EntityManager {
+    return { fork: () => ({ findOne: async () => user }) } as unknown as EntityManager;
+  }
+
+  function contextWith(cookie?: string): { request: Record<string, unknown>; context: ExecutionContext } {
+    const request: Record<string, unknown> =
+      cookie === undefined ? { cookies: {} } : { cookies: { [SESSION_COOKIE_NAME]: cookie } };
+    const context = {
+      switchToHttp: () => ({ getRequest: () => request }),
+    } as unknown as ExecutionContext;
+    return { request, context };
+  }
+
+  it('lets a signed-in player through when the account still exists', async () => {
+    const cookie = await signSession(payload(), config);
+    const { request, context } = contextWith(cookie);
+    const guard = new UserSessionGuard(config, entityManagerAnswering({ id: USER_ID }));
+
+    await expect(guard.canActivate(context)).resolves.toBe(true);
+    expect((request.session as { userId: string }).userId).toBe(USER_ID);
+  });
+
+  it('refuses a cookie with no account behind it, with the same 401 as no cookie at all', async () => {
+    const cookie = await signSession(payload(), config);
+    const guard = new UserSessionGuard(config, entityManagerAnswering(null));
+
+    for (const { context } of [contextWith(cookie), contextWith()]) {
+      await expect(guard.canActivate(context)).rejects.toBeInstanceOf(HttpException);
+      await expect(guard.canActivate(context)).rejects.toMatchObject({ status: 401 });
+    }
+  });
+
+  it('refuses a cookie signed with another secret before asking the database', async () => {
+    const forged = await signSession(payload(), { ...config, secret: 'a-secret-the-service-never-saw' });
+    const guard = new UserSessionGuard(config, entityManagerAnswering({ id: USER_ID }));
+
+    await expect(guard.canActivate(contextWith(forged).context)).rejects.toMatchObject({ status: 401 });
   });
 });
 
