@@ -7,6 +7,7 @@
 import { t } from '../i18n';
 import type { ProviderName } from '../api/client';
 import type { FormProblem, ResetProblem, SignInProblem } from './auth-flow';
+import type { DeletionRefusal } from './delete-account';
 
 /** A sentence for every failure a screen can name. `invalid-token` is not one: it is the link's state. */
 export type AccountProblem =
@@ -67,6 +68,22 @@ export interface AccountCopy {
   readonly resultLost: string;
   /** The name of each map the history can list, by the id the platform stores. */
   readonly mapNames: Readonly<Record<string, string>>;
+  /** The profile's action and the security card's title. */
+  readonly securityLabel: string;
+  /** How the account signs in, by the one fact the platform gives: a password, or a provider. */
+  readonly securityMethodsPassword: string;
+  readonly securityMethodsProvider: string;
+  /** The exit the security card offers. */
+  readonly securityDelete: string;
+  readonly deleteTitle: string;
+  /** What is erased, and that it cannot be undone. */
+  readonly deleteWarning: string;
+  readonly deleteConfirmationLabel: string;
+  readonly deletePasswordLabel: string;
+  readonly deleteSubmit: string;
+  readonly deleteCancel: string;
+  /** The line the confirmation shows for each refusal the platform — or the network — can give. */
+  readonly deletionProblems: Readonly<Record<DeletionRefusal, string>>;
 }
 
 /** Every line of the account screens, in the language the client is showing right now. */
@@ -82,6 +99,9 @@ export function accountCopy(): AccountCopy {
     tabForgot: t('account.tab.forgot'),
     providers: t('account.providers'),
     providerNames: {
+      // Keycloak is the realm's own door and not a provider the player recognises, so the button says
+      // what it is: the deployment's single sign-on.
+      keycloak: t('account.provider.keycloak'),
       github: t('account.provider.github'),
       google: t('account.provider.google'),
     },
@@ -116,6 +136,24 @@ export function accountCopy(): AccountCopy {
       street: t('map.street.title'),
       park: t('map.park.title'),
       roof: t('map.roof.title'),
+    },
+    securityLabel: t('account.security.label'),
+    securityMethodsPassword: t('account.security.methods.password'),
+    securityMethodsProvider: t('account.security.methods.provider'),
+    securityDelete: t('account.security.delete'),
+    deleteTitle: t('account.delete.title'),
+    deleteWarning: t('account.delete.warning'),
+    deleteConfirmationLabel: t('account.delete.confirmLabel'),
+    deletePasswordLabel: t('account.field.password'),
+    deleteSubmit: t('account.delete.submit'),
+    deleteCancel: t('account.delete.cancel'),
+    deletionProblems: {
+      confirmation: t('account.delete.problem.confirmation'),
+      password: t('account.delete.problem.password'),
+      throttled: t('account.problem.tooManyAttempts'),
+      'signed-out': t('account.delete.problem.signedOut'),
+      offline: t('account.problem.offline'),
+      unknown: t('account.problem.unknown'),
     },
   };
 }

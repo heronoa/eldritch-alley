@@ -11,6 +11,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
+import { resolveEmailLocale } from '../email/locale';
 import { AccountDeletionService } from './account-deletion.service';
 import { clientAddress } from './client-address';
 import { CurrentUser } from './current-user';
@@ -71,7 +72,12 @@ export class AuthController {
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
   ): Promise<void> {
-    await this.deletions.delete(session.userId, body, clientAddress(request));
+    await this.deletions.delete(
+      session.userId,
+      body,
+      clientAddress(request),
+      resolveEmailLocale(request.headers['accept-language']),
+    );
     response.setHeader('Set-Cookie', clearSessionCookie(this.config));
   }
 }

@@ -18,6 +18,7 @@ const ACCOUNT: Account = {
     { id: 'a1', class: 'priest', level: 1, status: 'ready' },
     { id: 'a2', class: 'sniper', level: 1, status: 'ready' },
   ],
+  hasPassword: true,
 };
 
 /** An API whose eleven routes all answer something harmless, with the ones a case cares about replaced. */
@@ -27,6 +28,7 @@ function apiWith(overrides: Partial<Api> = {}): Api {
     me: async () => null,
     gameTicket: async () => ({ ticket: 'tkt', expiresAt: '2026-10-17T00:05:00.000Z' }),
     logout: async () => {},
+    deleteAccount: async () => {},
     matches: async () => ({ matches: [], nextCursor: null }),
     register: async () => ({ status: 'sent' }),
     verify: async () => ({ verified: true }),
@@ -90,7 +92,10 @@ describe('signing in', () => {
       { email: 'a@b.c', password: 'password1234' },
     );
 
-    expect(state).toEqual({ status: 'signed-in', account: { user: PROFILE, agents: [] } });
+    expect(state).toEqual({
+      status: 'signed-in',
+      account: { user: PROFILE, agents: [], hasPassword: true },
+    });
   });
 
   it('lets a refused login out for the dialog to name', async () => {

@@ -3,10 +3,9 @@
 **Created:** 2026-10-17
 **Roadmap:** [ROADMAP.md](../../ROADMAP.md) § M4. Accounts and persistence
 **Spec:** [sso.login.input.md](../inputs/sso.login.input.md)
-**Branches:** `feat/keycloak-provider` (m1), `feat/account-deletion` (m2); the frontend milestones each
-follow on a branch of their own
-**Status:** in progress — milestone 0 done (2026-10-17), m1 approved (2026-10-17), m2 implemented and
-awaiting approval (2026-10-17); milestones 3–5 are not implemented
+**Branches:** `feat/keycloak-provider` (m1), `feat/account-deletion` (m2), `feat/client-sso` (m3–m5)
+**Status:** in progress — milestones 0–4 done and approved (2026-10-17); m5 implemented and awaiting
+approval (2026-10-17)
 
 ## What this delivery covers
 
@@ -33,15 +32,15 @@ player to the title as a guest. The account dialog gains the security card where
 |---|------|--------|----|
 | 0 | Index correction (see the gate below) | [x] done (2026-10-17) | — |
 | 1 | [sso-login-m1-keycloak-provider.plan.md](./sso-login-m1-keycloak-provider.plan.md) | [x] approved (2026-10-17) | — |
-| 2 | [sso-login-m2-account-deletion.plan.md](./sso-login-m2-account-deletion.plan.md) | [~] implemented (2026-10-17), awaiting approval | — |
+| 2 | [sso-login-m2-account-deletion.plan.md](./sso-login-m2-account-deletion.plan.md) | [x] approved (2026-10-17) | — |
 
 ### Frontend
 
 | # | Plan | Status | PR |
 |---|------|--------|----|
-| 3 | [sso-login-m3-logic.plan.md](./sso-login-m3-logic.plan.md) | [ ] pending | — |
-| 4 | [sso-login-m4-integration.plan.md](./sso-login-m4-integration.plan.md) | [ ] pending | — |
-| 5 | [sso-login-m5-design.plan.md](./sso-login-m5-design.plan.md) | [ ] pending | — |
+| 3 | [sso-login-m3-logic.plan.md](./sso-login-m3-logic.plan.md) | [x] approved (2026-10-17) | — |
+| 4 | [sso-login-m4-integration.plan.md](./sso-login-m4-integration.plan.md) | [x] approved (2026-10-17) | — |
+| 5 | [sso-login-m5-design.plan.md](./sso-login-m5-design.plan.md) | [~] implemented (2026-10-17), awaiting approval | — |
 
 Milestone 0 is a documentation commit and not a milestone of its own, as m4-01's index correction was.
 Milestones 1–2 are backend vertical slices: there is no repository layer to add, because the schema
@@ -49,8 +48,9 @@ already carries what both need. Milestones 3–5 follow the workflow's order —
 design — and each depends on the one before it.
 
 The owner opted, in practice, for **one branch per backend milestone** — `feat/keycloak-provider` for m1
-and `feat/account-deletion` for m2 — each ready as its own pull request. The frontend milestones follow
-the same rule. The PR column is filled when one opens.
+and `feat/account-deletion` for m2 — each ready as its own pull request. The three frontend milestones
+share `feat/client-sso`, because logic, integration and design land together on the client. The PR
+column is filled when one opens.
 
 ## Milestone gate, checked on 2026-10-17
 
@@ -99,7 +99,7 @@ places where following it literally would undo accepted decisions or invent tabl
 | SPA PKCE + bearer in `sessionStorage` | Server-side flow + HttpOnly cookie | The cookie stays (D1) |
 | `passport-google-oauth20`, `passport-github2` | `openid-client` with PKCE | `openid-client` for Keycloak too |
 | `oidc-client-ts`, `JwtAuthGuard`, `/auth/sso/exchange` | Not needed in this architecture | Not built |
-| `.hbs` mail templates | Plain-text `EmailMessage` through a `Mailer` port | Plain text, in English, like the other messages |
+| `.hbs` mail templates | Plain-text `EmailMessage` through a `Mailer` port | Plain text, in pt-BR or en-US, chosen by the request |
 | Toast, `/settings/security` route, linked-account management | DOM cards, no router | The security card (D6); linking/unlinking is out of scope |
 | `VITE_KC_*` | The client never sees provider credentials | Server-only `OAUTH_KEYCLOAK_*` |
 

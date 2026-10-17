@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { setLocale } from '../i18n/translate';
 import { createApi, oauthStart, type Api } from './client';
 import { ApiError, failureOf, isRefused } from './errors';
 
@@ -55,7 +56,15 @@ describe('the platform client', () => {
     ];
     const { api } = apiOver(() => ({ body: { user: PROFILE, agents } }));
 
-    await expect(api.me()).resolves.toEqual({ user: PROFILE, agents });
+    await expect(api.me()).resolves.toEqual({ user: PROFILE, agents, hasPassword: false });
+  });
+
+  it('reads whether the account has a password, and calls an answer without the fact false', async () => {
+    const withPassword = apiOver(() => ({ body: { user: PROFILE, agents: [], hasPassword: true } }));
+    const without = apiOver(() => ({ body: { user: PROFILE, agents: [] } }));
+
+    await expect(withPassword.api.me()).resolves.toMatchObject({ hasPassword: true });
+    await expect(without.api.me()).resolves.toMatchObject({ hasPassword: false });
   });
 
   it('tells a refusal from a server fault and from a platform that never answered', async () => {
@@ -98,6 +107,26 @@ describe('the platform client', () => {
     }
   });
 
+  it('tells the platform which language to write its mail in, on every call', async () => {
+    const { api, calls } = apiOver((url) =>
+      url.endsWith('/me') ? { body: { user: PROFILE, agents: [] } } : { status: 204 },
+    );
+
+    setLocale('pt-BR');
+    try {
+      await api.me();
+      // A request with a body carries the header too: a password reset is exactly the call whose mail
+      // has to be written in the language the player is reading.
+      await api.deleteAccount({ confirm: 'DELETE' });
+    } finally {
+      setLocale('en-US');
+    }
+
+    for (const call of calls) {
+      expect(new Headers(call.init.headers).get('accept-language')).toBe('pt-BR');
+    }
+  });
+
   it('joins a route to the base URL whether or not the build wrote the trailing slash', async () => {
     const fetchImpl = (async () => ({ ok: true, status: 200, json: async () => ({ status: 'sent' }) }) as unknown as Response) as unknown as typeof fetch;
     const withoutSlash = createApi('https://api.test', fetchImpl);
@@ -116,9 +145,9 @@ describe('the platform client', () => {
 
 describe('the provider list', () => {
   it('keeps the names this client can draw and drops the rest', async () => {
-    const { api } = apiOver(() => ({ body: { providers: ['github', 'bitbucket', 'google'] } }));
+    const { api } = apiOver(() => ({ body: { providers: ['keycloak', 'github', 'bitbucket'] } }));
 
-    await expect(api.providers()).resolves.toEqual(['github', 'google']);
+    await expect(api.providers()).resolves.toEqual(['keycloak', 'github']);
   });
 
   it('answers an empty list for a platform with no OAuth app, and for one that did not answer', async () => {
@@ -133,9 +162,13 @@ describe('the provider list', () => {
     await expect(broken.api.providers()).resolves.toEqual([]);
   });
 
-  it('navigates to a provider instead of fetching it', () => {
-    expect(oauthStart('https://api.test/', 'github')).toBe('https://api.test/auth/github');
-    expect(oauthStart('https://api.test', 'goo gle')).toBe('https://api.test/auth/goo%20gle');
+  it('navigates to a provider instead of fetching it, with the language in the query', () => {
+    expect(oauthStart('https://api.test/', 'github', 'pt-BR')).toBe(
+      'https://api.test/auth/github?locale=pt-BR',
+    );
+    expect(oauthStart('https://api.test', 'goo gle', 'en-US')).toBe(
+      'https://api.test/auth/goo%20gle?locale=en-US',
+    );
   });
 });
 
@@ -180,6 +213,61 @@ describe('the session routes', () => {
 
     await expect(api.matches()).resolves.toEqual({ matches: [], nextCursor: null });
     expect(calls[0].url).toBe('https://api.test/me/matches');
+  });
+});
+
+describe('deleting the account', () => {
+  it('sends the word and the password to the deletion route, and reads no body from the 204', async () => {
+    const { api, calls } = apiOver(() => ({ status: 204, unreadable: true }));
+
+    await expect(api.deleteAccount({ confirm: 'DELETE', password: 'password1234' })).resolves.toBeUndefined();
+
+    expect(calls[0].url).toBe('https://api.test/auth/account');
+    expect(calls[0].init.method).toBe('DELETE');
+    expect(calls[0].init.credentials).toBe('include');
+    expect(new Headers(calls[0].init.headers).get('content-type')).toBe('application/json');
+    expect(JSON.parse(String(calls[0].init.body))).toEqual({
+      confirm: 'DELETE',
+      password: 'password1234',
+    });
+  });
+
+  it('leaves the password out of the body when the account has none', async () => {
+    const { api, calls } = apiOver(() => ({ status: 204, unreadable: true }));
+
+    await api.deleteAccount({ confirm: 'DELETE' });
+
+    expect(JSON.parse(String(calls[0].init.body))).toEqual({ confirm: 'DELETE' });
+  });
+
+  it('throws every refusal intact, a 401 included', async () => {
+    const refusals = [
+      [400, 'invalid_confirmation'],
+      [403, 'invalid_password'],
+      [429, 'too_many_attempts'],
+      [401, 'unauthenticated'],
+    ] as const;
+
+    for (const [status, code] of refusals) {
+      const { api } = apiOver(() => ({ status, body: { code, message: 'no' } }));
+
+      await expect(api.deleteAccount({ confirm: 'DELETE' })).rejects.toMatchObject({
+        kind: 'refused',
+        status,
+        code,
+      });
+    }
+  });
+
+  it('answers a platform that did not answer as offline', async () => {
+    const silent = apiOver(() => {
+      throw new TypeError('fetch failed');
+    });
+
+    await expect(silent.api.deleteAccount({ confirm: 'DELETE' })).rejects.toMatchObject({
+      kind: 'offline',
+      status: null,
+    });
   });
 });
 

@@ -8,6 +8,7 @@ import { Identity, type ProviderName } from '../db/entities/identity.entity';
 import { PasswordCredential } from '../db/entities/password-credential.entity';
 import { User } from '../db/entities/user.entity';
 import { MAILER, type Mailer } from '../email/mailer';
+import type { EmailLocale } from '../email/locale';
 import { resetLink, resetMessage, verificationLink, verificationMessage } from '../email/messages';
 import { AuthService, normalizeAddress } from './auth.service';
 import { consumeAuthToken, issueAuthToken, spendTokens } from './auth-token';
@@ -62,9 +63,10 @@ export class PasswordService {
    * Creates the account behind an address if there is none, and mails a link to it either way.
    *
    * The answer is the same in every case — address free, address taken, address already verified — because
-   * the alternative is an endpoint that tells anyone which addresses have accounts here.
+   * the alternative is an endpoint that tells anyone which addresses have accounts here. The language is
+   * the caller's, carried on the request: the form knows it, and there is no column to read it from.
    */
-  async register(input: Registration): Promise<void> {
+  async register(input: Registration, locale: EmailLocale): Promise<void> {
     const address = this.addressFrom(input.email);
     const em = this.em.fork();
     const existing = await this.identityFor(em, address);
@@ -78,7 +80,7 @@ export class PasswordService {
       // much its owner as whoever asked first, and the password they chose is the one that counts. It is
       // also what makes a registration that failed half way through recoverable by asking again.
       await this.writeCredential(em, existing, input.password);
-      await this.mailVerification(em, existing, address);
+      await this.mailVerification(em, existing, address, locale);
       return;
     }
 
@@ -101,11 +103,11 @@ export class PasswordService {
     if (identity === null) throw apiError(HttpStatus.INTERNAL_SERVER_ERROR, 'registration_failed', 'The account could not be created. Try again.');
 
     await this.writeCredential(em, identity, input.password);
-    await this.mailVerification(em, identity, address);
+    await this.mailVerification(em, identity, address, locale);
   }
 
   /** Mails a fresh link for an address that registered and never followed the first one. */
-  async resendVerification(email: string): Promise<void> {
+  async resendVerification(email: string, locale: EmailLocale): Promise<void> {
     const address = this.addressFrom(email);
     const em = this.em.fork();
     const identity = await this.identityFor(em, address);
@@ -114,7 +116,7 @@ export class PasswordService {
     // has an account is not a question this route answers.
     if (identity === null || identity.emailVerified) return;
 
-    await this.mailVerification(em, identity, address);
+    await this.mailVerification(em, identity, address, locale);
   }
 
   /**
@@ -178,14 +180,16 @@ export class PasswordService {
    * Any password identity gets one, verified or not: the link goes to the mailbox, and a mailbox that
    * receives it is the same proof whether the account it belongs to can sign in yet or not.
    */
-  async forgot(email: string): Promise<void> {
+  async forgot(email: string, locale: EmailLocale): Promise<void> {
     const address = this.addressFrom(email);
     const em = this.em.fork();
     const identity = await this.identityFor(em, address);
     if (identity === null) return;
 
     const token = await issueAuthToken(em, identity, 'reset_password');
-    await this.mailer.send(resetMessage(address, resetLink(this.config.clientOrigin, token)));
+    await this.mailer.send(
+      resetMessage(address, resetLink(this.config.clientOrigin, token), locale),
+    );
   }
 
   /**
@@ -222,10 +226,15 @@ export class PasswordService {
     await em.flush();
   }
 
-  private async mailVerification(em: EntityManager, identity: Identity, address: string): Promise<void> {
+  private async mailVerification(
+    em: EntityManager,
+    identity: Identity,
+    address: string,
+    locale: EmailLocale,
+  ): Promise<void> {
     const token = await issueAuthToken(em, identity, 'verify_email');
     await this.mailer.send(
-      verificationMessage(address, verificationLink(this.config.clientOrigin, token)),
+      verificationMessage(address, verificationLink(this.config.clientOrigin, token), locale),
     );
   }
 

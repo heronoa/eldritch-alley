@@ -275,6 +275,25 @@ describe.skipIf(!hasDatabase)('the OAuth routes', () => {
       expect(linked.mailer.sent).toHaveLength(1);
     });
 
+    it('writes the notice in the language the flow started in', async () => {
+      const linked = await appWithTwoProfiles(
+        noticeProfile({ providerUserId: 'gh-notice-pt', email: 'notice.pt@example.com' }),
+        noticeProfile({ providerUserId: 'go-notice-pt', email: 'notice.pt@example.com' }),
+      );
+
+      await signIn(linked.url, 'github', 'the-authorization-code', 'pt-BR');
+      expect(linked.mailer.sent).toHaveLength(0);
+
+      // The language is in the start's query and travels in the signed flow cookie: the callback is a
+      // redirect the provider writes, so it has no header of the player's to read it from.
+      const second = await signIn(linked.url, 'google', 'the-authorization-code', 'pt-BR');
+
+      expect(second.response.status).toBe(302);
+      expect(linked.mailer.sent).toHaveLength(1);
+      expect(linked.mailer.sent[0].subject).toBe('Uma nova forma de entrar — Eldritch Alley: Tactics');
+      expect(linked.mailer.sent[0].text).toContain('acessada com Google');
+    });
+
     it('sends none when the sign-in is what creates the account', async () => {
       const created = await appWithTwoProfiles(
         noticeProfile({ providerUserId: 'gh-notice-new', email: 'notice.new@example.com' }),

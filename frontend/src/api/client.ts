@@ -4,10 +4,14 @@
 // The shapes are the platform's own (`backend/platform-api/src`), copied as the contract and checked at
 // the boundary: a body that does not have them is an `unknown` failure, so a proxy's HTML page cannot
 // arrive at a panel and be drawn as a row.
+import { getLocale } from '../i18n/translate';
 import { ApiError } from './errors';
 
-/** The providers the platform can have an OAuth app for. A name outside this list draws no button. */
-export const PROVIDER_NAMES = ['github', 'google'] as const;
+/**
+ * The providers the platform can have an OAuth app for. An allowlist and not an order: the buttons are
+ * drawn in the order the platform answered, and a name outside this list draws no button.
+ */
+export const PROVIDER_NAMES = ['keycloak', 'github', 'google'] as const;
 export type ProviderName = (typeof PROVIDER_NAMES)[number];
 
 /** What every signed-in answer carries about the player. */
@@ -26,10 +30,12 @@ export interface Agent {
   status: string;
 }
 
-/** `GET /me`: the player and the squad, in the order the platform sent them. */
+/** `GET /me`: the player, the squad in the order the platform sent them, and how the account signs in. */
 export interface Account {
   user: Profile;
   agents: Agent[];
+  /** Whether a usable password credential exists: the one fact the deletion card asks for. */
+  hasPassword: boolean;
 }
 
 /** `POST /auth/game-ticket`. The service answers with a `Date`; JSON turns it into an ISO string. */
@@ -79,6 +85,11 @@ export interface Api {
   gameTicket(): Promise<GameTicket>;
   /** A 401 counts as success: the player is already signed out. */
   logout(): Promise<void>;
+  /**
+   * `DELETE /auth/account`. A 401 is a failure here, unlike `logout`: the caller must know whether the
+   * account was deleted, and "already signed out" is an answer it has to say out loud.
+   */
+  deleteAccount(input: { confirm: string; password?: string }): Promise<void>;
   matches(cursor?: string): Promise<MatchPage>;
 
   register(input: { email: string; password: string; displayName?: string }): Promise<Sent>;
@@ -100,9 +111,15 @@ export function normalizeBase(baseUrl: string): string {
 /**
  * Where a provider button navigates. It is a page load and not a `fetch`: the platform answers with a
  * redirect to the provider, which a cross-origin request could not follow.
+ *
+ * The locale rides in the query because a navigation cannot set a header, and the platform mails the
+ * player afterwards: the notice that a new way in was added has to be written in the language the
+ * player was reading when they clicked.
  */
-export function oauthStart(baseUrl: string, provider: string): string {
-  return `${normalizeBase(baseUrl)}/auth/${encodeURIComponent(provider)}`;
+export function oauthStart(baseUrl: string, provider: string, locale: string): string {
+  const url = new URL(`${normalizeBase(baseUrl)}/auth/${encodeURIComponent(provider)}`);
+  url.searchParams.set('locale', locale);
+  return url.href;
 }
 
 export function createApi(baseUrl: string, fetchImpl: typeof fetch = fetch): Api {
@@ -117,9 +134,11 @@ export function createApi(baseUrl: string, fetchImpl: typeof fetch = fetch): Api
         credentials: 'include',
         // A mailed link puts its token in the page's URL; there is no reason to hand it to anyone else.
         referrerPolicy: 'no-referrer',
+        // The platform writes its mail in the language the player reads in, and this header is the only
+        // place a request can say which one that is. The choice lives in the browser, not on the account.
         headers: hasBody
-          ? { 'content-type': 'application/json', accept: 'application/json' }
-          : { accept: 'application/json' },
+          ? { 'content-type': 'application/json', accept: 'application/json', 'accept-language': getLocale() }
+          : { accept: 'application/json', 'accept-language': getLocale() },
         body: hasBody ? JSON.stringify(init.body) : undefined,
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
@@ -208,6 +227,9 @@ export function createApi(baseUrl: string, fetchImpl: typeof fetch = fetch): Api
 
       return {
         user: await profile(response, body['user']),
+        // A body without the boolean reads as "no password": the guess only decides whether the
+        // deletion card asks for one, and the server refuses the word alone for an account that has one.
+        hasPassword: body['hasPassword'] === true,
         agents: agents.flatMap((agent) => {
           const found = record(agent);
           const id = text(found?.['id']);
@@ -240,6 +262,12 @@ export function createApi(baseUrl: string, fetchImpl: typeof fetch = fetch): Api
       // Signed out already is the state the caller wanted.
       if (response.status === 401 || response.ok) return;
       throw await failure(response);
+    },
+
+    async deleteAccount(input) {
+      const response = await request('/auth/account', { method: 'DELETE', body: input });
+      // No body to read: the platform answers 204, and the deletion is the cookie being cleared.
+      if (!response.ok) throw await failure(response);
     },
 
     async matches(cursor) {

@@ -6,6 +6,7 @@ import { Identity } from '../db/entities/identity.entity';
 import { PasswordCredential } from '../db/entities/password-credential.entity';
 import { User } from '../db/entities/user.entity';
 import { MAILER, type Mailer } from '../email/mailer';
+import type { EmailLocale } from '../email/locale';
 import { accountDeletedMessage } from '../email/messages';
 import { normalizeAddress } from './auth.service';
 import { verifyPassword } from './password';
@@ -46,7 +47,7 @@ export class AccountDeletionService {
    * The id comes from the session and never from the body, which is the whole of why this cannot be
    * asked to delete somebody else's account.
    */
-  async delete(userId: string, body: unknown, ip: string): Promise<void> {
+  async delete(userId: string, body: unknown, ip: string, locale: EmailLocale): Promise<void> {
     const fields = record(body);
     if (fields.confirm !== CONFIRMATION) throw invalidConfirmation();
 
@@ -66,7 +67,7 @@ export class AccountDeletionService {
     // message that fails must not turn a completed erasure into an error the client would retry.
     if (address !== null) {
       try {
-        await this.mailer.send(accountDeletedMessage(address));
+        await this.mailer.send(accountDeletedMessage(address, locale));
       } catch (error) {
         this.logger.error('account deletion: the confirmation could not be sent', error as Error);
       }

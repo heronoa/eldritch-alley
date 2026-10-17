@@ -38,7 +38,8 @@ export async function loadAccount(api: Api): Promise<AccountLoad> {
  *
  * A `/me` that fails right after a login that answered keeps the player signed in with the profile the
  * login returned and no agents: the cookie is set, so calling them a guest would be a lie, and the next
- * reload brings the squad.
+ * reload brings the squad. `hasPassword` is `true` there, and not a guess: this is the password route,
+ * so the account has one even when `/me` was the call that did not answer.
  */
 export async function signIn(
   api: Api,
@@ -46,7 +47,9 @@ export async function signIn(
 ): Promise<AccountState> {
   const { user } = await api.login(credentials);
   const load = await loadAccount(api);
-  return load.state.status === 'signed-in' ? load.state : { status: 'signed-in', account: { user, agents: [] } };
+  return load.state.status === 'signed-in'
+    ? load.state
+    : { status: 'signed-in', account: { user, agents: [], hasPassword: true } };
 }
 
 /**

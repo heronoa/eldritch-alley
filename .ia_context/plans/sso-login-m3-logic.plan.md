@@ -3,7 +3,7 @@
 **Milestone:** m3
 **Parent feature:** sso-login
 **Created:** 2026-10-17
-**Status:** pending
+**Status:** approved (2026-10-17)
 
 ## 1. Objective
 

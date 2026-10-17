@@ -72,10 +72,15 @@ describe.skipIf(!hasDatabase)('the password routes', () => {
     return own;
   }
 
-  function post(one: TestApp, path: string, body: unknown): Promise<Response> {
+  function post(
+    one: TestApp,
+    path: string,
+    body: unknown,
+    headers: Record<string, string> = {},
+  ): Promise<Response> {
     return fetch(`${one.url}${path}`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', ...headers },
       body: JSON.stringify(body),
     });
   }
@@ -158,6 +163,9 @@ describe.skipIf(!hasDatabase)('the password routes', () => {
 
       expect(app.mailer.sent.length).toBe(sentBefore + 1);
       expect(app.mailer.sent.at(-1)?.to).toBe(email);
+      expect(app.mailer.sent.at(-1)?.subject).toBe(
+        'Confirm your address — Eldritch Alley: Tactics',
+      );
     });
 
     it('answers the same for an address that is already an account, and creates no second one', async () => {
@@ -210,6 +218,36 @@ describe.skipIf(!hasDatabase)('the password routes', () => {
       const body = await response.json();
       expect(typeof body.code).toBe('string');
       expect(typeof body.message).toBe('string');
+    });
+
+    it('writes the message in the language the request asked for', async () => {
+      const email = anAddress();
+
+      const response = await post(
+        app,
+        '/auth/password/register',
+        { email, password: PASSWORD },
+        { 'accept-language': 'pt-BR' },
+      );
+
+      expect(response.status).toBe(202);
+      expect(app.mailer.sent.at(-1)?.subject).toBe('Confirme seu endereço — Eldritch Alley: Tactics');
+      expect(app.mailer.sent.at(-1)?.text).toContain('Confirme este endereço');
+    });
+
+    it('resends in the language it is asked in, not the one the first link was written in', async () => {
+      const email = anAddress();
+      await register(app, email);
+
+      const response = await post(
+        app,
+        '/auth/password/verify/resend',
+        { email },
+        { 'accept-language': 'pt-BR' },
+      );
+
+      expect(response.status).toBe(202);
+      expect(app.mailer.sent.at(-1)?.subject).toBe('Confirme seu endereço — Eldritch Alley: Tactics');
     });
   });
 
@@ -351,6 +389,21 @@ describe.skipIf(!hasDatabase)('the password routes', () => {
       // The mail is the whole difference, and it goes to the mailbox the address belongs to.
       expect(app.mailer.sent.length).toBe(sentBefore + 1);
       expect(app.mailer.sent.at(-1)?.to).toBe(email);
+    });
+
+    it('offers the new password in the language the request asked for', async () => {
+      const email = await aVerifiedAccount(app);
+
+      const response = await post(
+        app,
+        '/auth/password/forgot',
+        { email },
+        { 'accept-language': 'pt-BR' },
+      );
+
+      expect(response.status).toBe(202);
+      expect(app.mailer.sent.at(-1)?.subject).toBe('Escolha uma nova senha — Eldritch Alley: Tactics');
+      expect(app.mailer.sent.at(-1)?.text).toContain('Escolha aqui:');
     });
 
     it('sets the new password, refuses the old one, and ends every outstanding link', async () => {

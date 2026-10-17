@@ -82,6 +82,7 @@ export const enUS: Record<MessageKey, string> = {
   'account.tab.signUp': 'Create account',
   'account.tab.forgot': 'Forgot password',
   'account.providers': 'Sign in with',
+  'account.provider.keycloak': 'SSO',
   'account.provider.github': 'GitHub',
   'account.provider.google': 'Google',
   'account.field.email': 'Email address',
@@ -119,6 +120,23 @@ export const enUS: Record<MessageKey, string> = {
   'account.history.rounds': '{rounds} rounds',
   'account.history.won': 'Victory',
   'account.history.lost': 'Defeat',
+
+  // The security card and the deletion confirmation. The confirmation word is not copy: `DELETE` is
+  // spelled the same in both languages because it is the token the platform checks
+  // (`frontend/src/account/delete-account.ts`).
+  'account.security.label': 'Security',
+  'account.security.methods.password': 'Signs in with an email and a password',
+  'account.security.methods.provider': 'Signs in through an identity provider',
+  'account.security.delete': 'Delete account',
+  'account.delete.title': 'Delete account',
+  'account.delete.warning':
+    'The account, the squad and the battle history will be erased. This cannot be undone.',
+  'account.delete.confirmLabel': 'Type DELETE to confirm',
+  'account.delete.submit': 'Delete account',
+  'account.delete.cancel': 'Cancel',
+  'account.delete.problem.confirmation': 'Type DELETE exactly as written',
+  'account.delete.problem.password': 'Wrong password',
+  'account.delete.problem.signedOut': 'Your session has ended. Sign in again.',
 
   // The two pages a mailed link lands on.
   'mail.verify.heading': 'Confirm your email',

@@ -169,8 +169,8 @@
         </div>
       </div>
 
-      <!-- The profile: who is playing, the persistent squad, and the two ways out — the history and
-           the sign-out. -->
+      <!-- The profile: who is playing, the persistent squad, and the three ways out — the history, the
+           security card and the sign-out. -->
       <div class="account-card" id="profile" role="dialog" aria-modal="true" aria-labelledby="profile-title" hidden>
         <div class="account-card-body">
           <div class="account-card-head">
@@ -190,6 +190,7 @@
           <p class="account-problem" id="profile-problem" role="alert" hidden></p>
           <div class="account-actions">
             <button class="account-link" id="profile-history" type="button">Histórico</button>
+            <button class="account-link" id="profile-security" type="button">Segurança</button>
             <button class="account-link" id="profile-sign-out" type="button">Sair</button>
           </div>
         </div>
@@ -206,6 +207,50 @@
           <p class="account-hint" id="history-empty" hidden>Nenhuma batalha registrada ainda</p>
           <p class="account-problem" id="history-failure" role="alert" hidden></p>
           <button class="cta account-more" id="history-more" type="button" hidden>Carregar mais</button>
+        </div>
+      </div>
+
+      <!-- The security card: how the account signs in, and the exit. The method line is one of the two
+           the catalog carries, chosen by the only fact the platform gives — whether a password exists.
+           The Portuguese below is the fallback a page whose script never runs shows. -->
+      <div class="account-card" id="security" role="dialog" aria-modal="true" aria-labelledby="security-title" hidden>
+        <div class="account-card-body">
+          <div class="account-card-head">
+            <p class="account-card-title" id="security-title">Segurança</p>
+            <button class="account-close" id="security-close" type="button" aria-label="Fechar">Fechar</button>
+          </div>
+          <p class="account-hint account-security-methods" id="security-methods">Entra com e-mail e senha</p>
+          <div class="account-actions">
+            <button class="account-danger" id="security-delete" type="button">Excluir conta</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- The deletion confirmation: the exact word and, only for an account that has one, the password.
+           The word is a token the platform checks, so it is spelled `DELETE` in both languages and is
+           not written again from the catalog. A form, so Enter does what the card's own button does. -->
+      <div class="account-card" id="delete-account" role="dialog" aria-modal="true" aria-labelledby="delete-title" hidden>
+        <div class="account-card-body">
+          <div class="account-card-head">
+            <p class="account-card-title" id="delete-title">Excluir conta</p>
+            <button class="account-close" id="delete-close" type="button" aria-label="Fechar">Fechar</button>
+          </div>
+          <p class="account-hint" id="delete-warning">A conta, o esquadrão e o histórico de batalhas serão apagados. Não é possível desfazer.</p>
+          <form class="account-form" id="delete-form" novalidate>
+            <label class="account-field">
+              <span id="delete-confirm-label">Digite DELETE para confirmar</span>
+              <input id="delete-confirmation" type="text" autocomplete="off" spellcheck="false" />
+            </label>
+            <label class="account-field" id="delete-password-field">
+              <span id="delete-password-label">Senha</span>
+              <input id="delete-password" type="password" autocomplete="current-password" />
+            </label>
+            <p class="account-problem" id="delete-problem" role="alert" hidden></p>
+            <div class="account-actions">
+              <button class="cta" id="delete-submit" type="submit" disabled>Excluir conta</button>
+              <button class="account-link" id="delete-cancel" type="button">Cancelar</button>
+            </div>
+          </form>
         </div>
       </div>
     </div>

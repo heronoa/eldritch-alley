@@ -1,8 +1,9 @@
-// The account as the page: the control in the corner, the sign-in dialog, the profile and the battle
-// history. What is left here is the DOM, on the same split as `title.ts`: the steps of the dialog are
-// `auth-flow.ts`'s, the account and its transitions are `account/session.ts`'s, the history is
-// `account/history.ts`'s, the strings are `account/copy.ts`'s and the two panel views are theirs. This
-// file finds the elements, writes the views and hands every press to the rules.
+// The account as the page: the control in the corner, the sign-in dialog, the profile, the security
+// card, the deletion confirmation and the battle history. What is left here is the DOM, on the same
+// split as `title.ts`: the steps of the dialog are `auth-flow.ts`'s, the account and its transitions are
+// `account/session.ts`'s, the deletion rules are `account/delete-account.ts`'s, the history is
+// `account/history.ts`'s, the strings are `account/copy.ts`'s and the panel views are theirs. This file
+// finds the elements, writes the views and hands every press to the rules.
 //
 // It depends on `title.ts` only for `onLocaleChange`, the way the onboarding does: the switcher rewrites
 // the card that is open, and the card has no way of being told otherwise. The title does not import this
@@ -21,6 +22,12 @@ import {
   type AuthStep,
 } from './auth-flow';
 import { accountCopy, type AccountCopy } from './copy';
+import {
+  confirmationAccepted,
+  deleteAccount,
+  type DeletionDraft,
+  type DeletionRefusal,
+} from './delete-account';
 import { emptyHistory, loadMore, startLoading, type HistoryState } from './history';
 import { historyView } from './history-panel';
 import { api, platformUrl } from './live';
@@ -82,6 +89,7 @@ const profileAgents = byId<HTMLUListElement>('profile-agents');
 const profileNoAgents = byId<HTMLParagraphElement>('profile-no-agents');
 const profileProblem = byId<HTMLParagraphElement>('profile-problem');
 const profileHistory = byId<HTMLButtonElement>('profile-history');
+const profileSecurity = byId<HTMLButtonElement>('profile-security');
 const profileSignOut = byId<HTMLButtonElement>('profile-sign-out');
 
 // The history panel.
@@ -92,6 +100,27 @@ const historyRows = byId<HTMLUListElement>('history-rows');
 const historyEmpty = byId<HTMLParagraphElement>('history-empty');
 const historyFailure = byId<HTMLParagraphElement>('history-failure');
 const historyMore = byId<HTMLButtonElement>('history-more');
+
+// The security card and the deletion confirmation.
+const security = byId<HTMLDivElement>('security');
+const securityTitle = byId<HTMLParagraphElement>('security-title');
+const securityClose = byId<HTMLButtonElement>('security-close');
+const securityMethods = byId<HTMLParagraphElement>('security-methods');
+const securityDelete = byId<HTMLButtonElement>('security-delete');
+
+const deleteCard = byId<HTMLDivElement>('delete-account');
+const deleteTitle = byId<HTMLParagraphElement>('delete-title');
+const deleteClose = byId<HTMLButtonElement>('delete-close');
+const deleteWarning = byId<HTMLParagraphElement>('delete-warning');
+const deleteForm = byId<HTMLFormElement>('delete-form');
+const deleteConfirmLabel = byId<HTMLSpanElement>('delete-confirm-label');
+const deleteConfirmation = byId<HTMLInputElement>('delete-confirmation');
+const deletePasswordField = byId<HTMLLabelElement>('delete-password-field');
+const deletePasswordLabel = byId<HTMLSpanElement>('delete-password-label');
+const deletePassword = byId<HTMLInputElement>('delete-password');
+const deleteProblemLine = byId<HTMLParagraphElement>('delete-problem');
+const deleteSubmit = byId<HTMLButtonElement>('delete-submit');
+const deleteCancel = byId<HTMLButtonElement>('delete-cancel');
 
 /** Where the sign-in dialog is. `closed` is what the card's `hidden` follows. */
 let step: AuthStep = 'closed';
@@ -106,6 +135,21 @@ let providers: readonly ProviderName[] = [];
 let providersAsked = false;
 /** The battle history, as `history.ts` keeps it. The panel asks for a page when it opens, not before. */
 let history: HistoryState = emptyHistory();
+/** What the confirmation holds. Kept across a redraw, so a language change does not empty the fields. */
+let deletion: DeletionDraft = { confirmation: '', password: '' };
+/** The reason of the last refusal, which the copy translates, or `null`. */
+let deletionProblem: DeletionRefusal | null = null;
+/** A deletion is out: the button is off until the platform answers. */
+let deleting = false;
+
+/**
+ * Whether the platform said the account has a usable password. The card asks for one only then — and
+ * the word is the whole proof for an account that has none.
+ */
+function accountHasPassword(): boolean {
+  const state = currentAccount();
+  return state.status === 'signed-in' && state.account.hasPassword;
+}
 
 /**
  * Puts a card on the screen or takes it off, and tells `modal.ts` with it: the title's Enter has to
@@ -184,7 +228,7 @@ function renderProviders(copy: AccountCopy): void {
     button.addEventListener('click', () => {
       // A navigation, not a request: the platform answers with a redirect to the provider, which a
       // cross-origin `fetch` could not follow.
-      window.location.assign(oauthStart(platformUrl, name));
+      window.location.assign(oauthStart(platformUrl, name, getLocale()));
     });
     return button;
   });
@@ -358,6 +402,7 @@ function renderProfile(): void {
   profileNoAgents.hidden = view.agents.length > 0;
   profileNoAgents.textContent = view.noAgents;
   profileHistory.textContent = view.historyLabel;
+  profileSecurity.textContent = view.securityLabel;
   profileSignOut.textContent = view.signOutLabel;
   profileProblem.hidden = true;
   profileProblem.textContent = '';
@@ -383,6 +428,104 @@ async function leave(): Promise<void> {
   // The cookie may still be alive, so the panel stays and the failure is said out loud.
   profileProblem.textContent = outcome.failure === 'offline' ? copy.problems.offline : copy.problems.unknown;
   profileProblem.hidden = false;
+}
+
+// --- the security card and the deletion ----------------------------------------------------------
+
+function openSecurity(): void {
+  if (currentAccount().status !== 'signed-in') return;
+  closeAuth();
+  closeHistory();
+  closeProfile();
+  setCard(security, true);
+  renderSecurity();
+  securityClose.focus();
+}
+
+function closeSecurity(): void {
+  setCard(security, false);
+}
+
+function renderSecurity(): void {
+  const copy = accountCopy();
+
+  securityTitle.textContent = copy.securityLabel;
+  securityClose.setAttribute('aria-label', copy.close);
+  // The platform gives one fact about how the account signs in, and the line reads the side it names.
+  securityMethods.textContent = accountHasPassword()
+    ? copy.securityMethodsPassword
+    : copy.securityMethodsProvider;
+  securityDelete.textContent = copy.securityDelete;
+}
+
+/** Opens the confirmation empty and with nothing to say: a refusal of the last visit is forgotten. */
+function openDeletion(): void {
+  closeSecurity();
+  deletion = { confirmation: '', password: '' };
+  deletionProblem = null;
+  deleting = false;
+  deleteConfirmation.value = '';
+  deletePassword.value = '';
+  setCard(deleteCard, true);
+  renderDeletion();
+  deleteConfirmation.focus();
+}
+
+function closeDeletion(): void {
+  setCard(deleteCard, false);
+}
+
+function renderDeletion(): void {
+  const copy = accountCopy();
+  const hasPassword = accountHasPassword();
+
+  deleteTitle.textContent = copy.deleteTitle;
+  deleteClose.setAttribute('aria-label', copy.close);
+  deleteWarning.textContent = copy.deleteWarning;
+  deleteConfirmLabel.textContent = copy.deleteConfirmationLabel;
+  deletePasswordLabel.textContent = copy.deletePasswordLabel;
+  // An account without a password has no field to ask in: the word alone is the whole proof.
+  deletePasswordField.hidden = !hasPassword;
+  deleteSubmit.textContent = copy.deleteSubmit;
+  deleteSubmit.disabled = deleting || !confirmationAccepted(deletion, hasPassword);
+  deleteCancel.textContent = copy.deleteCancel;
+  // The problem line is the last press's, and a keystroke does not clear it: it stays until the next
+  // answer, so the player can read why while correcting what caused it.
+  deleteProblemLine.hidden = deletionProblem === null;
+  deleteProblemLine.textContent = deletionProblem === null ? '' : copy.deletionProblems[deletionProblem];
+}
+
+/** Reads the fields as they are now, which is what keeps the button honest on every keystroke. */
+function readDeletion(): void {
+  deletion = { confirmation: deleteConfirmation.value, password: deletePassword.value };
+  renderDeletion();
+}
+
+async function submitDeletion(): Promise<void> {
+  const hasPassword = accountHasPassword();
+  if (deleting || !confirmationAccepted(deletion, hasPassword)) return;
+
+  deleting = true;
+  deletionProblem = null;
+  renderDeletion();
+
+  const outcome = await deleteAccount(api, deletion, hasPassword);
+  deleting = false;
+
+  // Both answers that end well are the guest state: the account is gone, or the cookie names one that
+  // no longer exists. The card closes either way and the title is the one the player came from.
+  if (outcome.status === 'deleted' || outcome.reason === 'signed-out') {
+    setAccount({ status: 'guest' });
+    closeDeletion();
+    control.focus();
+    return;
+  }
+
+  deletionProblem = outcome.reason;
+  renderDeletion();
+  // The next try starts where it went wrong: the word if the platform refused it, the password if not.
+  if (outcome.reason === 'confirmation') deleteConfirmation.focus();
+  else if (outcome.reason === 'password') deletePassword.focus();
 }
 
 // --- the history ---------------------------------------------------------------------------------
@@ -498,20 +641,59 @@ authForm.addEventListener('submit', (event) => {
 });
 
 profileHistory.addEventListener('click', openHistory);
+profileSecurity.addEventListener('click', openSecurity);
 profileSignOut.addEventListener('click', () => void leave());
 
 historyMore.addEventListener('click', () => void fetchPage());
 
+// The security card hands the screen to the confirmation; every way out of either returns the focus to
+// the control, which is where the player came from.
+securityClose.addEventListener('click', () => {
+  closeSecurity();
+  control.focus();
+});
+securityDelete.addEventListener('click', openDeletion);
+
+deleteClose.addEventListener('click', () => {
+  closeDeletion();
+  control.focus();
+});
+deleteCancel.addEventListener('click', () => {
+  closeDeletion();
+  control.focus();
+});
+
+deleteConfirmation.addEventListener('input', readDeletion);
+deletePassword.addEventListener('input', readDeletion);
+
+deleteForm.addEventListener('submit', (event) => {
+  // A real form submit, so Enter is the browser's: `preventDefault` only stops the page's reload.
+  event.preventDefault();
+  void submitDeletion();
+});
+
 keepKeys(auth, closeAuth);
 keepKeys(profile, closeProfile);
 keepKeys(historyCard, closeHistory);
+keepKeys(security, closeSecurity);
+keepKeys(deleteCard, closeDeletion);
 
 // The store is the one source the control and the panel follow: a sign-in in the dialog, a sign-out in
 // the panel, and the boot's `/me` all arrive here.
 onAccountChange((state) => {
   renderControl(state);
-  if (state.status !== 'signed-in') closeProfile();
-  else if (!profile.hidden) renderProfile();
+
+  if (state.status !== 'signed-in') {
+    // A deletion ends here too: the store turns guest and the cards have nobody left to speak to.
+    closeProfile();
+    closeSecurity();
+    closeDeletion();
+    return;
+  }
+
+  if (!profile.hidden) renderProfile();
+  if (!security.hidden) renderSecurity();
+  if (!deleteCard.hidden) renderDeletion();
 });
 
 // A language change rewrites whatever is on the screen from the catalog, the way the title does.
@@ -520,6 +702,9 @@ onLocaleChange(() => {
   if (step !== 'closed') renderAuth();
   if (!profile.hidden) renderProfile();
   if (!historyCard.hidden) renderHistory();
+  // The typed word and password are kept: only the lines around them change.
+  if (!security.hidden) renderSecurity();
+  if (!deleteCard.hidden) renderDeletion();
 });
 
 document.documentElement.lang = getLocale();
