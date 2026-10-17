@@ -3,7 +3,7 @@
 **Milestone:** m4-01
 **Parent feature:** m4-accounts-and-persistence
 **Created:** 2026-10-16
-**Status:** delivered 2026-10-16, awaiting review — the decisions taken while implementing are D6–D12
+**Status:** approved by the owner on 2026-10-16 — the decisions taken while implementing are D6–D12
 **ADR:** 0019 · Migrations as a single step before the services start (accepted, written)
 
 ## 1. Objective

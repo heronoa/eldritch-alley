@@ -21,4 +21,7 @@ Short records of decisions that shape the game and the codebase. Each ADR has a 
 | [0015](0015-height-advantage.md) | Height advantage | Accepted |
 | [0016](0016-abilities-as-data.md) | Abilities as data | Accepted |
 | [0017](0017-mana-regeneration.md) | Mana regenerates one point at the start of the turn | Accepted |
+| [0018](0018-oauth-sign-in-session-and-ticket.md) | Sign-in with GitHub and Google, a stateless session and a game ticket | Accepted |
 | [0019](0019-migrations-as-a-single-step.md) | Migrations run as a single step, before the services start | Accepted |
+| [0020](0020-persistent-squad-and-starter-set.md) | A persistent squad with a starter set | Accepted |
+| [0021](0021-password-sign-in-with-a-verified-address.md) | Entering with an address and a password, once the address is verified | Accepted (supersedes 0018 § 1) |

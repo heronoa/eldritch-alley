@@ -172,3 +172,39 @@ list of past matches.
 separately (Cloudflare for the client, the ALB for the backends), they have different hosts, and the
 cookie's domain is what lets the browser send it. A relative path would tie the client's build to being
 served from the platform's origin, which it is not.
+
+## 8. Note — what m4-02 hands this milestone (2026-10-16)
+
+Written while m4-02 was being applied, because two of its amendments are work that lands **here** and
+were deliberately left out of that PR. Neither is in section 3's file list yet, and both belong in
+**Integration** (step 2), not in Logic.
+
+**The provider buttons are a list, not a pair.** m4-02 § 8 made the OAuth apps optional, and
+`GET /auth/providers` is how the client learns which ones this deployment has: `{ providers: ['github'] }`
+or `{ providers: [] }`. The title draws one button per name and **none at all** when the list is empty —
+a deployment with no OAuth app must not show a button that answers 404. A failure to fetch that list is
+not an error to report: it means the OAuth buttons are not drawn, and the address-and-password form
+below is still there.
+
+**There is a second way in, and it is a form.** m4-02 § 9 added six routes under `/auth/password`
+(ADR 0021): register, resend, verify, login, forgot, reset. This milestone's title screen gains the form
+that drives four of them — sign in, sign up, "I forgot my password" and "resend the message" — and the
+client the two pages the mailed links land on:
+
+| Route in the mail | The page | What it does |
+|---|---|---|
+| `GET ${CLIENT_ORIGIN}/verify-email?token=…` | `/verify-email` | Reads the token out of the query string and shows one button; the button `POST`s it to `/auth/password/verify` |
+| `GET ${CLIENT_ORIGIN}/reset-password?token=…` | `/reset-password` | Reads the token, asks for the new password and its confirmation, and `POST`s both to `/auth/password/reset` |
+
+**A page and not a direct link to the API, and the button is not decoration** (ADR 0021, D12): mail
+scanners, link previews and antivirus proxies fetch every URL in every message, so a `GET` that spent
+the token would be spent before the player ever saw it. The page reads the token and the click spends it.
+Both pages answer the same way afterwards — an unreadable, expired or already-spent token is
+`400 invalid_token`, and the page says so and offers the form again rather than an empty screen.
+
+The form's own refusals are the ones section 4 already describes for `me()`: `401 invalid_credentials`
+and `403 email_not_verified` are answers the player acts on, a network failure is a different kind and
+is said out loud. Registration always answers `202`, whether or not the address has an account, and the
+page must say the same thing in both cases — "check your mailbox" is the whole answer, and it is the
+only one that does not turn the form into a way to ask which addresses have accounts.
+
