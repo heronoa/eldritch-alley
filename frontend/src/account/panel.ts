@@ -28,6 +28,8 @@ export interface ProfileView {
   readonly noAgents: string;
   readonly signOutLabel: string;
   readonly historyLabel: string;
+  /** The profile's action that opens the security card. */
+  readonly securityLabel: string;
   readonly closeLabel: string;
 }
 
@@ -39,6 +41,7 @@ export function profileView(state: AccountState, copy: AccountCopy): ProfileView
     noAgents: copy.noAgents,
     signOutLabel: copy.signOut,
     historyLabel: copy.historyLabel,
+    securityLabel: copy.securityLabel,
     closeLabel: copy.close,
   };
 

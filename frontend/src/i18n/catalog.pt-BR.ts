@@ -95,6 +95,7 @@ export const ptBR = {
   'account.tab.signUp': 'Criar conta',
   'account.tab.forgot': 'Esqueci a senha',
   'account.providers': 'Entrar com',
+  'account.provider.keycloak': 'SSO',
   'account.provider.github': 'GitHub',
   'account.provider.google': 'Google',
   'account.field.email': 'Endereço de e-mail',
@@ -132,6 +133,23 @@ export const ptBR = {
   'account.history.rounds': '{rounds} rodadas',
   'account.history.won': 'Vitória',
   'account.history.lost': 'Derrota',
+
+  // The security card and the deletion confirmation. The confirmation word is not copy: `DELETE` is
+  // spelled the same in both languages because it is the token the platform checks
+  // (`frontend/src/account/delete-account.ts`).
+  'account.security.label': 'Segurança',
+  'account.security.methods.password': 'Entra com e-mail e senha',
+  'account.security.methods.provider': 'Entra por um provedor de identidade',
+  'account.security.delete': 'Excluir conta',
+  'account.delete.title': 'Excluir conta',
+  'account.delete.warning':
+    'A conta, o esquadrão e o histórico de batalhas serão apagados. Não é possível desfazer.',
+  'account.delete.confirmLabel': 'Digite DELETE para confirmar',
+  'account.delete.submit': 'Excluir conta',
+  'account.delete.cancel': 'Cancelar',
+  'account.delete.problem.confirmation': 'Digite DELETE exatamente como está escrito',
+  'account.delete.problem.password': 'Senha incorreta',
+  'account.delete.problem.signedOut': 'A sessão terminou. Entre outra vez.',
 
   // The two pages a mailed link lands on. The link only opens the page: the token is spent on a press
   // (ADR 0021 § D12), which is why each page carries the sentence that asks for one.

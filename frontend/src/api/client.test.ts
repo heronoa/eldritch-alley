@@ -55,7 +55,15 @@ describe('the platform client', () => {
     ];
     const { api } = apiOver(() => ({ body: { user: PROFILE, agents } }));
 
-    await expect(api.me()).resolves.toEqual({ user: PROFILE, agents });
+    await expect(api.me()).resolves.toEqual({ user: PROFILE, agents, hasPassword: false });
+  });
+
+  it('reads whether the account has a password, and calls an answer without the fact false', async () => {
+    const withPassword = apiOver(() => ({ body: { user: PROFILE, agents: [], hasPassword: true } }));
+    const without = apiOver(() => ({ body: { user: PROFILE, agents: [] } }));
+
+    await expect(withPassword.api.me()).resolves.toMatchObject({ hasPassword: true });
+    await expect(without.api.me()).resolves.toMatchObject({ hasPassword: false });
   });
 
   it('tells a refusal from a server fault and from a platform that never answered', async () => {
@@ -116,9 +124,9 @@ describe('the platform client', () => {
 
 describe('the provider list', () => {
   it('keeps the names this client can draw and drops the rest', async () => {
-    const { api } = apiOver(() => ({ body: { providers: ['github', 'bitbucket', 'google'] } }));
+    const { api } = apiOver(() => ({ body: { providers: ['keycloak', 'github', 'bitbucket'] } }));
 
-    await expect(api.providers()).resolves.toEqual(['github', 'google']);
+    await expect(api.providers()).resolves.toEqual(['keycloak', 'github']);
   });
 
   it('answers an empty list for a platform with no OAuth app, and for one that did not answer', async () => {
@@ -180,6 +188,61 @@ describe('the session routes', () => {
 
     await expect(api.matches()).resolves.toEqual({ matches: [], nextCursor: null });
     expect(calls[0].url).toBe('https://api.test/me/matches');
+  });
+});
+
+describe('deleting the account', () => {
+  it('sends the word and the password to the deletion route, and reads no body from the 204', async () => {
+    const { api, calls } = apiOver(() => ({ status: 204, unreadable: true }));
+
+    await expect(api.deleteAccount({ confirm: 'DELETE', password: 'password1234' })).resolves.toBeUndefined();
+
+    expect(calls[0].url).toBe('https://api.test/auth/account');
+    expect(calls[0].init.method).toBe('DELETE');
+    expect(calls[0].init.credentials).toBe('include');
+    expect(new Headers(calls[0].init.headers).get('content-type')).toBe('application/json');
+    expect(JSON.parse(String(calls[0].init.body))).toEqual({
+      confirm: 'DELETE',
+      password: 'password1234',
+    });
+  });
+
+  it('leaves the password out of the body when the account has none', async () => {
+    const { api, calls } = apiOver(() => ({ status: 204, unreadable: true }));
+
+    await api.deleteAccount({ confirm: 'DELETE' });
+
+    expect(JSON.parse(String(calls[0].init.body))).toEqual({ confirm: 'DELETE' });
+  });
+
+  it('throws every refusal intact, a 401 included', async () => {
+    const refusals = [
+      [400, 'invalid_confirmation'],
+      [403, 'invalid_password'],
+      [429, 'too_many_attempts'],
+      [401, 'unauthenticated'],
+    ] as const;
+
+    for (const [status, code] of refusals) {
+      const { api } = apiOver(() => ({ status, body: { code, message: 'no' } }));
+
+      await expect(api.deleteAccount({ confirm: 'DELETE' })).rejects.toMatchObject({
+        kind: 'refused',
+        status,
+        code,
+      });
+    }
+  });
+
+  it('answers a platform that did not answer as offline', async () => {
+    const silent = apiOver(() => {
+      throw new TypeError('fetch failed');
+    });
+
+    await expect(silent.api.deleteAccount({ confirm: 'DELETE' })).rejects.toMatchObject({
+      kind: 'offline',
+      status: null,
+    });
   });
 });
 

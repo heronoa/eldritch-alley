@@ -18,6 +18,7 @@ const ACCOUNT: AccountState = {
       { id: 'a-2', class: 'sniper', level: 1, status: 'ready' },
       { id: 'a-3', class: 'wizard', level: 2, status: 'ready' },
     ],
+    hasPassword: true,
   },
 };
 
@@ -39,13 +40,14 @@ describe('the profile view', () => {
     expect(view.agents).toEqual([]);
   });
 
-  it('shows the name, the address and the avatar of the signed-in player', () => {
+  it('shows the name, the address, the avatar and the security action of the signed-in player', () => {
     const view = profileView(ACCOUNT, accountCopy());
 
     expect(view.hidden).toBe(false);
     expect(view.name).toBe('Ana Ribeiro');
     expect(view.email).toBe('ana@example.com');
     expect(view.avatarUrl).toBe('https://example.com/ana.png');
+    expect(view.securityLabel).toBe('Segurança');
   });
 
   it('lists the squad in the order the platform sent it, one level line per agent', () => {
@@ -62,7 +64,11 @@ describe('the profile view', () => {
     const view = profileView(
       {
         status: 'signed-in',
-        account: { user: { id: 'u-2', displayName: 'Sem Nome', email: null, avatarUrl: null }, agents: [] },
+        account: {
+          user: { id: 'u-2', displayName: 'Sem Nome', email: null, avatarUrl: null },
+          agents: [],
+          hasPassword: false,
+        },
       },
       accountCopy(),
     );
@@ -82,5 +88,6 @@ describe('the profile view', () => {
     expect(view.agents[0].level).toBe('level 3');
     expect(view.signOutLabel).toBe('Sign out');
     expect(view.historyLabel).toBe('History');
+    expect(view.securityLabel).toBe('Security');
   });
 });

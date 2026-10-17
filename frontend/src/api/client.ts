@@ -6,8 +6,11 @@
 // arrive at a panel and be drawn as a row.
 import { ApiError } from './errors';
 
-/** The providers the platform can have an OAuth app for. A name outside this list draws no button. */
-export const PROVIDER_NAMES = ['github', 'google'] as const;
+/**
+ * The providers the platform can have an OAuth app for. An allowlist and not an order: the buttons are
+ * drawn in the order the platform answered, and a name outside this list draws no button.
+ */
+export const PROVIDER_NAMES = ['keycloak', 'github', 'google'] as const;
 export type ProviderName = (typeof PROVIDER_NAMES)[number];
 
 /** What every signed-in answer carries about the player. */
@@ -26,10 +29,12 @@ export interface Agent {
   status: string;
 }
 
-/** `GET /me`: the player and the squad, in the order the platform sent them. */
+/** `GET /me`: the player, the squad in the order the platform sent them, and how the account signs in. */
 export interface Account {
   user: Profile;
   agents: Agent[];
+  /** Whether a usable password credential exists: the one fact the deletion card asks for. */
+  hasPassword: boolean;
 }
 
 /** `POST /auth/game-ticket`. The service answers with a `Date`; JSON turns it into an ISO string. */
@@ -79,6 +84,11 @@ export interface Api {
   gameTicket(): Promise<GameTicket>;
   /** A 401 counts as success: the player is already signed out. */
   logout(): Promise<void>;
+  /**
+   * `DELETE /auth/account`. A 401 is a failure here, unlike `logout`: the caller must know whether the
+   * account was deleted, and "already signed out" is an answer it has to say out loud.
+   */
+  deleteAccount(input: { confirm: string; password?: string }): Promise<void>;
   matches(cursor?: string): Promise<MatchPage>;
 
   register(input: { email: string; password: string; displayName?: string }): Promise<Sent>;
@@ -208,6 +218,9 @@ export function createApi(baseUrl: string, fetchImpl: typeof fetch = fetch): Api
 
       return {
         user: await profile(response, body['user']),
+        // A body without the boolean reads as "no password": the guess only decides whether the
+        // deletion card asks for one, and the server refuses the word alone for an account that has one.
+        hasPassword: body['hasPassword'] === true,
         agents: agents.flatMap((agent) => {
           const found = record(agent);
           const id = text(found?.['id']);
@@ -240,6 +253,12 @@ export function createApi(baseUrl: string, fetchImpl: typeof fetch = fetch): Api
       // Signed out already is the state the caller wanted.
       if (response.status === 401 || response.ok) return;
       throw await failure(response);
+    },
+
+    async deleteAccount(input) {
+      const response = await request('/auth/account', { method: 'DELETE', body: input });
+      // No body to read: the platform answers 204, and the deletion is the cookie being cleared.
+      if (!response.ok) throw await failure(response);
     },
 
     async matches(cursor) {

@@ -57,6 +57,32 @@ describe('the account copy', () => {
     expect(en.problems.offline).toBe('The service did not answer');
   });
 
+  it('names every provider the platform can answer, with the realm reading as SSO', () => {
+    expect(copyIn('pt-BR').providerNames.keycloak).toBe('SSO');
+    expect(copyIn('en-US').providerNames.keycloak).toBe('SSO');
+  });
+
+  it('carries the security card and a sentence for every way a deletion can be refused', () => {
+    for (const locale of LOCALES) {
+      const copy = copyIn(locale);
+
+      expect(copy.securityLabel.trim()).not.toBe('');
+      expect(copy.securityDelete.trim()).not.toBe('');
+      expect(copy.deleteWarning.trim()).not.toBe('');
+      expect(Object.keys(copy.deletionProblems).sort()).toEqual([
+        'confirmation',
+        'offline',
+        'password',
+        'signed-out',
+        'throttled',
+        'unknown',
+      ]);
+      for (const [reason, line] of Object.entries(copy.deletionProblems)) {
+        expect(line.trim(), `${locale} ${reason}`).not.toBe('');
+      }
+    }
+  });
+
   it('names the maps the history can list, and leaves an unknown one to the panel', () => {
     const pt = copyIn('pt-BR');
     expect(pt.mapNames).toEqual({
