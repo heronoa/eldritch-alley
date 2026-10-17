@@ -1,3 +1,4 @@
+import type { OAuthProviderName } from '../auth/provider';
 import type { EmailMessage } from './mailer';
 
 /**
@@ -71,3 +72,32 @@ export function resetMessage(to: string, link: string): EmailMessage {
     ].join('\n'),
   };
 }
+
+/**
+ * The notice an account gets when a sign-in adds a second way in. It carries no link and no token: its
+ * whole job is to be read by the person who owns the address, so that a way in they did not add is
+ * noticed. The provider is named in words a player recognises — "single sign-on", never "keycloak".
+ */
+export function linkedAccountMessage(to: string, provider: OAuthProviderName): EmailMessage {
+  return {
+    to,
+    subject: 'A new way in — Eldritch Alley: Tactics',
+    text: [
+      `Your account can now also be entered with ${PROVIDER_LABELS[provider]}.`,
+      '',
+      'It is the same account: nothing was copied and your squad is where it was.',
+      '',
+      'If this was not you, reply to this message so we can look at it.',
+    ].join('\n'),
+  };
+}
+
+/**
+ * What each provider is called in a message. `keycloak` is the realm the deployment runs, which is an
+ * implementation name, not something a player has ever seen.
+ */
+const PROVIDER_LABELS: Readonly<Record<OAuthProviderName, string>> = {
+  github: 'GitHub',
+  google: 'Google',
+  keycloak: 'single sign-on',
+};

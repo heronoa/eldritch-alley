@@ -14,7 +14,9 @@ import {
 import type { Request, Response } from 'express';
 import { calculatePKCECodeChallenge, randomPKCECodeVerifier, randomState } from 'openid-client';
 import { apiError } from '../app';
-import { AuthService } from './auth.service';
+import { MAILER, type Mailer } from '../email/mailer';
+import { linkedAccountMessage } from '../email/messages';
+import { AuthService, normalizeAddress } from './auth.service';
 import {
   OAUTH_PROVIDERS,
   PROVIDER_NAMES,
@@ -57,6 +59,7 @@ export class OAuthController {
     @Inject(OAUTH_PROVIDERS) private readonly providers: OAuthProviders,
     @Inject(SESSION_CONFIG) private readonly config: SessionConfig,
     @Inject(AuthService) private readonly auth: AuthService,
+    @Inject(MAILER) private readonly mailer: Mailer,
   ) {}
 
   /**
@@ -112,7 +115,11 @@ export class OAuthController {
     this.spend(state);
 
     const profile = await this.exchange(provider, code, flow.codeVerifier);
-    const { user } = await this.auth.signIn(provider.name, profile);
+    const { user, linked } = await this.auth.signIn(provider.name, profile);
+
+    // A link is a new way into an account that already existed. The person who owns the address is the
+    // one who can tell whether it was them, so the notice goes there and nowhere else.
+    if (linked) await this.notifyLinkedAccount(profile, provider.name);
 
     const session = await signSession(
       // A fresh session id per sign-in: nothing is stored against it yet, and it is the name a
@@ -144,6 +151,28 @@ export class OAuthController {
         'provider_refused',
         'The provider refused this sign-in. Try again.',
       );
+    }
+  }
+
+  /**
+   * The notice that a new way in was added, sent to the address the provider just vouched for — the
+   * linking rule only fires when both sides verified it, so there is always an address here.
+   *
+   * A mail that fails to send is logged and swallowed: the player is already signed in, and a courtesy
+   * message is not worth turning a successful sign-in into an error. The address is kept out of the log
+   * line, which is read on machines the address was never meant for.
+   */
+  private async notifyLinkedAccount(
+    profile: ProviderProfile,
+    provider: OAuthProviderName,
+  ): Promise<void> {
+    const to = normalizeAddress(profile.email);
+    if (to === null) return;
+
+    try {
+      await this.mailer.send(linkedAccountMessage(to, provider));
+    } catch (error) {
+      this.logger.error('could not send the linked-account notice', error as Error);
     }
   }
 

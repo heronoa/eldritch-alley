@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { OAUTH_VARIABLES } from './test-app';
+import { KEYCLOAK_ISSUER, OAUTH_VARIABLES } from './test-app';
 import { oauthProvidersFromEnvironment } from './provider';
 
 // A credential for a third party is the one configuration this platform cannot invent, so it is the one
@@ -42,6 +42,16 @@ function pair(provider: 'GITHUB' | 'GOOGLE'): Partial<Record<Variable, string>> 
     [`OAUTH_${provider}_CLIENT_ID`]: `${provider.toLowerCase()}-client-id`,
     [`OAUTH_${provider}_CLIENT_SECRET`]: `${provider.toLowerCase()}-client-secret`,
   } as Partial<Record<Variable, string>>;
+}
+
+/** The realm's three values, which are one switch rather than a pair. */
+function realm(overrides: Partial<Record<Variable, string>> = {}): Partial<Record<Variable, string>> {
+  return {
+    OAUTH_KEYCLOAK_CLIENT_ID: 'keycloak-client-id',
+    OAUTH_KEYCLOAK_CLIENT_SECRET: 'keycloak-client-secret',
+    OAUTH_KEYCLOAK_ISSUER: KEYCLOAK_ISSUER,
+    ...overrides,
+  };
 }
 
 describe('oauthProvidersFromEnvironment', () => {
@@ -117,5 +127,80 @@ describe('oauthProvidersFromEnvironment', () => {
 
   it('does not ask for a redirect base when there is no provider to build a callback for', () => {
     expect(() => oauthProvidersFromEnvironment()).not.toThrow();
+  });
+
+  describe('the Keycloak switch', () => {
+    it('builds only Keycloak when the realm is configured, even with both direct pairs there', () => {
+      configure({
+        OAUTH_REDIRECT_BASE_URL: REDIRECT_BASE_URL,
+        ...pair('GITHUB'),
+        ...pair('GOOGLE'),
+        ...realm(),
+      });
+
+      // One door, not three: the realm brokers Google and GitHub, and offering the direct buttons too
+      // would give one player two accounts depending on which button they pressed.
+      expect(Object.keys(oauthProvidersFromEnvironment())).toEqual(['keycloak']);
+    });
+
+    it('builds Keycloak when only the realm is configured', () => {
+      configure({ OAUTH_REDIRECT_BASE_URL: REDIRECT_BASE_URL, ...realm() });
+      expect(Object.keys(oauthProvidersFromEnvironment())).toEqual(['keycloak']);
+    });
+
+    it('does not look at a half-configured direct provider while the realm is configured', () => {
+      // The direct providers are not built at all under the switch, so their half pairs are not read and
+      // cannot stop a boot that has a working realm.
+      configure({
+        OAUTH_REDIRECT_BASE_URL: REDIRECT_BASE_URL,
+        OAUTH_GITHUB_CLIENT_ID: 'github-client-id',
+        ...realm(),
+      });
+
+      expect(Object.keys(oauthProvidersFromEnvironment())).toEqual(['keycloak']);
+    });
+
+    it('refuses half a realm, naming every variable that is missing', () => {
+      configure({ OAUTH_REDIRECT_BASE_URL: REDIRECT_BASE_URL, OAUTH_KEYCLOAK_CLIENT_ID: 'keycloak-client-id' });
+
+      expect(() => oauthProvidersFromEnvironment()).toThrow(/OAUTH_KEYCLOAK_CLIENT_SECRET/);
+      expect(() => oauthProvidersFromEnvironment()).toThrow(/OAUTH_KEYCLOAK_ISSUER/);
+    });
+
+    it('refuses a realm with an id and a secret but no issuer', () => {
+      configure({
+        OAUTH_REDIRECT_BASE_URL: REDIRECT_BASE_URL,
+        OAUTH_KEYCLOAK_CLIENT_ID: 'keycloak-client-id',
+        OAUTH_KEYCLOAK_CLIENT_SECRET: 'keycloak-client-secret',
+      });
+
+      expect(() => oauthProvidersFromEnvironment()).toThrow(/OAUTH_KEYCLOAK_ISSUER/);
+    });
+
+    it('sends the browser to the realm with the API callback and the three scopes', () => {
+      configure({ OAUTH_REDIRECT_BASE_URL: REDIRECT_BASE_URL, ...realm() });
+
+      const keycloak = oauthProvidersFromEnvironment().keycloak;
+      const url = new URL(keycloak?.authorizationUrl('a-state', 'a-challenge') ?? '');
+
+      expect(`${url.origin}${url.pathname}`).toBe(`${KEYCLOAK_ISSUER}/protocol/openid-connect/auth`);
+      expect(url.searchParams.get('redirect_uri')).toBe(`${REDIRECT_BASE_URL}/auth/keycloak/callback`);
+      expect(url.searchParams.get('scope')).toBe('openid profile email');
+      expect(url.searchParams.get('code_challenge_method')).toBe('S256');
+    });
+
+    it('refuses a configured realm with no redirect base to send the browser back to', () => {
+      configure(realm());
+      expect(() => oauthProvidersFromEnvironment()).toThrow(/OAUTH_REDIRECT_BASE_URL/);
+    });
+
+    it('refuses an issuer that is not an http(s) URL', () => {
+      configure({
+        OAUTH_REDIRECT_BASE_URL: REDIRECT_BASE_URL,
+        ...realm({ OAUTH_KEYCLOAK_ISSUER: 'sso.example/realms/homelab' }),
+      });
+
+      expect(() => oauthProvidersFromEnvironment()).toThrow(/OAUTH_KEYCLOAK_ISSUER/);
+    });
   });
 });

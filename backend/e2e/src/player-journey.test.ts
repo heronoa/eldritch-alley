@@ -693,6 +693,56 @@ describe.skipIf(!hasDatabase)('the player’s journey', () => {
       expect(setCookies(attempt)).toEqual([]);
     });
 
+    it('signs a player in through a configured realm, and offers no direct provider', async () => {
+      // The switch the deployment owns: when the realm is configured it is the only door, and the direct
+      // providers are not built even though their credentials are in the same environment. The realm is a
+      // fake here, because a test cannot run Keycloak; everything around it is the real platform.
+      const realmProfile: ProviderProfile = {
+        providerUserId: 'kc-1',
+        email: 'someone@sso.test',
+        emailVerified: true,
+        displayName: 'Someone Through SSO',
+        avatarUrl: null,
+      };
+      const withRealm = await startTestApp({
+        databaseUrl,
+        keycloak: true,
+        // The override is the set the factory produced: Keycloak alone. A `github` entry here would be
+        // the state the factory exists to prevent, because the harness also leaves the direct
+        // credentials in the environment — and `keycloak: true` is what proves they produce no button.
+        providers: { keycloak: new FakeProvider('keycloak', () => realmProfile) },
+      });
+
+      try {
+        expect(await (await fetch(`${withRealm.url}/auth/providers`)).json()).toEqual({
+          providers: ['keycloak'],
+        });
+        expect((await fetch(`${withRealm.url}/auth/github`, { redirect: 'manual' })).status).toBe(404);
+
+        const first = await signIn(withRealm.url, 'keycloak');
+        expect(first.response.status).toBe(302);
+        const firstSession = cookieValue(setCookies(first.response), SESSION_COOKIE) ?? '';
+        const firstMe = await fetch(`${withRealm.url}/me`, {
+          headers: { cookie: `${SESSION_COOKIE}=${firstSession}` },
+        });
+        expect(firstMe.status).toBe(200);
+        const firstUser = (await firstMe.json()) as Me;
+
+        const second = await signIn(withRealm.url, 'keycloak');
+        expect(second.response.status).toBe(302);
+        const secondSession = cookieValue(setCookies(second.response), SESSION_COOKIE) ?? '';
+        const secondMe = await fetch(`${withRealm.url}/me`, {
+          headers: { cookie: `${SESSION_COOKIE}=${secondSession}` },
+        });
+        expect(secondMe.status).toBe(200);
+
+        // The second callback found the account the first one made: one pair, one account.
+        expect(((await secondMe.json()) as Me).user.id).toBe(firstUser.user.id);
+      } finally {
+        await withRealm.close();
+      }
+    });
+
     it('refuses a logout with no cookie and one signed with a secret that is not ours', async () => {
       expect((await post('/auth/logout')).status).toBe(401);
 

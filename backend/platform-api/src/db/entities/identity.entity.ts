@@ -4,11 +4,11 @@ import { User } from './user.entity';
 /**
  * The ways into an account. The column is text; this union is what the code holds.
  *
- * `password` is a way in like the other two and is deliberately not in `OAuthProviderName`: it is a row
+ * `password` is a way in like the providers and is deliberately not in `OAuthProviderName`: it is a row
  * in this table, and it is never a button on the title screen or an entry in `GET /auth/providers`
  * (ADR 0021).
  */
-export type ProviderName = 'github' | 'google' | 'password';
+export type ProviderName = 'github' | 'google' | 'keycloak' | 'password';
 
 /**
  * One way into an account: what a provider calls the player, and what it reported about them.

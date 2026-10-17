@@ -91,6 +91,11 @@ services:
       OAUTH_GITHUB_CLIENT_SECRET: ${OAUTH_GITHUB_CLIENT_SECRET:-}
       OAUTH_GOOGLE_CLIENT_ID: ${OAUTH_GOOGLE_CLIENT_ID:-}
       OAUTH_GOOGLE_CLIENT_SECRET: ${OAUTH_GOOGLE_CLIENT_SECRET:-}
+      # A configured realm is the only provider offered: it brokers the direct ones, which stop being
+      # built. Leave the three blank and the direct pairs above are exactly what they are today.
+      OAUTH_KEYCLOAK_CLIENT_ID: ${OAUTH_KEYCLOAK_CLIENT_ID:-}
+      OAUTH_KEYCLOAK_CLIENT_SECRET: ${OAUTH_KEYCLOAK_CLIENT_SECRET:-}
+      OAUTH_KEYCLOAK_ISSUER: ${OAUTH_KEYCLOAK_ISSUER:-}
       # Outgoing mail (m4-02), optional by the same rule and with the same failure: all five or none.
       # None and the platform logs each verification and reset message instead of sending it, which is
       # what a local stack should do. Some and it refuses to start, naming every value that is missing.
