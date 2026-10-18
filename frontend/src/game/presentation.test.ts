@@ -38,6 +38,8 @@ describe('presentationOf', () => {
       from: at(1, 1),
       to: at(2, 3),
       path: [at(1, 2), at(2, 2), at(2, 3)],
+      rngState: 0,
+      prone: false,
     };
 
     expect(presentationOf(event, snapshot({ a: unit() }))).toEqual([
@@ -140,7 +142,18 @@ describe('presentationOf', () => {
     const untouched = snapshot({ a: unit({ position: at(0, 0) }), b: unit({ position: at(1, 0) }) });
 
     presentationOf(attacked(), units);
-    presentationOf({ type: 'moved', actor: 'a', from: at(0, 0), to: at(1, 1), path: [at(1, 1)] }, units);
+    presentationOf(
+      {
+        type: 'moved',
+        actor: 'a',
+        from: at(0, 0),
+        to: at(1, 1),
+        path: [at(1, 1)],
+        rngState: 0,
+        prone: false,
+      },
+      units,
+    );
     presentationOf({ type: 'unit-defeated', target: 'b' }, units);
 
     expect(units).toEqual(untouched);
@@ -190,6 +203,7 @@ describe('the impact of an ability', () => {
       hasActed: false,
       eventCount: 0,
       pendingMove: null,
+      difficultTerrain: [],
     };
   }
 

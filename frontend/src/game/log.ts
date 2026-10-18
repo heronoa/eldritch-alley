@@ -134,6 +134,7 @@ export function describeRejection(reason: RejectReason): string {
     case 'already-acted':
     case 'target-out-of-range':
     case 'no-line-of-sight':
+    case 'target-hidden':
     case 'target-invalid':
     case 'ability-unknown':
     case 'no-magazine':

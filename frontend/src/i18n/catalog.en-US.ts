@@ -195,6 +195,8 @@ export const enUS: Record<MessageKey, string> = {
   'log.rejection.already-acted': 'Action already used',
   'log.rejection.target-out-of-range': 'Target out of range',
   'log.rejection.no-line-of-sight': 'No line of sight',
+  // A camouflaged enemy cannot be the target of a basic attack (ADR 0023).
+  'log.rejection.target-hidden': 'Target hidden',
   'log.rejection.target-invalid': 'Invalid target',
   'log.rejection.ability-unknown': 'Unknown ability',
   'log.rejection.no-magazine': 'No magazine',

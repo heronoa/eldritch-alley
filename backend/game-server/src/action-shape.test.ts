@@ -35,6 +35,30 @@ describe('isClientAction', () => {
     expect(isClientAction({ type: 'attack', target: 7 })).toBe(false);
   });
 
+  it('accepts a cast aimed at a cell, with or without a target unit', () => {
+    expect(isClientAction({ type: 'useAbility', abilityId: 'piercing-shot', to: { x: 1, y: 2 } })).toBe(true);
+    expect(
+      isClientAction({ type: 'useAbility', abilityId: 'resurrection', to: { x: 1, y: 2 }, target: 'A-sniper' }),
+    ).toBe(true);
+  });
+
+  it('refuses a cast whose aim is not a pair of whole numbers', () => {
+    expect(isClientAction({ type: 'useAbility', abilityId: 'piercing-shot' })).toBe(false);
+    expect(isClientAction({ type: 'useAbility', abilityId: 'piercing-shot', to: { x: 1.5, y: 0 } })).toBe(false);
+    expect(isClientAction({ type: 'useAbility', to: { x: 1, y: 2 } })).toBe(false);
+  });
+
+  it('refuses a target that is not a string', () => {
+    // Absent is the only spelling of "this cast names no unit": a null or a number is a malformed
+    // message, not an omitted field (ADR 0023 §7).
+    for (const target of [7, null, { id: 'A-sniper' }, true]) {
+      expect(
+        isClientAction({ type: 'useAbility', abilityId: 'resurrection', to: { x: 1, y: 2 }, target }),
+        `target ${JSON.stringify(target)}`,
+      ).toBe(false);
+    }
+  });
+
   it('refuses anything that is not an action at all', () => {
     expect(isClientAction(null)).toBe(false);
     expect(isClientAction(undefined)).toBe(false);

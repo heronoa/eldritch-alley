@@ -177,6 +177,15 @@ export function presentationOf(
     case 'healed':
       return [];
 
+    // The three effects of the second active set carry no animation of their own in this milestone:
+    // the status, the standing up, the drying mud and the revived body are read from the state and
+    // the log (ADR 0023).
+    case 'camouflage-ended':
+    case 'stood-up':
+    case 'terrain-expired':
+    case 'revived':
+      return [];
+
     // A pending move taken back or confirmed (EA-5) has no animation of its own: the cancel is a
     // correction, not a walk, and the state that follows puts the figure back where it started.
     case 'move-cancelled':

@@ -53,6 +53,8 @@ function makeUnit(spec: UnitSpec): UnitState {
     ammo: 3,
     permanentlyDead: false,
     corpseExpiresAtRound: null,
+    camouflage: null,
+    prone: false,
   };
 }
 
@@ -75,6 +77,7 @@ function makeState(
     hasActed: false,
     eventCount: 0,
     pendingMove,
+    difficultTerrain: [],
   };
 }
 

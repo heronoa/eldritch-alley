@@ -63,7 +63,9 @@ describe('buildMatchEnded', () => {
    * ticket an offer rather than a requirement.
    */
   it('copies the protocol version the match was played under rather than opening a new one', () => {
-    expect(buildMatchEnded(finished()).protocolVersion).toBe(10);
+    // The pin is the record's current version, so a bump that forgets this record fails here: 11 is
+    // the one ADR 0023 §8 fixes for the state and events the second active set brought.
+    expect(buildMatchEnded(finished()).protocolVersion).toBe(11);
   });
 
   it('reads the result from the player\'s own side', () => {

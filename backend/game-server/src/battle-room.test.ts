@@ -1,10 +1,22 @@
 import type { Client } from '@colyseus/core';
 import { boot, type ColyseusTestServer } from '@colyseus/testing';
-import { applyEvents, hashState, newMatch, type Event, type PublicState, type Team } from '@eldritch-alley/engine';
+import {
+  applyEvents,
+  hashState,
+  newMatch,
+  type Board,
+  type Event,
+  type MatchSetup,
+  type MatchState,
+  type Position,
+  type PublicState,
+  type Team,
+} from '@eldritch-alley/engine';
 import { SignJWT, exportPKCS8, exportSPKI, generateKeyPair, importPKCS8 } from 'jose';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { ABILITY_CATALOG } from './abilities';
 import { BattleRoom, resolveHumanAction } from './battle-room';
-import { MAPS, MATCH_SEED, createMatchSetup, mapIndex } from './map';
+import { MAPS, MATCH_SEED, createMatchSetup, mapIndex, rosterFor } from './map';
 import { MESSAGE, PROTOCOL_VERSION, ROOM_NAME, type StateMessage } from './protocol';
 import { InMemoryMatchEndedPublisher, type MatchEndedPublisher } from './queue';
 import { GAME_TICKET_ISSUER } from './ticket';
@@ -198,9 +210,11 @@ describe('BattleRoom', () => {
 
     // The board itself is no longer enough to draw a map: the client reads the terrain of the id it
     // is sent, so the id has to travel with the state that carries the seed it was drawn from. The
-    // version is the one ADR 0016 §14 fixes for the shape this state now has.
-    expect(PROTOCOL_VERSION).toBe(10);
-    expect(message.version).toBe(10);
+    // version is the one ADR 0023 §8 fixes for the state that now carries camouflage, prone and the
+    // difficult terrain of a match.
+    expect(PROTOCOL_VERSION).toBe(11);
+    expect(message.version).toBe(11);
+    expect(message.version).not.toBe(10);
     expect(message.mapId).toBe(MAPS[mapIndex(message.state.seed)].id);
 
     await human.leave(true);
@@ -218,6 +232,196 @@ describe('BattleRoom', () => {
 
     await vi.waitFor(() => expect(room.ended).toBe(true), { timeout: 5_000 });
     expect(room.winner).toBe('B');
+  }, 20_000);
+});
+
+/** A flat board, so the crafted positions of the cases below are the only thing that decides an answer. */
+function flatBoard(): Board {
+  return { width: 8, height: 8, levels: new Array<number>(64).fill(0) };
+}
+
+/**
+ * A match the room can be put into, with one unit on turn. It is the same technique `bot.test.ts` uses:
+ * build a setup the roster understands, then give the match only the turn the case is about.
+ */
+function craftedRoomMatch(
+  current: string,
+  spawns: Readonly<{ A: readonly Position[]; B: readonly Position[] }>,
+  options: { movementLeft?: number; defeated?: readonly string[] } = {},
+): MatchState {
+  const setup: MatchSetup = {
+    seed: 1,
+    map: flatBoard(),
+    catalog: ABILITY_CATALOG,
+    teams: rosterFor({ A: [...spawns.A], B: [...spawns.B] }),
+  };
+  const base = newMatch(setup);
+  const units = base.units.map((unit) => ({
+    ...unit,
+    position: { ...unit.position },
+    abilities: { ...unit.abilities, activeSets: [...unit.abilities.activeSets] },
+  }));
+
+  for (const id of options.defeated ?? []) {
+    const fallen = units.find((unit) => unit.id === id);
+    if (!fallen) throw new Error(`unknown unit: ${id}`);
+    fallen.defeated = true;
+    fallen.health = 0;
+    fallen.corpseExpiresAtRound = base.round + 1;
+  }
+
+  const absent = new Set([...(options.defeated ?? []), current]);
+  return {
+    ...base,
+    units,
+    initiative: [current, ...base.initiative.filter((id) => !absent.has(id))],
+    currentIndex: 0,
+    movementLeft: options.movementLeft ?? 0,
+    hasActed: false,
+  };
+}
+
+/** Puts the room on a match of the test's own, which is how the next action is made predictable. */
+function putOnTurn(room: BattleRoom, state: MatchState): void {
+  (room as unknown as { match: MatchState }).match = state;
+}
+
+describe('BattleRoom — protocol 11 and the secondary abilities', () => {
+  const spawns = {
+    A: [{ x: 3, y: 3 }, { x: 0, y: 7 }, { x: 0, y: 6 }],
+    B: [{ x: 7, y: 7 }, { x: 7, y: 6 }, { x: 6, y: 7 }],
+  };
+
+  it('sends the new fields of the state and of a walk', async () => {
+    const room = await server.createRoom<BattleRoom>(ROOM_NAME);
+    const human = await server.connectTo(room);
+    human.reconnection.enabled = false;
+    await human.waitForMessage(MESSAGE.state, 5_000);
+
+    const states: StateMessage[] = [];
+    const events: Event[] = [];
+    human.onMessage(MESSAGE.state, (message: StateMessage) => states.push(message));
+    human.onMessage(MESSAGE.events, (batch: Event[]) => events.push(...batch));
+
+    putOnTurn(room, craftedRoomMatch('A-sniper', spawns, { movementLeft: 1 }));
+
+    human.send(MESSAGE.action, { type: 'move', to: { x: 4, y: 3 } });
+    await vi.waitFor(() => expect(states.length).toBeGreaterThan(0), { timeout: 5_000 });
+
+    const moved = events.find((event) => event.type === 'moved');
+    if (!moved || moved.type !== 'moved') throw new Error('no moved event');
+    expect(moved).toMatchObject({ actor: 'A-sniper', to: { x: 4, y: 3 } });
+    expect(typeof moved.rngState).toBe('number');
+    expect(moved.prone).toBe(false);
+
+    const message = states[0];
+    expect(message.version).toBe(PROTOCOL_VERSION);
+    expect(Array.isArray(message.state.difficultTerrain)).toBe(true);
+    for (const unit of message.state.units) {
+      expect(typeof unit.prone).toBe('boolean');
+      // The status is either absent or the record a cast writes; it is never a missing field.
+      expect(unit.camouflage === null || typeof unit.camouflage === 'object').toBe(true);
+    }
+
+    await human.leave(true);
+  }, 20_000);
+
+  it('casts camouflage and mud through the same door as any other action', async () => {
+    const room = await server.createRoom<BattleRoom>(ROOM_NAME);
+    const human = await server.connectTo(room);
+    human.reconnection.enabled = false;
+    await human.waitForMessage(MESSAGE.state, 5_000);
+
+    const states: StateMessage[] = [];
+    const events: Event[] = [];
+    human.onMessage(MESSAGE.state, (message: StateMessage) => states.push(message));
+    human.onMessage(MESSAGE.events, (batch: Event[]) => events.push(...batch));
+
+    // The sniper hides on its own cell, which is the only cell a range-0 cast reaches.
+    const field = {
+      // An interior cell, so a radius of one around the wizard is the full nine cells.
+      A: [{ x: 3, y: 6 }, { x: 3, y: 4 }, { x: 1, y: 7 }],
+      B: spawns.B,
+    };
+    putOnTurn(room, craftedRoomMatch('A-sniper', field));
+    human.send(MESSAGE.action, {
+      type: 'useAbility',
+      abilityId: 'camouflage',
+      to: { x: 3, y: 6 },
+    });
+    await vi.waitFor(() => expect(states.length).toBeGreaterThan(0), { timeout: 5_000 });
+
+    const hidden = states[0].state.units.find((unit) => unit.id === 'A-sniper');
+    expect(hidden?.camouflage).toEqual({ turns: 3, breakChance: 30 });
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: 'ability-used', abilityId: 'camouflage' }),
+    );
+
+    // The wizard paints the mud at its feet: a radius of one is nine cells.
+    const seen = states.length;
+    putOnTurn(room, craftedRoomMatch('A-wizard', field));
+    human.send(MESSAGE.action, { type: 'useAbility', abilityId: 'mud', to: { x: 3, y: 4 } });
+    await vi.waitFor(() => expect(states.length).toBeGreaterThan(seen), { timeout: 5_000 });
+
+    const afterMud = states[seen];
+    expect(afterMud.state.difficultTerrain).toHaveLength(9);
+    for (const cell of afterMud.state.difficultTerrain) {
+      expect(cell.expiresAtRound).toBe(afterMud.state.round + 3);
+    }
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: 'ability-used', abilityId: 'mud' }),
+    );
+
+    await human.leave(true);
+  }, 20_000);
+
+  it('revives a fallen ally on the cell the client names', async () => {
+    const room = await server.createRoom<BattleRoom>(ROOM_NAME);
+    const human = await server.connectTo(room);
+    human.reconnection.enabled = false;
+    await human.waitForMessage(MESSAGE.state, 5_000);
+
+    const states: StateMessage[] = [];
+    const events: Event[] = [];
+    human.onMessage(MESSAGE.state, (message: StateMessage) => states.push(message));
+    human.onMessage(MESSAGE.events, (batch: Event[]) => events.push(...batch));
+
+    // The priest stands near the body of its sniper, which fell at (3,6); (3,5) is free.
+    putOnTurn(
+      room,
+      craftedRoomMatch(
+        'A-priest',
+        {
+          A: [{ x: 3, y: 6 }, { x: 0, y: 7 }, { x: 3, y: 4 }],
+          B: [{ x: 7, y: 7 }, { x: 7, y: 6 }, { x: 6, y: 7 }],
+        },
+        { defeated: ['A-sniper'] },
+      ),
+    );
+
+    human.send(MESSAGE.action, {
+      type: 'useAbility',
+      abilityId: 'resurrection',
+      to: { x: 3, y: 5 },
+      target: 'A-sniper',
+    });
+    await vi.waitFor(() => expect(states.length).toBeGreaterThan(0), { timeout: 5_000 });
+
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: 'revived',
+        target: 'A-sniper',
+        to: { x: 3, y: 5 },
+      }),
+    );
+
+    const revived = states[0].state.units.find((unit) => unit.id === 'A-sniper');
+    expect(revived?.defeated).toBe(false);
+    expect(revived?.position).toEqual({ x: 3, y: 5 });
+    expect(revived?.health).toBe(revived?.maxHealth);
+    expect(states[0].state.initiative).toContain('A-sniper');
+
+    await human.leave(true);
   }, 20_000);
 });
 

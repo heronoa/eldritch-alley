@@ -216,6 +216,8 @@ export const ptBR = {
   'log.rejection.already-acted': 'Ação já usada',
   'log.rejection.target-out-of-range': 'Alvo fora de alcance',
   'log.rejection.no-line-of-sight': 'Sem linha de visão',
+  // A camouflaged enemy cannot be the target of a basic attack (ADR 0023).
+  'log.rejection.target-hidden': 'Alvo oculto',
   'log.rejection.target-invalid': 'Alvo inválido',
   // An ability the caster's own slots do not name, or the catalog has no definition for (ADR 0016 §7).
   'log.rejection.ability-unknown': 'Habilidade desconhecida',

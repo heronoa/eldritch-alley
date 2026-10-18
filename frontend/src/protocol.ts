@@ -72,13 +72,35 @@ export interface Abilities {
 }
 
 /**
- * What an ability does to the cells it covers (ADR 0016 §2). A damage effect rolls for every living
- * unit standing on one of them; a heal never rolls and is capped at the unit's `maxHealth`. `radius`
- * is a Chebyshev distance around the cell the action named, so 0 is that cell alone.
+ * What an ability does to the cells it covers (ADR 0016 §2, ADR 0023 §2). A damage effect rolls for
+ * every living unit standing on one of them; a heal never rolls and is capped at the unit's
+ * `maxHealth`. `radius` is a Chebyshev distance around the cell the action named, so 0 is that cell
+ * alone. Camouflage writes a status onto the caster, terrain a layer onto the match, and revive brings
+ * a fallen ally back.
  */
 export type AbilityEffect =
   | { kind: 'damage'; amount: number; radius: number; ignoresCover: boolean }
-  | { kind: 'heal'; amount: number; radius: number };
+  | { kind: 'heal'; amount: number; radius: number }
+  /** The caster's own cell only, so `radius` is always 0 (ADR 0023 §3). */
+  | { kind: 'camouflage'; radius: 0; turns: number; breakChance: number }
+  /** One difficult cell per cell of the cast, each drying up at the start of round `round + duration`. */
+  | { kind: 'terrain'; radius: number; durationRounds: number }
+  /** The destination cell only, so `radius` is always 0 (ADR 0023 §7). The body may be anywhere. */
+  | { kind: 'revive'; radius: 0 };
+
+/** The status a camouflage cast writes onto its caster (ADR 0023 §3). */
+export interface Camouflage {
+  /** The caster's own turns the status lasts, the turn it was cast included. */
+  turns: number;
+  /** Integer percentage, 0..100, of the status ending on a damaging action. */
+  breakChance: number;
+}
+
+/** One cell of difficult terrain and the round in which it dries up (ADR 0023 §4). */
+export interface DifficultCell {
+  position: Position;
+  expiresAtRound: number;
+}
 
 /**
  * One ability, as plain data (ADR 0016 §1). The engine never learns a class or an ability name: the id
@@ -162,6 +184,16 @@ export interface UnitState extends Unit {
   permanentlyDead: boolean;
   /** The round in which the body is removed and the death becomes permanent. Null while alive. */
   corpseExpiresAtRound: number | null;
+  /**
+   * The status that keeps basic attacks away, or null (ADR 0023 §3). A cast sets it, the caster's own
+   * turns count it down, and a damaging action it uses rolls to break it.
+   */
+  camouflage: Camouflage | null;
+  /**
+   * Whether the last walk stopped on difficult terrain (ADR 0023 §4). It costs the turn it fell and
+   * the next one starts standing, with half the movement.
+   */
+  prone: boolean;
 }
 
 /**
@@ -199,6 +231,11 @@ export interface PublicState {
    * of the attack from where the unit stands; while it is null, the cells it can walk to.
    */
   pendingMove: PendingMove | null;
+  /**
+   * The terrain layer the rules read (ADR 0023 §4). It is state, not a mutation of the board: a cast
+   * adds cells, the round rise removes the dried ones, and the movement rules read the destination.
+   */
+  difficultTerrain: DifficultCell[];
   eventCount: number;
 }
 
@@ -206,7 +243,7 @@ export type Action =
   | { type: 'move'; actor: UnitId; to: Position }
   | { type: 'attack'; actor: UnitId; target: UnitId }
   /** Uses an ability the actor carries, aimed at a cell rather than at a unit (ADR 0016 §5). */
-  | { type: 'useAbility'; actor: UnitId; abilityId: string; to: Position }
+  | { type: 'useAbility'; actor: UnitId; abilityId: string; to: Position; target?: UnitId }
   | { type: 'reload'; actor: UnitId }
   /** The round it was decided on, so one that arrives late ends nobody's turn (ADR 0010, EA-4). */
   | { type: 'endTurn'; actor: UnitId; round: number }
@@ -214,8 +251,20 @@ export type Action =
   | { type: 'commitMove'; actor: UnitId };
 
 export type Event =
-  /** The walk the engine found, from the first step to `to`, `to` included. */
-  | { type: 'moved'; actor: UnitId; from: Position; to: Position; path: Position[] }
+  /**
+   * The walk the engine found, from the first step to `to`, `to` included. `rngState` is the random
+   * source after the walk's prone rolls and `prone` says whether one of them stopped the unit on a
+   * difficult cell (ADR 0023 §4).
+   */
+  | {
+      type: 'moved';
+      actor: UnitId;
+      from: Position;
+      to: Position;
+      path: Position[];
+      rngState: number;
+      prone: boolean;
+    }
   | {
       type: 'attacked';
       actor: UnitId;
@@ -255,6 +304,8 @@ export type Event =
       rngState: number;
       /** The pool the use spent, or null for a caster that carries none (ADR 0011). */
       resource: ResourceKind | null;
+      /** The fallen ally a `revive` effect names; absent for every other kind (ADR 0023 §7). */
+      target?: UnitId;
     }
   /**
    * One roll of a damage effect, for one living unit standing on a cell it covered. A roll that missed
@@ -262,7 +313,18 @@ export type Event =
    */
   | { type: 'damaged'; target: UnitId; hit: boolean; damage: number }
   /** What a heal gave back, capped at the unit's `maxHealth` (ADR 0016 §8). */
-  | { type: 'healed'; target: UnitId; amount: number };
+  | { type: 'healed'; target: UnitId; amount: number }
+  /** The camouflage status is gone: `expired` at the end of its last turn, `broken` by a damaging action. */
+  | { type: 'camouflage-ended'; target: UnitId; reason: 'expired' | 'broken' }
+  /** A prone unit started its turn and is standing again, with the movement the turn gave it. */
+  | { type: 'stood-up'; actor: UnitId }
+  /** The difficult cells that dried up on the round rise, exactly them and no others. */
+  | { type: 'terrain-expired'; cells: Position[] }
+  /**
+   * A fallen ally is alive again on `to` (ADR 0023 §7). The body is consumed by the same event: there
+   * is no `corpse-removed` for it.
+   */
+  | { type: 'revived'; target: UnitId; to: Position };
 
 /** Why an action was refused. A refused action never changes the state and never produces an event. */
 export type RejectReason =
@@ -275,6 +337,8 @@ export type RejectReason =
   | 'target-out-of-range'
   | 'no-line-of-sight'
   | 'target-invalid'
+  /** A basic attack against a living enemy is refused because its camouflage hides it (ADR 0023 §3). */
+  | 'target-hidden'
   /** An ability the caster's own slots do not name, or the catalog does not define (ADR 0016 §7). */
   | 'ability-unknown'
   | 'no-magazine'
@@ -313,8 +377,13 @@ export type RejectReason =
  * `faced` event and the direction a shot was thrown in; the server has sent both since version 8.) The
  * state carries the match's `catalog`, the client sends `useAbility` naming a cell, the events
  * `ability-used`, `damaged` and `healed` join the batch, and `ability-unknown` joins the refusals.
+ * Version 11: the second active set and the three effects it brings (ADR 0023 §8). The state carries
+ * every unit's `camouflage` and `prone` plus the match's `difficultTerrain`, a `moved` names the
+ * `rngState` and `prone` its walks rolled, `ability-used` may name a `target` (the fallen ally of a
+ * revive), the events `camouflage-ended`, `stood-up`, `terrain-expired` and `revived` join the batch,
+ * and `target-hidden` joins the refusals.
  */
-export const PROTOCOL_VERSION = 10;
+export const PROTOCOL_VERSION = 11;
 
 /** The single room type of M2-a. One room is one match. */
 export const ROOM_NAME = 'battle';
@@ -342,9 +411,10 @@ export type ClientAction =
   /**
    * Uses an ability the unit on turn carries, aimed at a cell rather than at a unit (ADR 0016 §5). The
    * server fills the actor in like it does for every other action, so the client chooses the ability and
-   * the cell and never the caster.
+   * the cell and never the caster. `target` is read only by a `revive` effect, where it names the
+   * fallen ally; every other kind ignores it (ADR 0023 §7).
    */
-  | { type: 'useAbility'; abilityId: string; to: Position }
+  | { type: 'useAbility'; abilityId: string; to: Position; target?: UnitId }
   | { type: 'reload' }
   /** The round it was decided on, so one that arrives late ends nobody's turn (ADR 0010, EA-4). */
   | { type: 'endTurn'; round: number }

@@ -58,6 +58,8 @@ function makeUnit(spec: UnitSpec): UnitState {
     ammo: spec.ammo ?? (magazine === null ? 0 : magazine),
     permanentlyDead: false,
     corpseExpiresAtRound: null,
+    camouflage: null,
+    prone: false,
   };
 }
 
@@ -78,6 +80,7 @@ function makeState(
     hasActed: false,
     eventCount: 0,
     pendingMove: null,
+    difficultTerrain: [],
     ...overrides,
   };
 }

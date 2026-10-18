@@ -35,6 +35,8 @@ function makeUnit(spec: UnitSpec): UnitState {
     ammo: 3,
     permanentlyDead: false,
     corpseExpiresAtRound: null,
+    camouflage: null,
+    prone: false,
   };
 }
 
@@ -52,6 +54,7 @@ function makeState(units: readonly UnitState[], currentIndex = 0): PublicState {
     hasActed: false,
     eventCount: 0,
     pendingMove: null,
+    difficultTerrain: [],
   };
 }
 

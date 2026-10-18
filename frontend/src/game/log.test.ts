@@ -65,6 +65,8 @@ describe('describeEvent', () => {
       from: { x: 0, y: 0 },
       to: { x: 1, y: 0 },
       path: [{ x: 1, y: 0 }],
+      rngState: 0,
+      prone: false,
     };
 
     expect(describeEvent(event, NAMES)).toBe('Sniper moveu de (0,0) para (1,0)');
@@ -253,6 +255,7 @@ describe('describeRejection', () => {
     'already-acted': 'Ação já usada',
     'target-out-of-range': 'Alvo fora de alcance',
     'no-line-of-sight': 'Sem linha de visão',
+    'target-hidden': 'Alvo oculto',
     'target-invalid': 'Alvo inválido',
     'no-magazine': 'Sem carregador',
     'no-ammunition': 'Sem munição, recarregue',

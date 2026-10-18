@@ -54,6 +54,10 @@ function costLabel(unit: UnitState, cost: number): string {
  * one rule the player has to read before aiming.
  */
 function detailOf(effect: AbilityDefinition['effect']): string {
+  // The second active set's three effects are menu rows only once the menu offers them (m4); until
+  // then a row for one reads blank rather than carrying words it would have to invent.
+  if (effect.kind !== 'damage' && effect.kind !== 'heal') return '';
+
   const parts = [
     effect.kind === 'heal'
       ? t('ability.detail.heal', { amount: effect.amount })

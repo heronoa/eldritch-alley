@@ -5,7 +5,9 @@ import {
   abilityById,
   applyAction,
   applyEvents,
+  hashState,
   publicState,
+  type AbilityDefinition,
   type Action,
   type Event,
   type MatchSetup,
@@ -13,9 +15,10 @@ import {
   type Position,
   type UnitState,
 } from '@eldritch-alley/engine';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { SignJWT, exportPKCS8, exportSPKI, generateKeyPair, importPKCS8 } from 'jose';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { BattleRoom } from './battle-room';
-import { createMatchSetup } from './map';
+import { MATCH_SEED, createMatchSetup } from './map';
 import {
   MESSAGE,
   ROOM_NAME,
@@ -24,6 +27,8 @@ import {
   type RejectedMessage,
   type StateMessage,
 } from './protocol';
+import { InMemoryMatchEndedPublisher } from './queue';
+import { GAME_TICKET_ISSUER } from './ticket';
 
 /** Every test file boots its own server, so each one needs a port of its own. */
 const TEST_PORT = 2569;
@@ -60,6 +65,32 @@ afterAll(async () => {
   await server.cleanup();
   await server.shutdown();
 });
+
+// The keys are generated per run, as in `battle-room.test.ts`: no key in the repository is load bearing.
+const USER_ID = '2d9a5c31-8b7e-4f6a-9c0d-1e2f3a4b5c6d';
+const TICKET_ALGORITHM = 'EdDSA';
+const TICKET_TTL_SECONDS = 300;
+
+let publicKey: string;
+let signingKey: string;
+
+beforeAll(async () => {
+  const pair = await generateKeyPair(TICKET_ALGORITHM, { crv: 'Ed25519', extractable: true });
+  publicKey = await exportSPKI(pair.publicKey);
+  signingKey = await exportPKCS8(pair.privateKey);
+});
+
+async function ticket(): Promise<string> {
+  const issuedAt = Math.floor(Date.now() / 1000);
+
+  return new SignJWT({})
+    .setProtectedHeader({ alg: TICKET_ALGORITHM })
+    .setIssuer(GAME_TICKET_ISSUER)
+    .setSubject(USER_ID)
+    .setIssuedAt(issuedAt)
+    .setExpirationTime(issuedAt + TICKET_TTL_SECONDS)
+    .sign(await importPKCS8(signingKey, TICKET_ALGORITHM));
+}
 
 function unitOnTurn(state: MatchState): UnitState | undefined {
   return state.units.find((unit) => unit.id === state.initiative[state.currentIndex]);
@@ -101,8 +132,74 @@ function approachAction(state: MatchState, actor: UnitState, enemies: readonly U
   return best?.action ?? null;
 }
 
-function chooseHumanAction(state: MatchState, actor: UnitState): Action {
+/**
+ * The first complete cast of `ability` the engine accepts, scanned in reading order. `target` names a
+ * fallen ally for a revive. The scan is a test's stand-in for a player's aim: every cell is offered to
+ * the engine, and the engine alone decides which one the rules allow.
+ */
+function firstLegalCast(
+  state: MatchState,
+  actor: UnitState,
+  ability: AbilityDefinition,
+  target?: string,
+): Action | null {
+  for (let y = 0; y < state.board.height; y += 1) {
+    for (let x = 0; x < state.board.width; x += 1) {
+      const cast: Action = {
+        type: 'useAbility',
+        actor: actor.id,
+        abilityId: ability.id,
+        to: { x, y },
+        ...(target === undefined ? {} : { target }),
+      };
+      if (applyAction(state, cast).ok) return cast;
+    }
+  }
+  return null;
+}
+
+/**
+ * The scripted human's action. `once` is the set of the new kinds it has already tried, so a whole match
+ * casts each of them exactly once: without it a revive loop would never let the match end, and the full
+ * match above keeps its old, faster script by passing no set at all.
+ */
+function chooseHumanAction(
+  state: MatchState,
+  actor: UnitState,
+  once: Set<string> | null = null,
+): Action {
   const enemies = livingEnemies(state, actor);
+
+  if (once !== null) {
+    for (const abilityId of actor.abilities.activeSets) {
+      if (abilityId === null || once.has(abilityId)) continue;
+      const ability = abilityById(state.catalog, abilityId);
+      if (!ability) continue;
+
+      // Camouflage is cast on the caster's own cell and mud at its feet: both are legal wherever it
+      // stands, and both prove a cast of their kind crosses the protocol and reaches the engine.
+      if (ability.effect.kind === 'camouflage' || ability.effect.kind === 'terrain') {
+        const cast = firstLegalCast(state, actor, ability);
+        if (cast) {
+          once.add(abilityId);
+          return cast;
+        }
+      }
+
+      if (ability.effect.kind === 'revive') {
+        const fallen = state.units.find(
+          (unit) => unit.team === actor.team && unit.defeated && !unit.permanentlyDead,
+        );
+        if (fallen) {
+          const cast = firstLegalCast(state, actor, ability, fallen.id);
+          if (cast) {
+            once.add(abilityId);
+            return cast;
+          }
+        }
+      }
+    }
+  }
 
   // A damage ability first, aimed at the cell of an enemy the script can see: the human casts whenever
   // the server accepts the cast, so a whole match walks through the new action as well.
@@ -140,7 +237,13 @@ function toClientAction(action: Action): ClientAction {
     case 'attack':
       return { type: 'attack', target: action.target };
     case 'useAbility':
-      return { type: 'useAbility', abilityId: action.abilityId, to: action.to };
+      return {
+        type: 'useAbility',
+        abilityId: action.abilityId,
+        to: action.to,
+        // Absent, not undefined-valued: the protocol's spelling of "this cast names no unit".
+        ...(action.target === undefined ? {} : { target: action.target }),
+      };
     case 'reload':
       return { type: 'reload' };
     case 'endTurn':
@@ -218,6 +321,91 @@ describe('a full match against the bot', () => {
     const last = latest as StateMessage | null;
     expect(last).not.toBeNull();
     expect(publicState(replay())).toEqual((last as StateMessage).state);
+
+    await client.leave(true);
+  }, 90_000);
+
+  it('records a match whose events carry every new ability, and the replay hashes the same state', async () => {
+    const publisher = new InMemoryMatchEndedPublisher();
+    const room = await server.createRoom<BattleRoom>(ROOM_NAME, {
+      publisher,
+      publicKey,
+      seed: MATCH_SEED,
+    });
+    const client = await server.connectTo(room, { ticket: await ticket() });
+    client.reconnection.enabled = false;
+
+    let setup: MatchSetup | null = null;
+    const events: Event[] = [];
+    const replay = (): MatchState => {
+      if (setup === null) throw new Error('no state has arrived yet');
+      return applyEvents(setup, events);
+    };
+    let latest: StateMessage | null = null;
+    let ended = false;
+    let sent = 0;
+    let failure: Error | null = null;
+    // The new kinds are cast once each, so the match is bounded and still carries all three.
+    const once = new Set<string>();
+
+    const finished = new Promise<EndedMessage>((resolve) => {
+      client.onMessage(MESSAGE.ended, (message: EndedMessage) => {
+        ended = true;
+        resolve(message);
+      });
+    });
+
+    const act = (): void => {
+      if (ended || failure || latest === null) return;
+      if (sent >= ACTION_LIMIT) {
+        failure = new Error(`the match did not end within ${ACTION_LIMIT} actions`);
+        return;
+      }
+
+      const actor = unitOnTurn(replay());
+      if (!actor || actor.team !== 'A') return;
+
+      sent += 1;
+      client.send(MESSAGE.action, toClientAction(chooseHumanAction(replay(), actor, once)));
+    };
+
+    client.onMessage(MESSAGE.events, (batch: Event[]) => events.push(...batch));
+    client.onMessage(MESSAGE.state, (message: StateMessage) => {
+      setup ??= createMatchSetup(message.state.seed);
+      latest = message;
+      act();
+    });
+    client.onMessage(MESSAGE.rejected, () => {
+      const state = replay();
+      const actor = unitOnTurn(state);
+      if (actor?.team === 'A') {
+        client.send(MESSAGE.action, { type: 'endTurn', round: state.round });
+      }
+    });
+
+    await Promise.race([
+      finished,
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(failure ?? new Error('the match never reached ended')), MATCH_TIMEOUT_MS),
+      ),
+    ]);
+
+    expect(failure).toBeNull();
+    await vi.waitFor(() => expect(publisher.published).toHaveLength(1), { timeout: 5_000 });
+
+    // The record the platform would store: the three new abilities are in its history, and replaying
+    // that history lands on the state the room hashed.
+    const [recorded] = publisher.published;
+    const cast = recorded.events
+      .filter((event) => event.type === 'ability-used')
+      .map((event) => event.abilityId);
+    expect(cast).toContain('camouflage');
+    expect(cast).toContain('mud');
+    expect(cast).toContain('resurrection');
+    expect(hashState(applyEvents(createMatchSetup(recorded.seed), recorded.events))).toBe(
+      recorded.finalStateHash,
+    );
+    expect(publicState(replay())).toEqual((latest as StateMessage).state);
 
     await client.leave(true);
   }, 90_000);

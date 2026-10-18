@@ -104,6 +104,8 @@ function makeUnit(id: UnitId, team: Team, x: number, y: number): UnitState {
     ammo: 3,
     permanentlyDead: false,
     corpseExpiresAtRound: null,
+    camouflage: null,
+    prone: false,
   };
 }
 
@@ -121,6 +123,7 @@ function stateFor(options: { onTurn: Team; spent: boolean }): PublicState {
     hasActed: options.spent,
     eventCount: 0,
     pendingMove: null,
+    difficultTerrain: [],
   };
 }
 
@@ -158,6 +161,7 @@ function attackScenario(): PublicState {
     hasActed: false,
     eventCount: 0,
     pendingMove: null,
+    difficultTerrain: [],
   };
 }
 
@@ -188,6 +192,7 @@ function abilityScenario(ability: AbilityDefinition): PublicState {
     hasActed: false,
     eventCount: 0,
     pendingMove: null,
+    difficultTerrain: [],
   };
 }
 
@@ -374,7 +379,17 @@ describe('the match scene', () => {
     // One accepted action lands — a move that leaves the same unit on turn, exactly as the first of
     // several actions in one turn would. The bar locks while it plays: the HUD is pushed showing it
     // locked, the same every actual action already does.
-    session.emit.events([{ type: 'moved', actor: 'A-sniper', from: { x: 0, y: 0 }, to: { x: 1, y: 0 }, path: [{ x: 1, y: 0 }] }]);
+    session.emit.events([
+      {
+        type: 'moved',
+        actor: 'A-sniper',
+        from: { x: 0, y: 0 },
+        to: { x: 1, y: 0 },
+        path: [{ x: 1, y: 0 }],
+        rngState: 0,
+        prone: false,
+      },
+    ]);
     session.emit.state(message({ ...stateFor({ onTurn: 'A', spent: false }), round: 5 }));
     expect(
       (lastView(render).buttons as { enabled: boolean }[]).every((button) => !button.enabled),
@@ -1186,6 +1201,7 @@ describe('the match scene', () => {
         hasActed: false,
         eventCount: 0,
         pendingMove: null,
+    difficultTerrain: [],
       };
       session.emit.state(message(state));
       (scene as unknown as { mode: string }).mode = 'attack';

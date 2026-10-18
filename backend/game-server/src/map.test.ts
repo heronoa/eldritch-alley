@@ -12,6 +12,7 @@
 // accepts a diagonal step, so the flood has to allow one too.
 import { describe, expect, it } from 'vitest';
 import { newMatch, type Board, type Position } from '@eldritch-alley/engine';
+import { ABILITY_CATALOG } from './abilities';
 import { MAPS, MATCH_SEED, PROP_EFFECTS, boardOf, createMatchSetup, mapIndex, type MapId } from './map';
 import { PROTOTYPE_MAPS, type PrototypeMap } from './maps/prototype-maps';
 
@@ -254,6 +255,23 @@ describe('the map set', () => {
       expect(setup.teams[0].map((unit) => unit.position)).toEqual(map.spawns.A);
       expect(setup.teams[1].map((unit) => unit.position)).toEqual(map.spawns.B);
     }
+  });
+
+  it('opens every class with both active sets, and the engine takes the setup', () => {
+    const setup = createMatchSetup(MATCH_SEED);
+    const ids = ABILITY_CATALOG.map((ability) => ability.id);
+
+    for (const unit of [...setup.teams[0], ...setup.teams[1]]) {
+      expect(unit.abilities.activeSets, unit.id).toHaveLength(2);
+      for (const id of unit.abilities.activeSets) {
+        expect(id, `${unit.id} carries an empty active slot`).not.toBeNull();
+        expect(ids).toContain(id);
+      }
+    }
+
+    // The engine's catalog check is the door every match goes through, so a pair it refuses would
+    // be a class the room cannot field.
+    expect(() => newMatch(setup)).not.toThrow();
   });
 });
 

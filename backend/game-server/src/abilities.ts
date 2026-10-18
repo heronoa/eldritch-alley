@@ -4,7 +4,7 @@
 import type { AbilityDefinition } from '@eldritch-alley/engine';
 
 /**
- * The three definitions a match carries, one per class.
+ * The six definitions a match carries, two per class (ADR 0023 §2).
  *
  * The sniper's amount is written as its sum rather than read from the roster, so this module imports no
  * class and `map.ts` can import it without a cycle. `abilities.test.ts` asserts the number still equals
@@ -37,14 +37,40 @@ export const ABILITY_CATALOG: readonly AbilityDefinition[] = [
     // The one support effect, and the only one that needs no sight: it reaches an ally behind a wall.
     effect: { kind: 'heal', amount: 3, radius: 1 },
   },
+  {
+    id: 'camouflage',
+    cost: 3,
+    range: 0,
+    needsSight: false,
+    // The caster's own cell, and the only status in the catalog: a basic attack cannot name the unit
+    // while it lasts (ADR 0023 §3).
+    effect: { kind: 'camouflage', radius: 0, turns: 3, breakChance: 30 },
+  },
+  {
+    id: 'mud',
+    cost: 1,
+    range: 3,
+    needsSight: true,
+    // A 3×3 layer of difficult ground: it doubles the step into it and may stop a unit prone (ADR 0023 §4).
+    effect: { kind: 'terrain', radius: 1, durationRounds: 3 },
+  },
+  {
+    id: 'resurrection',
+    cost: 3,
+    range: 3,
+    needsSight: false,
+    // It names the fallen body with `target` and the free cell it returns on with `to` (ADR 0023 §7).
+    effect: { kind: 'revive', radius: 0 },
+  },
 ];
 
 /**
- * The ability each class carries in its first active set. A class is one ability this milestone; the
- * second set and the reaction, movement and support slots stay unread (ADR 0016, Consequences).
+ * The two abilities each class carries, in slot order: the one it already carried, then the secondary
+ * ability this milestone adds (ADR 0023 §2). A class is still two active sets; the reaction, movement
+ * and support slots stay unread.
  */
-export const CLASS_ABILITIES: Readonly<Record<string, string>> = {
-  sniper: 'piercing-shot',
-  wizard: 'fireball',
-  priest: 'area-heal',
+export const CLASS_ABILITIES: Readonly<Record<string, readonly [string | null, string | null]>> = {
+  sniper: ['piercing-shot', 'camouflage'],
+  wizard: ['fireball', 'mud'],
+  priest: ['area-heal', 'resurrection'],
 };
