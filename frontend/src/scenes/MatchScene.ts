@@ -228,6 +228,11 @@ export class MatchScene extends Phaser.Scene {
    * picked. It is only set while the ability mode is armed, and the mode is what the aim reads.
    */
   private armedAbilityId: string | null = null;
+  /**
+   * The fallen ally a two-click resurrection has already named, or null before the body is chosen
+   * (ADR 0023 §7). It is the first step of the aim; the next click names the cell.
+   */
+  private reviveTargetId: string | null = null;
   /** Whether the ability menu is on the screen. It is a question, not a mode: it arms nothing by itself. */
   private menuOpen = false;
   /** The rows the open menu showed, so a press on one arms the ability the player read (EA-16). */
@@ -379,6 +384,7 @@ export class MatchScene extends Phaser.Scene {
     this.buttonModel = [];
     this.chipModel = [];
     this.menuModel = [];
+    this.reviveTargetId = null;
     this.statusText = '';
     this.resultText = '';
     this.camera = { zoom: MIN_ZOOM, centre: { x: CANVAS_WIDTH / 2, y: CANVAS_HEIGHT / 2 } };
@@ -1000,18 +1006,27 @@ export class MatchScene extends Phaser.Scene {
     // The armed mode decides what the click may send: a move only with `Mover` armed, an attack only
     // with `Atacar` armed (EA-7 as amended: the destination is the move, Confirmar commits it), and an
     // aim with `Habilidade` armed, which is the one mode the click itself has to read (ADR 0016 §5).
-    const intent = applyMode(
-      this.mode,
-      resolveClick({
-        state,
-        selectedId: this.selectedId,
-        cell,
-        targetId: named?.id ?? null,
-        humanTeam: HUMAN_TEAM,
-        mode: this.mode,
-        abilityId: this.armedAbilityId,
-      }),
-    );
+    const clicked = resolveClick({
+      state,
+      selectedId: this.selectedId,
+      cell,
+      targetId: named?.id ?? null,
+      humanTeam: HUMAN_TEAM,
+      mode: this.mode,
+      abilityId: this.armedAbilityId,
+      reviveTargetId: this.reviveTargetId,
+    });
+
+    // A resurrection is aimed in two clicks (ADR 0023 §7). This intent is not an action of any armed
+    // mode, so it is kept here, before `applyMode` narrows it away: the first click only names the body,
+    // and the panel asks for the cell the next one has to name.
+    if (clicked.kind === 'revive-target') {
+      this.reviveTargetId = clicked.unitId;
+      this.pushHud();
+      return;
+    }
+
+    const intent = applyMode(this.mode, clicked);
 
     switch (intent.kind) {
       case 'select':
@@ -1196,6 +1211,7 @@ export class MatchScene extends Phaser.Scene {
 
     this.armedAbilityId = option.id;
     this.mode = 'ability';
+    this.reviveTargetId = null;
     this.closeAbilityMenu();
     if (this.state !== null) this.redraw(this.state);
   }
@@ -1301,6 +1317,8 @@ export class MatchScene extends Phaser.Scene {
     // The question only stands while the turn can still answer it (EA-16): an aim that fell back to
     // another mode is put down, and so is a menu whose unit has nothing left to offer.
     if (this.mode !== 'ability') this.armedAbilityId = null;
+    // A new state settles the board: a body chosen before it may no longer be there (ADR 0023 §7).
+    this.reviveTargetId = null;
     if (!available.canUseAbility) this.closeAbilityMenu();
     this.syncAutoEndTurn();
 
@@ -1347,6 +1365,12 @@ export class MatchScene extends Phaser.Scene {
     this.map = terrainOf(mapId, this.viewSteps);
     this.mapView = new MapView(this, this.map, board === null ? [] : boardMarks(board));
     this.mapView.setMarksVisible(this.highlightCovers);
+  }
+
+  /** The difficult cells of the state, read in the cells of the view the map is drawn from (ADR 0023 §4). */
+  private difficultCells(state: PublicState | null): Cell[] {
+    if (state === null) return [];
+    return state.difficultTerrain.map((cell) => this.viewCell(cell.position));
   }
 
   /**
@@ -1528,6 +1552,24 @@ export class MatchScene extends Phaser.Scene {
         });
         break;
       }
+
+      // The three cues of the second active set are changes the next state confirms too; taking them
+      // off when the event arrives keeps the drawing from lagging behind the batch (ADR 0023).
+      case 'camouflage-ended':
+        this.sprites.get(cue.unitId)?.setCamouflage(false);
+        break;
+
+      case 'stand-up':
+        this.sprites.get(cue.unitId)?.setProne(false);
+        break;
+
+      case 'terrain-expired':
+        this.mapView?.removeDifficultTerrain(cue.cells.map((cell) => this.viewCell(cell)));
+        break;
+
+      // The revived figure is created by the state that follows the event; nothing to play before it.
+      case 'revive':
+        break;
 
       case 'defeat':
         this.sprites.get(cue.unitId)?.markDefeated();
@@ -1758,6 +1800,9 @@ export class MatchScene extends Phaser.Scene {
     this.drawHighlights(state);
     this.redrawUnits(state);
     this.drawCoveredBuildings(state);
+    // The overlay always answers with the whole set the state names: a recast replaces a cell, and a
+    // state that has dried a cell leaves it out (ADR 0023 §4).
+    this.mapView?.setDifficultTerrain(this.difficultCells(state));
     this.pushHud();
   }
 
@@ -1817,6 +1862,19 @@ export class MatchScene extends Phaser.Scene {
     mapView.setCovered(covered);
   }
 
+  /**
+   * The line the panel shows while a resurrection waits for a click (ADR 0023 §7): the body first, then
+   * the cell. Empty when no resurrection is armed, so every other status keeps the line it had.
+   */
+  private reviveHint(): string {
+    if (this.state === null || this.mode !== 'ability' || this.armedAbilityId === null) return '';
+
+    const ability = abilityById(this.state.catalog, this.armedAbilityId);
+    if (ability === undefined || ability.effect.kind !== 'revive') return '';
+
+    return t(this.reviveTargetId === null ? 'hud.revive.pickBody' : 'hud.revive.pickCell');
+  }
+
   /** Hands the HUD what it shows now, and keeps the model of its buttons for the clicks. */
   private pushHud(): void {
     // Remembered so `advanceInputLock` can tell a lock that cleared since this last render from one
@@ -1868,7 +1926,7 @@ export class MatchScene extends Phaser.Scene {
         canScrollDown: this.reportScroll + REPORT_LINES < reportTotal,
         canReopen: this.finished && !this.battleReportOpen,
       },
-      status: this.statusText,
+      status: this.statusText || this.reviveHint(),
       result: this.resultText,
       wayOutVisible: this.finished,
       settingsOpen: this.settingsOpen,
@@ -2021,6 +2079,9 @@ export class MatchScene extends Phaser.Scene {
       // The reach of the ability the menu armed, so the wash answers the question the player asked and
       // not the one the unit carries by default (EA-16).
       abilityId: this.armedAbilityId,
+      // Once the body is named, the wash offers only the free cells the resurrection may bring it to
+      // (ADR 0023 §7).
+      reviveTargetId: this.reviveTargetId,
     });
 
     // The areas come from the state, which states them in the map's own coordinates; the wash is drawn

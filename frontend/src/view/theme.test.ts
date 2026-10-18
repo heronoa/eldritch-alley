@@ -6,6 +6,7 @@ import {
   BUTTON_FILL,
   BUTTON_FILL_DISABLED,
   BUTTON_FILL_SELECTED,
+  CAMOUFLAGE_GLOW_COLOR,
   CORPSE_COLOR,
   CORPSE_OUTLINE_COLOR,
   CURRENT_TURN_COLOR,
@@ -18,6 +19,7 @@ import {
   HIGHLIGHT_MOVE_ALPHA,
   HIGHLIGHT_MOVE_COLOR,
   INK_COLOR,
+  MUD_COLOR,
   PANEL_FILL,
   PANEL_INNER_ALPHA,
   PANEL_INNER_STROKE,
@@ -69,10 +71,17 @@ describe('theme', () => {
     expect(GRID_STROKE_COLOR).toBe(0x000000);
   });
 
+  it('carries the marks of the second active set', () => {
+    expect(MUD_COLOR).toBe(0xa8834a);
+    expect(CAMOUFLAGE_GLOW_COLOR).toBe(0xffffff);
+  });
+
   it('carries the HUD palette as 24-bit numbers', () => {
     const palette = {
+      CAMOUFLAGE_GLOW_COLOR,
       CORPSE_COLOR,
       CORPSE_OUTLINE_COLOR,
+      MUD_COLOR,
       CURRENT_TURN_COLOR,
       PANEL_FILL,
       PANEL_STROKE,

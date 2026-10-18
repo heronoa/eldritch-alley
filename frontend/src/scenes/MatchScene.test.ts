@@ -51,7 +51,11 @@ import { download } from './download';
 import { exportFileName, exportText } from '../game/battle-report';
 
 /** What the stand-in map was told, so a test can read back the calls the canvas would have painted. */
-const mapCalls = vi.hoisted(() => ({ marksVisible: [] as boolean[] }));
+const mapCalls = vi.hoisted(() => ({
+  marksVisible: [] as boolean[],
+  difficult: [] as { x: number; y: number }[][],
+  dried: [] as { x: number; y: number }[][],
+}));
 
 /** The impacts the scene asked to be drawn, which is where the ability art is decided (EA-16). */
 const impactCalls = vi.hoisted(() => ({ impacts: [] as unknown[] }));
@@ -73,6 +77,12 @@ vi.mock('./map/MapView', () => ({
     setCovered(_cells: readonly { x: number; y: number }[]) {}
     setMarksVisible(visible: boolean) {
       mapCalls.marksVisible.push(visible);
+    }
+    setDifficultTerrain(cells: readonly { x: number; y: number }[]) {
+      mapCalls.difficult.push([...cells]);
+    }
+    removeDifficultTerrain(cells: readonly { x: number; y: number }[]) {
+      mapCalls.dried.push([...cells]);
     }
   },
 }));
@@ -145,6 +155,24 @@ const AREA_HEAL: AbilityDefinition = {
   effect: { kind: 'heal', amount: 3, radius: 1 },
 };
 
+/** The mud of the second active set: every cell it covers turns difficult for a few rounds (ADR 0023 §4). */
+const MUD: AbilityDefinition = {
+  id: 'mud',
+  cost: 1,
+  range: 4,
+  needsSight: false,
+  effect: { kind: 'terrain', radius: 1, durationRounds: 2 },
+};
+
+/** The resurrection of the second active set: the two-step aim of ADR 0023 §7. */
+const RESURRECTION: AbilityDefinition = {
+  id: 'resurrection',
+  cost: 2,
+  range: 3,
+  needsSight: false,
+  effect: { kind: 'revive', radius: 0 },
+};
+
 /** A sniper and an enemy two cells apart, in range and in sight of each other, for the preview cases. */
 function attackScenario(): PublicState {
   const sniper = makeUnit('A-sniper', 'A', 0, 0);
@@ -214,6 +242,52 @@ function casterState(mana = 2): PublicState {
   };
 
   return { ...state, units: [caster, state.units[1]], catalog: [FIREBALL] };
+}
+
+/** The same caster with both active sets filled, so the menu has two rows to offer (ADR 0023 §2). */
+function secondSlotState(): PublicState {
+  const state = casterState();
+  const caster = state.units[0]!;
+  return {
+    ...state,
+    units: [{ ...caster, abilities: { ...caster.abilities, activeSets: ['fireball', 'mud'] } }, state.units[1]!],
+    catalog: [FIREBALL, MUD],
+  };
+}
+
+/**
+ * A magic class on turn carrying a resurrection, and a fallen ally two cells away whose body still
+ * waits (ADR 0023 §7). The enemy at the far corner keeps the initiative two units long.
+ */
+function reviveScenario(): PublicState {
+  const caster: UnitState = {
+    ...makeUnit('A-priest', 'A', 0, 0),
+    primaryClass: 'priest',
+    resourceKind: 'mana',
+    ammo: 3,
+    abilities: { activeSets: ['resurrection', null], reaction: null, movement: null, support: null },
+  };
+  const fallen: UnitState = {
+    ...makeUnit('A-fallen', 'A', 1, 0),
+    defeated: true,
+    corpseExpiresAtRound: 8,
+  };
+  const enemy = makeUnit('B-sniper', 'B', 7, 7);
+
+  return {
+    seed: 1,
+    board: BOARD,
+    catalog: [RESURRECTION],
+    units: [caster, fallen, enemy],
+    initiative: ['A-priest', 'B-sniper'],
+    currentIndex: 0,
+    movementLeft: 3,
+    round: 4,
+    hasActed: false,
+    eventCount: 0,
+    pendingMove: null,
+    difficultTerrain: [],
+  };
 }
 
 interface FakeSession extends Session {
@@ -290,6 +364,8 @@ function withStorage(saved: Record<string, string> = {}): Record<string, string>
 beforeEach(() => setLocale('pt-BR'));
 beforeEach(() => {
   mapCalls.marksVisible.length = 0;
+  mapCalls.difficult.length = 0;
+  mapCalls.dried.length = 0;
   delete (globalThis as { localStorage?: unknown }).localStorage;
 });
 
@@ -650,6 +726,70 @@ describe('the match scene', () => {
     expect(session.send).toHaveBeenCalledWith({ type: 'useAbility', abilityId: 'fireball', to: { x: 2, y: 0 } });
   });
 
+  it('offers both active sets in the menu, and the second row aims the ability it names', () => {
+    const { scene, session, render } = startMatch();
+    const state = secondSlotState();
+    session.emit.state(message(state));
+
+    const scene_ = scene as unknown as {
+      pressAction(id: string, mode: string | null): void;
+      hudTakesPress(p: { x: number; y: number }): boolean;
+      pressOnCell(s: PublicState, c: { x: number; y: number }, sec: boolean): void;
+    };
+
+    scene_.pressAction('ability', 'ability');
+    const menu = lastView(render).abilityMenu as { open: boolean; options: { id: string }[] };
+    expect(menu.options.map((option) => option.id)).toEqual(['fireball', 'mud']);
+
+    // The second row is a row like the first: pressing it closes the menu and aims the mud.
+    const row = abilityMenuRowRect(1);
+    expect(scene_.hudTakesPress({ x: row.x + 4, y: row.y + 4 })).toBe(true);
+    expect((lastView(render).abilityMenu as { open: boolean }).open).toBe(false);
+    expect(lastView(render).mode).toBe('ability');
+
+    scene_.pressOnCell(state, { x: 2, y: 0 }, false);
+    expect(session.send).toHaveBeenCalledWith({ type: 'useAbility', abilityId: 'mud', to: { x: 2, y: 0 } });
+  });
+
+  it('aims a resurrection in two clicks, naming the body first and the cell second', () => {
+    const { scene, session, render } = startMatch();
+    const state = reviveScenario();
+    session.emit.state(message(state));
+
+    const scene_ = scene as unknown as {
+      pressAction(id: string, mode: string | null): void;
+      hudTakesPress(p: { x: number; y: number }): boolean;
+      pressOnCell(s: PublicState, c: { x: number; y: number }, sec: boolean): void;
+      reviveTargetId: string | null;
+    };
+
+    scene_.pressAction('ability', 'ability');
+    const row = abilityMenuRowRect(0);
+    expect(scene_.hudTakesPress({ x: row.x + 4, y: row.y + 4 })).toBe(true);
+
+    // The panel says which of the two steps the player is on: first the body.
+    const waitingForBody = lastView(render).status as string;
+    expect(waitingForBody).not.toBe('');
+
+    // The first click on the fallen ally sends nothing: it arms the second step.
+    scene_.pressOnCell(state, { x: 1, y: 0 }, false);
+    expect(session.send).not.toHaveBeenCalled();
+    expect(scene_.reviveTargetId).toBe('A-fallen');
+
+    // The panel now asks for the cell, which is a different sentence from the one before it.
+    const waitingForCell = lastView(render).status as string;
+    expect(waitingForCell).not.toBe('');
+    expect(waitingForCell).not.toBe(waitingForBody);
+
+    scene_.pressOnCell(state, { x: 2, y: 0 }, false);
+    expect(session.send).toHaveBeenCalledWith({
+      type: 'useAbility',
+      abilityId: 'resurrection',
+      to: { x: 2, y: 0 },
+      target: 'A-fallen',
+    });
+  });
+
   it('arms nothing from a row the pool cannot pay, and lets the menu be closed from outside it', () => {
     const { scene, session, render } = startMatch();
     session.emit.state(message(casterState(1)));
@@ -1008,6 +1148,67 @@ describe('the match scene', () => {
     }
   });
 
+  it('shows a camouflaged unit behind a pale silhouette, and takes it away with the status', () => {
+    const { session } = startMatch();
+    const hidden: UnitState = {
+      ...makeUnit('A-sniper', 'A', 0, 0),
+      camouflage: { turns: 2, breakChance: 0 },
+    };
+    // A body of a far enemy that still carries the status: a fallen unit is never hidden by it.
+    const fallen: UnitState = {
+      ...makeUnit('B-priest', 'B', 7, 7),
+      defeated: true,
+      camouflage: { turns: 1, breakChance: 0 },
+    };
+    const hiddenState = {
+      ...stateFor({ onTurn: 'A', spent: false }),
+      units: [hidden, fallen],
+    };
+
+    // The silhouette is drawn inside the sprite container (the stand-in paints nothing), so what the
+    // scene tells it is read at the seam, exactly like the badges above.
+    const glow = vi.spyOn(UnitSprite.prototype, 'setCamouflage');
+    try {
+      session.emit.state(message(hiddenState));
+      expect(glow.mock.calls.map(([on]) => on)).toEqual([true, false]);
+
+      glow.mockClear();
+      session.emit.state(
+        message({
+          ...hiddenState,
+          units: [makeUnit('A-sniper', 'A', 0, 0), fallen],
+        }),
+      );
+
+      // A state that no longer carries the status draws no silhouette at all.
+      expect(glow.mock.calls.map(([on]) => on)).toEqual([false, false]);
+    } finally {
+      glow.mockRestore();
+    }
+  });
+
+  it('lays a prone unit on the floor, and stands it up when the state says so', () => {
+    const { session } = startMatch();
+    const downed: UnitState = { ...makeUnit('A-sniper', 'A', 0, 0), prone: true };
+    const enemy = makeUnit('B-priest', 'B', 7, 7);
+    const proneState = { ...stateFor({ onTurn: 'A', spent: false }), units: [downed, enemy] };
+
+    const prone = vi.spyOn(UnitSprite.prototype, 'setProne');
+    try {
+      session.emit.state(message(proneState));
+      expect(prone.mock.calls.map(([on]) => on)).toEqual([true, false]);
+
+      // Standing up is the state saying so, not an event of its own: the sprite follows it.
+      prone.mockClear();
+      session.emit.state(
+        message({ ...proneState, units: [{ ...downed, prone: false }, enemy] }),
+      );
+      expect(prone.mock.calls.map(([on]) => on)).toEqual([false, false]);
+    } finally {
+      prone.mockRestore();
+    }
+  });
+
   it('starts with the cover marks off when the browser was told so, and says so in the HUD', () => {
     withStorage({ [HIGHLIGHT_COVERS_KEY]: 'false' });
     const { session, render } = startMatch();
@@ -1039,6 +1240,57 @@ describe('the match scene', () => {
     expect(lastView(render).highlightCovers).toBe(true);
     expect(writes[HIGHLIGHT_COVERS_KEY]).toBe('true');
     expect(mapCalls.marksVisible[mapCalls.marksVisible.length - 1]).toBe(true);
+  });
+
+  it('paints the difficult terrain the state names, and none when the state names none', () => {
+    const { session } = startMatch();
+    const mud = { position: { x: 1, y: 1 }, expiresAtRound: 6 };
+    const other = { position: { x: 2, y: 1 }, expiresAtRound: 6 };
+    const muddy = { ...stateFor({ onTurn: 'A', spent: false }), difficultTerrain: [mud, other] };
+
+    session.emit.state(message(muddy));
+    expect(mapCalls.difficult[mapCalls.difficult.length - 1]).toEqual([
+      { x: 1, y: 1 },
+      { x: 2, y: 1 },
+    ]);
+
+    // A state with no difficult cells is not "nothing to do": it is a board with no mud, so the map is
+    // told to paint none rather than left with the cells of the previous state.
+    session.emit.state(message(stateFor({ onTurn: 'A', spent: false })));
+    expect(mapCalls.difficult[mapCalls.difficult.length - 1]).toEqual([]);
+  });
+
+  it('rebuilds the mud from the whole state, so a recast leaves no duplicate cell', () => {
+    const { session } = startMatch();
+    const one = { position: { x: 1, y: 1 }, expiresAtRound: 6 };
+    const two = { position: { x: 2, y: 1 }, expiresAtRound: 6 };
+    const base = stateFor({ onTurn: 'A', spent: false });
+
+    session.emit.state(message({ ...base, difficultTerrain: [one, two] }));
+    expect(mapCalls.difficult[mapCalls.difficult.length - 1]).toEqual([
+      { x: 1, y: 1 },
+      { x: 2, y: 1 },
+    ]);
+
+    // The second cast covers only the second cell: the overlay is replaced by what the state says now,
+    // never appended to, so no cell is drawn twice.
+    session.emit.state(message({ ...base, difficultTerrain: [two] }));
+    expect(mapCalls.difficult[mapCalls.difficult.length - 1]).toEqual([{ x: 2, y: 1 }]);
+  });
+
+  it('takes the mud off the cells the drying event names', () => {
+    const { session } = startMatch();
+    const drying = { position: { x: 1, y: 1 }, expiresAtRound: 5 };
+    const base = stateFor({ onTurn: 'A', spent: false });
+
+    session.emit.state(message({ ...base, difficultTerrain: [drying] }));
+
+    // The events of an action arrive right before the state they caused, and the two are played as one
+    // step (M4 playtest fix, P2).
+    session.emit.events([{ type: 'terrain-expired', cells: [{ x: 1, y: 1 }] }]);
+    session.emit.state(message({ ...base, difficultTerrain: [] }));
+
+    expect(mapCalls.dried[mapCalls.dried.length - 1]).toEqual([{ x: 1, y: 1 }]);
   });
 
   describe('the battle report (EA-17)', () => {

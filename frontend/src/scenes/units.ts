@@ -20,6 +20,7 @@ import { nextHealthDisplay, revealHealth, type HealthDisplay } from '../view/hea
 import { TILE_H, TILE_W, depthOfUnit } from '../view/iso';
 import { PANEL_ALPHA, TURN_ARROW, TURN_ARROW_POINT } from '../view/layout';
 import {
+  CAMOUFLAGE_GLOW_COLOR,
   COVER_BADGE_FILL,
   COVER_BADGE_STROKE,
   HIT_CHANCE_BADGE_FILL,
@@ -110,6 +111,16 @@ const COVER_BADGE = { gapAboveHitChance: 18, strokeThickness: 4 };
 const BADGE_TAG = { paddingX: 5, paddingY: 2 };
 
 /**
+ * The silhouette of a camouflaged unit (ADR 0023 §3): the figure's own frame, painted white behind it
+ * and pulsing between these alphas. It is a drawing of the status, so it fades in and out for as long
+ * as the state carries one.
+ */
+const CAMOUFLAGE_GLOW = { alphaLow: 0.15, alphaHigh: 0.45, pulseMs: 900 } as const;
+
+/** How far the body is moved so a prone figure lies over the middle of its cell, not off to one side. */
+const PRONE_OFFSET = -BODY_HEIGHT / 2;
+
+/**
  * The countdown over a body (ADR 0023 §7): a small speech bubble whose tail points down at the fallen
  * figure's head, carrying a skull and the rounds left before the body is removed. The skull sits
  * behind the number and a little to its left, tilted 15 degrees counterclockwise — Phaser rotates
@@ -170,6 +181,8 @@ function impactDelay(style: 'melee' | 'ranged', travelMs: number): number {
 export class UnitSprite extends Phaser.GameObjects.Container {
   private readonly marker: Phaser.GameObjects.Graphics;
   private readonly corpse: Phaser.GameObjects.Graphics;
+  /** The white silhouette of a camouflaged unit, drawn behind the figure (ADR 0023 §3). */
+  private readonly glow: Phaser.GameObjects.Sprite;
   private readonly figure: Phaser.GameObjects.Sprite;
   private readonly bars: Phaser.GameObjects.Graphics;
   private readonly ring: Phaser.GameObjects.Graphics;
@@ -204,6 +217,8 @@ export class UnitSprite extends Phaser.GameObjects.Container {
   private pips: Pips | null = null;
   private action: Action | null = null;
   private moving: { start: number } | null = null;
+  /** The resting x of the figure, which is the prone offset while the unit lies on the floor. */
+  private poseX = 0;
 
   constructor(
     scene: Phaser.Scene,
@@ -219,6 +234,14 @@ export class UnitSprite extends Phaser.GameObjects.Container {
     // and the words of cover over the lot.
     this.marker = scene.add.graphics();
     this.corpse = scene.add.graphics();
+    // The silhouette is the same drawing as the figure, added first so Phaser paints it behind it.
+    this.glow = scene.add
+      .sprite(0, 0, 'unit-ally', 0)
+      .setOrigin(0.5, 1)
+      .setScale(BODY_SCALE)
+      .setTintFill(CAMOUFLAGE_GLOW_COLOR)
+      .setAlpha(CAMOUFLAGE_GLOW.alphaLow)
+      .setVisible(false);
     this.figure = scene.add.sprite(0, 0, 'unit-ally', 0).setOrigin(0.5, 1).setScale(BODY_SCALE);
     this.bars = scene.add.graphics();
     this.arrow = scene.add.graphics();
@@ -316,6 +339,7 @@ export class UnitSprite extends Phaser.GameObjects.Container {
     this.add([
       this.marker,
       this.corpse,
+      this.glow,
       this.figure,
       this.bars,
       this.arrow,
@@ -328,6 +352,15 @@ export class UnitSprite extends Phaser.GameObjects.Container {
       this.countdownSkull,
       this.countdownText,
     ]);
+
+    // One pulse for the life of the sprite: showing and hiding the silhouette never restarts it.
+    scene.tweens.add({
+      targets: this.glow,
+      alpha: { from: CAMOUFLAGE_GLOW.alphaLow, to: CAMOUFLAGE_GLOW.alphaHigh },
+      duration: CAMOUFLAGE_GLOW.pulseMs,
+      yoyo: true,
+      repeat: -1,
+    });
 
     scene.add.existing(this);
     this.sync(unit, marks, placement, facesRight);
@@ -357,8 +390,14 @@ export class UnitSprite extends Phaser.GameObjects.Container {
     this.pips = pipsFor(unit);
 
     this.figure.setTexture(`unit-${spriteSheetOf(unit.team)}`);
+    this.glow.setTexture(`unit-${spriteSheetOf(unit.team)}`);
     // A sprite is drawn facing one way, so the side that faces the other is the one that is mirrored.
     this.figure.setFlipX(!facesRight);
+    this.glow.setFlipX(!facesRight);
+
+    // Both marks are read from the state, so a late join draws them exactly as a live client does.
+    this.setCamouflage(unit.camouflage !== null && !unit.defeated);
+    this.setProne(unit.prone);
 
     if (this.moving === null) this.snapTo(placement);
 
@@ -378,6 +417,8 @@ export class UnitSprite extends Phaser.GameObjects.Container {
     this.setHitChanceBadge(null);
     // Nothing of the living unit's head lingers on the body while the new state arrives.
     this.setCorpseCountdown(null);
+    // A body is not hidden by a camouflage it no longer carries (ADR 0023 §3).
+    this.setCamouflage(false);
     this.drawMarker();
     this.drawCorpse();
     this.drawArrow();
@@ -417,6 +458,25 @@ export class UnitSprite extends Phaser.GameObjects.Container {
     this.countdownBubble.setVisible(visible);
     this.countdownSkull.setVisible(visible);
     this.countdownText.setText(rounds === null ? '' : String(rounds)).setVisible(visible);
+  }
+
+  /**
+   * Shows the white silhouette behind the figure while the unit is camouflaged, or hides it. The
+   * scene reads the status from the state; the sprite only draws it (ADR 0023 §3).
+   */
+  setCamouflage(active: boolean): void {
+    this.glow.setVisible(active && !this.defeated);
+  }
+
+  /**
+   * Lays the figure on the floor while the unit is prone, and stands it again when the status ends.
+   * The ring, the bars and the facing stay where they are: they belong to the cell, not the pose.
+   */
+  setProne(prone: boolean): void {
+    const rotation = prone ? Math.PI / 2 : 0;
+    this.poseX = prone ? PRONE_OFFSET : 0;
+    this.figure.setRotation(rotation).setPosition(this.poseX, 0);
+    this.glow.setRotation(rotation).setPosition(this.poseX, 0);
   }
 
   /** Grows `tag` to fit `label` plus the padding every badge tag keeps around its words. */
@@ -509,7 +569,10 @@ export class UnitSprite extends Phaser.GameObjects.Container {
   /** Advances the action and the pose. Called once per frame by the scene. */
   tick(now: number): void {
     this.expire(now);
-    this.figure.setFrame(this.frameAt(now));
+    const frame = this.frameAt(now);
+    this.figure.setFrame(frame);
+    // The silhouette is the figure's own drawing, so it follows every pose the figure takes.
+    this.glow.setFrame(frame);
     if (this.action?.kind === 'reload') this.drawBars(now);
     this.applyHitFeedback(now);
   }
@@ -568,11 +631,11 @@ export class UnitSprite extends Phaser.GameObjects.Container {
 
     if (flash) {
       this.figure.setTintFill(0xffffff);
-      this.figure.x = Math.floor(now / 60) % 2 === 0 ? -1 : 1;
+      this.figure.x = this.poseX + (Math.floor(now / 60) % 2 === 0 ? -1 : 1);
       return;
     }
 
-    this.figure.x = 0;
+    this.figure.x = this.poseX;
     if (this.defeated) this.figure.setTint(CORPSE_COLOR);
     else this.figure.clearTint();
   }

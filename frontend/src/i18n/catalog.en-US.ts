@@ -263,6 +263,9 @@ export const enUS: Record<MessageKey, string> = {
   'ability.detail.terrain': '{rounds} rounds',
   'ability.detail.difficultTerrain': 'difficult terrain',
   'ability.detail.revive': 'Revive a fallen ally',
+  // The two clicks of the resurrection, said on the panel's status line as each step waits (ADR 0023 §7).
+  'hud.revive.pickBody': 'Resurrection: choose a fallen ally’s body',
+  'hud.revive.pickCell': 'Resurrection: choose the free cell the ally returns on',
 
   // The rest of the HUD, and the lines the match shows over it.
   'hud.legend':

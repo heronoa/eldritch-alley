@@ -294,6 +294,9 @@ export const ptBR = {
   'ability.detail.terrain': '{rounds} rodadas',
   'ability.detail.difficultTerrain': 'terreno difícil',
   'ability.detail.revive': 'Revive um aliado caído',
+  // The two clicks of the resurrection, said on the panel's status line as each step waits (ADR 0023 §7).
+  'hud.revive.pickBody': 'Ressurreição: escolha o corpo de um aliado caído',
+  'hud.revive.pickCell': 'Ressurreição: escolha a casa livre onde o aliado volta',
 
   // The rest of the HUD, and the lines the match shows over it: the two endings, the notice a
   // refused protocol version raises, and the two states of a dropped connection.
