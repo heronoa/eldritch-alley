@@ -74,6 +74,11 @@ export const ptBR = {
   'onboarding.abilities.heading': 'Habilidades',
   'onboarding.abilities.body':
     'Cada classe carrega habilidades: magias de área, curas, golpes próprios. O botão Habilidade abre a lista, mostra o custo de cada uma e desenha no mapa as casas que ela alcança antes de você confirmar.',
+  // The account card: optional for a guest, what an account keeps, and how to sign in. It closes the
+  // sequence because it is about keeping the squad, not about the first match.
+  'onboarding.account.heading': 'A sua conta',
+  'onboarding.account.body':
+    'Você pode jogar como visitante. Com uma conta, o esquadrão e o histórico de batalhas ficam guardados, e você continua de outro aparelho; avisos de novidades e novas versões só chegam se você marcar a opção no perfil. O botão Entrar fica no canto superior da tela: dá para criar a conta com e-mail e senha, GitHub, Google ou SSO.',
 
   'onboarding.advance': 'Continuar',
   'onboarding.back': 'Voltar',
@@ -133,6 +138,9 @@ export const ptBR = {
   'account.history.rounds': '{rounds} rodadas',
   'account.history.won': 'Vitória',
   'account.history.lost': 'Derrota',
+  // The release e-mails (m4-05, D6): the consent is off until the player presses it, and the label is
+  // the only line the checkbox needs.
+  'account.releaseEmails.label': 'Receber novidades e novas versões por e-mail',
 
   // The security card and the deletion confirmation. The confirmation word is not copy: `DELETE` is
   // spelled the same in both languages because it is the token the platform checks
@@ -170,6 +178,30 @@ export const ptBR = {
   'mail.missing.heading': 'Link incompleto',
   'mail.missing.body': 'Este endereço não trouxe um token. Abra o link do e-mail outra vez.',
   'mail.back': 'Voltar ao início',
+
+  // The contact form (m4-05): the one unauthenticated write in the client. Each failure says what the
+  // player can do about it — the challenge is retried, the limit is waited out, an outage is retried
+  // later — and the field lines name the field that stopped the form before any request existed.
+  'contact.open': 'Contato',
+  'contact.title': 'Contato',
+  'contact.field.name': 'Seu nome',
+  'contact.field.email': 'Endereço de e-mail',
+  'contact.field.message': 'Mensagem',
+  'contact.submit': 'Enviar',
+  'contact.sending': 'Enviando…',
+  'contact.close': 'Fechar',
+  'contact.privacyLabel': 'Política de privacidade',
+  'contact.sent.heading': 'Mensagem enviada',
+  'contact.sent.body': 'Obrigado. Vamos responder pelo endereço que você deixou.',
+  'contact.problem.name': 'Escreva o seu nome',
+  'contact.problem.email': 'Informe um endereço de e-mail válido',
+  'contact.problem.message': 'Escreva uma mensagem de até 5000 caracteres',
+  'contact.problem.rateLimited': 'Muitas mensagens. Tente de novo mais tarde.',
+  'contact.problem.challengeFailed': 'A verificação não passou. Tente de novo.',
+  'contact.problem.offline': 'O serviço não respondeu. Tente de novo.',
+  'contact.problem.unknown': 'Não foi possível enviar a mensagem.',
+  // The footer's third link, next to the contact one.
+  'privacy.link': 'Privacidade',
 
   // The battle log. One sentence per event, and the placeholders are filled by `interpolate`.
   'log.event.moved': '{actor} moveu de {from} para {to}',

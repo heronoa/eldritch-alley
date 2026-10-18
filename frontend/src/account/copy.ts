@@ -59,6 +59,8 @@ export interface AccountCopy {
   readonly historyLabel: string;
   readonly historyTitle: string;
   readonly historyEmpty: string;
+  /** The release-e-mail consent's label, beside the checkbox the profile shows (m4-05, D6). */
+  readonly releaseEmailsLabel: string;
   readonly historyLoadMore: string;
   readonly historyLoading: string;
   readonly historyFailure: string;
@@ -124,6 +126,7 @@ export function accountCopy(): AccountCopy {
     historyLabel: t('account.history'),
     historyTitle: t('account.history.title'),
     historyEmpty: t('account.history.empty'),
+    releaseEmailsLabel: t('account.releaseEmails.label'),
     historyLoadMore: t('account.history.loadMore'),
     historyLoading: t('account.history.loading'),
     historyFailure: t('account.history.failure'),

@@ -4,11 +4,13 @@ import type { Migration } from '@mikro-orm/migrations';
 import { MikroORM, type Options } from '@mikro-orm/postgresql';
 import { Agent } from './entities/agent.entity';
 import { AuthToken } from './entities/auth-token.entity';
+import { ContactMessage } from './entities/contact-message.entity';
 import { Identity } from './entities/identity.entity';
 import { MatchAgent } from './entities/match-agent.entity';
 import { MatchEvent } from './entities/match-event.entity';
 import { Match } from './entities/match.entity';
 import { PasswordCredential } from './entities/password-credential.entity';
+import { ReleaseSubscription } from './entities/release-subscription.entity';
 import { User } from './entities/user.entity';
 
 /**
@@ -36,7 +38,18 @@ export interface DatabaseConfig {
 export function ormOptions(config: DatabaseConfig): Options {
   return {
     clientUrl: config.databaseUrl,
-    entities: [User, Identity, Agent, PasswordCredential, AuthToken, Match, MatchAgent, MatchEvent],
+    entities: [
+      User,
+      Identity,
+      Agent,
+      PasswordCredential,
+      AuthToken,
+      Match,
+      MatchAgent,
+      MatchEvent,
+      ContactMessage,
+      ReleaseSubscription,
+    ],
     migrations: {
       // The compiled migrations in a built image, the sources under tsx. Both are derived from the
       // entities, so the schema cannot drift from them without a file in this repository changing.

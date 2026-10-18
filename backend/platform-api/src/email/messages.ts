@@ -10,6 +10,9 @@ import type { EmailLocale } from './locale';
 export const VERIFY_PATH = '/verify-email';
 export const RESET_PATH = '/reset-password';
 
+/** The platform's own route, and the one link a release message carries. */
+export const UNSUBSCRIBE_PATH = '/unsubscribe';
+
 /**
  * Where a player goes to prove an address, and where they go to choose a new password.
  *
@@ -63,6 +66,12 @@ interface MailCopy {
     same: string;
     unexpected: string;
   };
+  release: {
+    subject: string;
+    greeting: string;
+    news: string;
+    unsubscribe: string;
+  };
 }
 
 const COPY: Readonly<Record<EmailLocale, MailCopy>> = {
@@ -96,6 +105,14 @@ const COPY: Readonly<Record<EmailLocale, MailCopy>> = {
       same: 'It is the same account: nothing was copied and your squad is where it was.',
       unexpected: 'If this was not you, reply to this message so we can look at it.',
     },
+    release: {
+      subject: 'News from Eldritch Alley: Tactics',
+      greeting: 'Eldritch Alley: Tactics has news.',
+      news: 'A new release is out: new rules, fixes and, sometimes, a new part of the city.',
+      unsubscribe:
+        'You receive this message because you asked for release news in your profile. To stop ' +
+        'receiving it, open this link, or uncheck the option in your profile:',
+    },
   },
   'pt-BR': {
     verification: {
@@ -126,6 +143,14 @@ const COPY: Readonly<Record<EmailLocale, MailCopy>> = {
       notice: (provider) => `Sua conta agora também pode ser acessada com ${provider}.`,
       same: 'É a mesma conta: nada foi copiado e seu esquadrão está onde estava.',
       unexpected: 'Se não foi você, responda a esta mensagem para que possamos investigar.',
+    },
+    release: {
+      subject: 'Novidades de Eldritch Alley: Tactics',
+      greeting: 'O Eldritch Alley: Tactics tem novidades.',
+      news: 'Saiu uma nova versão: regras novas, correções e, às vezes, uma parte nova da cidade.',
+      unsubscribe:
+        'Você recebe esta mensagem porque pediu novidades no seu perfil. Para cancelar o ' +
+        'recebimento, abra este link ou desmarque a opção no seu perfil:',
     },
   },
 };
@@ -184,6 +209,45 @@ export function linkedAccountMessage(
     to,
     subject: copy.subject,
     text: [copy.notice(PROVIDER_LABELS[locale][provider]), copy.same, copy.unexpected].join('\n\n'),
+  };
+}
+
+/** The link that stops the message. It lives on the platform, because the platform is what records
+ *  the consent, and the token is in the path: no query parameter to be dropped by a mail client. */
+export function unsubscribeLink(apiOrigin: string, token: string): string {
+  return new URL(`${UNSUBSCRIBE_PATH}/${encodeURIComponent(token)}`, apiOrigin).href;
+}
+
+/** What a release message is built from: the address, the token, and the consent that must be on. */
+export interface ReleaseSubscriptionSummary {
+  email: string;
+  token: string;
+  optedIn: boolean;
+}
+
+/**
+ * A release message. The refusal of an opted-out subscription is here and not in an adapter: the
+ * adapter is generic, and a message to someone who said no must not be constructible at all.
+ */
+export function releaseMessage(
+  apiOrigin: string,
+  subscription: ReleaseSubscriptionSummary,
+  locale: EmailLocale,
+): EmailMessage {
+  if (!subscription.optedIn) {
+    throw new Error('a release message cannot be built for a subscription that has not opted in');
+  }
+
+  const copy = COPY[locale].release;
+  return {
+    to: subscription.email,
+    subject: copy.subject,
+    text: [
+      copy.greeting,
+      copy.news,
+      copy.unsubscribe,
+      unsubscribeLink(apiOrigin, subscription.token),
+    ].join('\n\n'),
   };
 }
 

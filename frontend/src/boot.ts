@@ -21,6 +21,7 @@ async function boot(): Promise<void> {
   await import('./title/title');
   await import('./onboarding/onboarding');
   await import('./account/account');
+  await import('./contact/contact-panel');
 }
 
 void boot().catch((error: unknown) => {

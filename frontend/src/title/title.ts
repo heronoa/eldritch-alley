@@ -7,7 +7,8 @@
 // failure says in `notice.ts`, which languages the switcher offers in `language.ts`, and what may
 // move in `motion.ts`. What is left here is the DOM.
 import { buildEnv, gameServerEndpoint } from '../config';
-import { getLocale, saveLocale, setLocale, type Locale } from '../i18n';
+import { getLocale, saveLocale, setLocale, t, type Locale } from '../i18n';
+import { privacyPath } from '../privacy/version';
 import { cardIsOpen } from '../account/modal';
 import { api } from '../account/live';
 import { currentAccount, loadAccount, setAccount } from '../account/session';
@@ -48,6 +49,8 @@ const noticeBody = byId<HTMLParagraphElement>('notice-body');
 const noticeClose = byId<HTMLButtonElement>('notice-close');
 const footerVersion = byId<HTMLSpanElement>('footer-version');
 const footerPlace = byId<HTMLSpanElement>('footer-place');
+const footerContact = byId<HTMLButtonElement>('contact-open');
+const footerPrivacy = byId<HTMLAnchorElement>('privacy-link');
 const switcher = byId<HTMLDivElement>('lang');
 
 /**
@@ -69,6 +72,10 @@ function render(): void {
   granted.textContent = copy.granted;
   footerVersion.textContent = copy.footerVersion;
   footerPlace.textContent = copy.footerPlace;
+  // The two footer links follow the language on screen: the policy page exists in both.
+  footerContact.textContent = t('contact.open');
+  footerPrivacy.textContent = t('privacy.link');
+  footerPrivacy.href = privacyPath(getLocale());
 
   renderFlow(copy);
   renderNotice(copy);

@@ -30,12 +30,23 @@ export interface Agent {
   status: string;
 }
 
+/** The release-e-mail consent, as the profile reads it and as `PATCH` answers it. */
+export interface ReleaseEmails {
+  optedIn: boolean;
+  consentedAt: string | null;
+}
+
 /** `GET /me`: the player, the squad in the order the platform sent them, and how the account signs in. */
 export interface Account {
   user: Profile;
   agents: Agent[];
   /** Whether a usable password credential exists: the one fact the deletion card asks for. */
   hasPassword: boolean;
+  /**
+   * The release-e-mail consent. Absent on a platform that predates it — the profile reads that as off,
+   * which is the safe side of a consent.
+   */
+  releaseEmails?: ReleaseEmails;
 }
 
 /** `POST /auth/game-ticket`. The service answers with a `Date`; JSON turns it into an ISO string. */
@@ -91,6 +102,16 @@ export interface Api {
    */
   deleteAccount(input: { confirm: string; password?: string }): Promise<void>;
   matches(cursor?: string): Promise<MatchPage>;
+  /** `POST /contact`: a message to the owner, with the challenge token the widget produced. */
+  contact(input: {
+    name: string;
+    email: string;
+    message: string;
+    turnstileToken: string;
+    locale: string;
+  }): Promise<void>;
+  /** `PATCH /me/release-emails`: records the consent and answers the record it kept. */
+  setReleaseEmails(optedIn: boolean): Promise<ReleaseEmails>;
 
   register(input: { email: string; password: string; displayName?: string }): Promise<Sent>;
   verify(token: string): Promise<Verified>;
@@ -225,11 +246,14 @@ export function createApi(baseUrl: string, fetchImpl: typeof fetch = fetch): Api
         throw new ApiError('unknown', response.status, null, 'the platform answered without a squad');
       }
 
+      const releaseEmails = releaseEmailsOf(body['releaseEmails']);
+
       return {
         user: await profile(response, body['user']),
         // A body without the boolean reads as "no password": the guess only decides whether the
         // deletion card asks for one, and the server refuses the word alone for an account that has one.
         hasPassword: body['hasPassword'] === true,
+        ...(releaseEmails === undefined ? {} : { releaseEmails }),
         agents: agents.flatMap((agent) => {
           const found = record(agent);
           const id = text(found?.['id']);
@@ -268,6 +292,27 @@ export function createApi(baseUrl: string, fetchImpl: typeof fetch = fetch): Api
       const response = await request('/auth/account', { method: 'DELETE', body: input });
       // No body to read: the platform answers 204, and the deletion is the cookie being cleared.
       if (!response.ok) throw await failure(response);
+    },
+
+    async contact(input) {
+      const response = await request('/contact', { method: 'POST', body: input });
+      if (!response.ok) throw await failure(response);
+
+      const body = await object(response);
+      if (body['received'] !== true) {
+        throw new ApiError('unknown', response.status, null, 'the platform did not take the message');
+      }
+    },
+
+    async setReleaseEmails(optedIn) {
+      const response = await request('/me/release-emails', { method: 'PATCH', body: { optedIn } });
+      if (!response.ok) throw await failure(response);
+
+      const answer = releaseEmailsOf(await object(response));
+      if (answer === undefined) {
+        throw new ApiError('unknown', response.status, null, 'the platform answered without the consent');
+      }
+      return answer;
     },
 
     async matches(cursor) {
@@ -359,6 +404,14 @@ export function createApi(baseUrl: string, fetchImpl: typeof fetch = fetch): Api
 
 function isProvider(value: unknown): value is ProviderName {
   return typeof value === 'string' && (PROVIDER_NAMES as readonly string[]).includes(value);
+}
+
+/** The consent as the platform writes it, or `undefined` when the body does not carry one. */
+function releaseEmailsOf(value: unknown): ReleaseEmails | undefined {
+  const found = record(value);
+  if (found === null || typeof found['optedIn'] !== 'boolean') return undefined;
+
+  return { optedIn: found['optedIn'], consentedAt: text(found['consentedAt']) };
 }
 
 function record(value: unknown): Record<string, unknown> | null {
