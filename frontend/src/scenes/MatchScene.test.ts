@@ -332,8 +332,11 @@ function startMatch() {
   scene.create();
 
   const render = vi.fn();
-  (scene as unknown as { hud: unknown }).hud = { render };
-  return { scene, session, render };
+  // `pushHud` refreshes the label of what the mouse is over on every redraw, so the stand-in HUD has
+  // to answer it as well.
+  const showTooltip = vi.fn();
+  (scene as unknown as { hud: unknown }).hud = { render, showTooltip };
+  return { scene, session, render, showTooltip };
 }
 
 /** The last view the HUD was handed. */
@@ -1937,6 +1940,169 @@ describe('the match scene', () => {
 
       expect(hover.hoveredCell).toEqual({ x: 3, y: 3 });
       expect(drawn).toHaveLength(1);
+    });
+  });
+
+  // The owner's request after the m4 smoke test: the board says why a tile is difficult, why a figure
+  // cannot be aimed at, and how long a body still waits, while the mouse rests over them.
+  describe('the hover tooltip', () => {
+    /** The scene's own private surface, as these cases reach it. */
+    interface TooltipScene {
+      feetOf(cell: Cell): Pixel;
+      handlePointerMove(pointer: unknown): void;
+      onPointerLeave(): void;
+      hoveredCell: Cell | null;
+    }
+
+    /** A mouse at a point of the screen and a point of the world, the two spaces the hover reads. */
+    function mouse(at: Pixel, world: Pixel = at) {
+      return {
+        id: 1,
+        x: at.x,
+        y: at.y,
+        worldX: world.x,
+        worldY: world.y,
+        rightButtonDown: () => false,
+        wasTouch: false,
+      };
+    }
+
+    function overTile(scene: TooltipScene, cell: Cell) {
+      const feet = scene.feetOf(cell);
+      return mouse(feet, feet);
+    }
+
+    /** The pointer over the body of a figure, which is where its unit is read (EA-8). */
+    function overBody(scene: TooltipScene, cell: Cell) {
+      const feet = scene.feetOf(cell);
+      return mouse({ x: feet.x, y: feet.y - BODY_HEIGHT / 2 }, feet);
+    }
+
+    const MUD = { position: { x: 3, y: 3 }, expiresAtRound: 8 };
+
+    /** The ordinary match with one muddy tile under the cell the cases hover. */
+    function muddyMatch(): PublicState {
+      return { ...stateFor({ onTurn: 'A', spent: false }), difficultTerrain: [MUD] };
+    }
+
+    it('names the difficult terrain under the mouse, beside the pointer', () => {
+      const { scene, session, showTooltip } = startMatch();
+      session.emit.state(message(muddyMatch()));
+
+      const hover = scene as unknown as TooltipScene;
+      const pointer = overTile(hover, { x: 3, y: 3 });
+      hover.handlePointerMove(pointer);
+
+      expect(showTooltip).toHaveBeenLastCalledWith('Terreno difícil! Chance de queda.', {
+        x: pointer.x,
+        y: pointer.y,
+      });
+    });
+
+    it('names the camouflage of a figure the mouse is over', () => {
+      const { scene, session, showTooltip } = startMatch();
+      const state = attackScenario();
+      state.units[1] = { ...state.units[1]!, camouflage: { turns: 2, breakChance: 30 } };
+      session.emit.state(message(state));
+
+      const hover = scene as unknown as TooltipScene;
+      const pointer = overBody(hover, { x: 2, y: 0 });
+      hover.handlePointerMove(pointer);
+
+      expect(showTooltip).toHaveBeenLastCalledWith(
+        'Em camuflagem. Não pode ser alvejado diretamente.',
+        { x: pointer.x, y: pointer.y },
+      );
+    });
+
+    it("names a body with the side the player plays and the rounds it has left", () => {
+      const { scene, session, showTooltip } = startMatch();
+      const state = stateFor({ onTurn: 'A', spent: false });
+      state.units[1] = {
+        ...state.units[1]!,
+        position: { x: 2, y: 0 },
+        defeated: true,
+        corpseExpiresAtRound: 6,
+      };
+      session.emit.state(message(state));
+
+      const hover = scene as unknown as TooltipScene;
+      const pointer = overBody(hover, { x: 2, y: 0 });
+      hover.handlePointerMove(pointer);
+
+      expect(showTooltip).toHaveBeenLastCalledWith(
+        'Inimigo caído. Morte permanente em 2 turnos.',
+        { x: pointer.x, y: pointer.y },
+      );
+    });
+
+    it('takes the label down when the mouse leaves the mud for a plain tile', () => {
+      const { scene, session, showTooltip } = startMatch();
+      session.emit.state(message(muddyMatch()));
+
+      const hover = scene as unknown as TooltipScene;
+      const pointer = overTile(hover, { x: 3, y: 3 });
+      hover.handlePointerMove(pointer);
+      expect(showTooltip).toHaveBeenLastCalledWith('Terreno difícil! Chance de queda.', {
+        x: pointer.x,
+        y: pointer.y,
+      });
+
+      hover.handlePointerMove(overTile(hover, { x: 4, y: 4 }));
+      expect(showTooltip).toHaveBeenLastCalledWith(null, null);
+    });
+
+    it('takes the label down under a point the HUD covers, even over mud', () => {
+      const { scene, session, showTooltip } = startMatch();
+      session.emit.state(message(muddyMatch()));
+
+      const hover = scene as unknown as TooltipScene;
+      // The world point stays over the mud the whole time: only the screen point moves onto the HUD.
+      const world = hover.feetOf({ x: 3, y: 3 });
+      hover.handlePointerMove(mouse(world));
+      hover.handlePointerMove(mouse({ x: LEGEND_RECT.x + 4, y: LEGEND_RECT.y + 4 }, world));
+
+      expect(hover.hoveredCell).toBeNull();
+      expect(showTooltip).toHaveBeenLastCalledWith(null, null);
+    });
+
+    it('takes a mouse label down when a finger moves, which has no hover at all', () => {
+      const { scene, session, showTooltip } = startMatch();
+      session.emit.state(message(muddyMatch()));
+
+      const hover = scene as unknown as TooltipScene;
+      const pointer = overTile(hover, { x: 3, y: 3 });
+      hover.handlePointerMove(pointer);
+      expect(showTooltip).toHaveBeenLastCalledWith('Terreno difícil! Chance de queda.', {
+        x: pointer.x,
+        y: pointer.y,
+      });
+
+      hover.handlePointerMove({ ...pointer, wasTouch: true });
+      expect(showTooltip).toHaveBeenLastCalledWith(null, null);
+    });
+
+    it('takes the label down when the cursor leaves the canvas', () => {
+      const { scene, session, showTooltip } = startMatch();
+      session.emit.state(message(muddyMatch()));
+
+      const hover = scene as unknown as TooltipScene;
+      hover.handlePointerMove(overTile(hover, { x: 3, y: 3 }));
+      hover.onPointerLeave();
+
+      expect(hover.hoveredCell).toBeNull();
+      expect(showTooltip).toHaveBeenLastCalledWith(null, null);
+    });
+
+    it('takes the label down when the match is decided', () => {
+      const { scene, session, showTooltip } = startMatch();
+      session.emit.state(message(muddyMatch()));
+
+      const hover = scene as unknown as TooltipScene;
+      hover.handlePointerMove(overTile(hover, { x: 3, y: 3 }));
+      session.emit.ended('A');
+
+      expect(showTooltip).toHaveBeenLastCalledWith(null, null);
     });
   });
 });

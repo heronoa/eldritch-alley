@@ -248,6 +248,39 @@ describe('the pt-BR the game shows', () => {
     expect(message('en-US', 'hud.target.chance')).toBe('Hit {value}%');
   });
 
+  it('carries the hover tooltips, with the body counted in the singular and the plural', () => {
+    // The owner's copy, in the catalog's sentence case. The side is the local player's, so each side
+    // and each count is a key of its own: the catalog has no plural rule to lean on.
+    expect(message('pt-BR', 'hud.tooltip.difficultTerrain')).toBe('Terreno difícil! Chance de queda.');
+    expect(message('en-US', 'hud.tooltip.difficultTerrain')).toBe('Difficult terrain! Chance of falling.');
+    expect(message('pt-BR', 'hud.tooltip.camouflage')).toBe(
+      'Em camuflagem. Não pode ser alvejado diretamente.',
+    );
+    expect(message('en-US', 'hud.tooltip.camouflage')).toBe('Camouflaged. Cannot be targeted directly.');
+    expect(message('pt-BR', 'hud.tooltip.corpse.ally.one')).toBe(
+      'Aliado caído. Morte permanente em 1 turno.',
+    );
+    expect(message('en-US', 'hud.tooltip.corpse.ally.one')).toBe('Fallen ally. Permanent death in 1 turn.');
+    expect(message('pt-BR', 'hud.tooltip.corpse.ally.other')).toBe(
+      'Aliado caído. Morte permanente em {rounds} turnos.',
+    );
+    expect(message('en-US', 'hud.tooltip.corpse.ally.other')).toBe(
+      'Fallen ally. Permanent death in {rounds} turns.',
+    );
+    expect(message('pt-BR', 'hud.tooltip.corpse.enemy.one')).toBe(
+      'Inimigo caído. Morte permanente em 1 turno.',
+    );
+    expect(message('en-US', 'hud.tooltip.corpse.enemy.one')).toBe(
+      'Fallen enemy. Permanent death in 1 turn.',
+    );
+    expect(message('pt-BR', 'hud.tooltip.corpse.enemy.other')).toBe(
+      'Inimigo caído. Morte permanente em {rounds} turnos.',
+    );
+    expect(message('en-US', 'hud.tooltip.corpse.enemy.other')).toBe(
+      'Fallen enemy. Permanent death in {rounds} turns.',
+    );
+  });
+
   it('answers every refusal code out of the catalog, keyed by the code itself', () => {
     // A code with no key of its own is a compile error: the key is built from the code.
     const reasons: readonly RejectReason[] = [

@@ -21,6 +21,36 @@ export const CANVAS_HEIGHT = 720;
 /** Space between a piece of the HUD and the edge of the canvas. */
 export const PADDING = 16;
 
+/**
+ * The label the mouse carries while it rests over something the rules explain (ADR 0023 §3, §4, §7):
+ * its gap from the pointer, the padding inside its box, and the width its text wraps at. The width
+ * holds the longest sentence on two lines.
+ */
+export const TOOLTIP = { gap: 14, paddingX: 8, paddingY: 4, maxWidth: 280 } as const;
+
+/**
+ * The top-left of a tooltip's box for a text of `size` under `pointer`: below and to the right of it,
+ * flipped to the left and up when the box would leave the canvas, and pulled inside `PADDING` when it
+ * is too wide or too tall to fit even then. The caller draws the whole box — the text and its padding.
+ */
+export function tooltipPoint(pointer: Pixel, size: { width: number; height: number }): Pixel {
+  const width = size.width + 2 * TOOLTIP.paddingX;
+  const height = size.height + 2 * TOOLTIP.paddingY;
+  const right = CANVAS_WIDTH - PADDING;
+  const bottom = CANVAS_HEIGHT - PADDING;
+
+  let x = pointer.x + TOOLTIP.gap;
+  if (x + width > right) x = pointer.x - TOOLTIP.gap - width;
+
+  let y = pointer.y + TOOLTIP.gap;
+  if (y + height > bottom) y = pointer.y - TOOLTIP.gap - height;
+
+  return {
+    x: Math.min(Math.max(x, PADDING), Math.max(PADDING, right - width)),
+    y: Math.min(Math.max(y, PADDING), Math.max(PADDING, bottom - height)),
+  };
+}
+
 /** The action bar, centred on the canvas, and the dashboard line that follows it. */
 const CENTRED_X = 248;
 const CENTRED_WIDTH = 784;

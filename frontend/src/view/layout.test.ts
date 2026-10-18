@@ -43,6 +43,8 @@ import {
   MOVE_CHIP,
   MOVE_CHIPS,
   PADDING,
+  TOOLTIP,
+  tooltipPoint,
   PANEL_ROW_HEIGHT,
   RESULT_BUTTON_RECT,
   SETTINGS_BUTTON_RECT,
@@ -732,5 +734,61 @@ describe('the battle report', () => {
     expect(right(BATTLE_REPORT_REOPEN_RECT)).toBeLessThanOrEqual(CANVAS_WIDTH);
     expect(bottom(BATTLE_REPORT_REOPEN_RECT)).toBeLessThanOrEqual(CANVAS_HEIGHT);
     expect(overlaps(BATTLE_REPORT_REOPEN_RECT, RESULT_BUTTON_RECT)).toBe(false);
+  });
+});
+
+// The label the mouse carries while it rests over something the rules need to explain: under and to
+// the right of the pointer, with a gap so it never covers the thing being pointed at, and flipped or
+// pulled back at the edges so it never leaves the canvas.
+describe('the hover tooltip', () => {
+  const TEXT = { width: 180, height: 20 };
+  const boxWidth = TEXT.width + 2 * TOOLTIP.paddingX;
+  const boxHeight = TEXT.height + 2 * TOOLTIP.paddingY;
+
+  it('sits below and right of the pointer, with a gap between them', () => {
+    expect(tooltipPoint({ x: 400, y: 300 }, TEXT)).toEqual({
+      x: 400 + TOOLTIP.gap,
+      y: 300 + TOOLTIP.gap,
+    });
+  });
+
+  it('flips to the left of the pointer instead of running off the right edge', () => {
+    const point = tooltipPoint({ x: CANVAS_WIDTH - 20, y: 300 }, TEXT);
+
+    expect(point.x).toBe(CANVAS_WIDTH - 20 - TOOLTIP.gap - boxWidth);
+    expect(point.x + boxWidth).toBeLessThanOrEqual(CANVAS_WIDTH - PADDING);
+  });
+
+  it('flips above the pointer instead of running off the bottom edge', () => {
+    const point = tooltipPoint({ x: 400, y: CANVAS_HEIGHT - 20 }, TEXT);
+
+    expect(point.y).toBe(CANVAS_HEIGHT - 20 - TOOLTIP.gap - boxHeight);
+    expect(point.y + boxHeight).toBeLessThanOrEqual(CANVAS_HEIGHT - PADDING);
+  });
+
+  it('pulls the box back inside when it is too wide to fit beside the pointer', () => {
+    const wide = { width: 700, height: 100 };
+
+    expect(tooltipPoint({ x: 600, y: 300 }, wide).x).toBe(PADDING);
+  });
+
+  it('keeps the whole box inside the canvas, wherever the pointer is', () => {
+    const corners = [
+      { x: 0, y: 0 },
+      { x: CANVAS_WIDTH - 1, y: 0 },
+      { x: 0, y: CANVAS_HEIGHT - 1 },
+      { x: CANVAS_WIDTH - 1, y: CANVAS_HEIGHT - 1 },
+      { x: CANVAS_WIDTH / 2, y: CANVAS_HEIGHT / 2 },
+    ];
+
+    for (const pointer of corners) {
+      const point = tooltipPoint(pointer, TEXT);
+      const where = `${pointer.x},${pointer.y}`;
+
+      expect(point.x, where).toBeGreaterThanOrEqual(PADDING);
+      expect(point.y, where).toBeGreaterThanOrEqual(PADDING);
+      expect(point.x + boxWidth, where).toBeLessThanOrEqual(CANVAS_WIDTH - PADDING);
+      expect(point.y + boxHeight, where).toBeLessThanOrEqual(CANVAS_HEIGHT - PADDING);
+    }
   });
 });

@@ -308,6 +308,13 @@ export const enUS: Record<MessageKey, string> = {
   'hud.cover.southwest': 'Southwest',
   'hud.cover.west': 'West',
   'hud.cover.northwest': 'Northwest',
+  // The label the mouse carries while it rests over a tile or a figure (ADR 0023 §3, §4 and §7).
+  'hud.tooltip.difficultTerrain': 'Difficult terrain! Chance of falling.',
+  'hud.tooltip.camouflage': 'Camouflaged. Cannot be targeted directly.',
+  'hud.tooltip.corpse.ally.one': 'Fallen ally. Permanent death in 1 turn.',
+  'hud.tooltip.corpse.ally.other': 'Fallen ally. Permanent death in {rounds} turns.',
+  'hud.tooltip.corpse.enemy.one': 'Fallen enemy. Permanent death in 1 turn.',
+  'hud.tooltip.corpse.enemy.other': 'Fallen enemy. Permanent death in {rounds} turns.',
   // The camera panel (EA-12): the view the camera looks from, the zoom step it is on, and the letter
   // each direction is written as.
   'hud.camera': 'Camera',

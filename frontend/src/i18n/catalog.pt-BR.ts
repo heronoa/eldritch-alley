@@ -348,6 +348,16 @@ export const ptBR = {
   'hud.cover.southwest': 'sudoeste',
   'hud.cover.west': 'oeste',
   'hud.cover.northwest': 'noroeste',
+  // The label the mouse carries while it rests over a tile or a figure (ADR 0023 §3, §4 and §7): the
+  // mud under it, a unit in camouflage, or a body with the rounds it has left. The body counts in the
+  // singular and in the plural, one key each, because the catalog has no plural rule to lean on — and
+  // the side is the local player's, so each side gets a key of its own.
+  'hud.tooltip.difficultTerrain': 'Terreno difícil! Chance de queda.',
+  'hud.tooltip.camouflage': 'Em camuflagem. Não pode ser alvejado diretamente.',
+  'hud.tooltip.corpse.ally.one': 'Aliado caído. Morte permanente em 1 turno.',
+  'hud.tooltip.corpse.ally.other': 'Aliado caído. Morte permanente em {rounds} turnos.',
+  'hud.tooltip.corpse.enemy.one': 'Inimigo caído. Morte permanente em 1 turno.',
+  'hud.tooltip.corpse.enemy.other': 'Inimigo caído. Morte permanente em {rounds} turnos.',
   // The camera panel (EA-12): the view the camera looks from, the zoom step it is on, and the letter
   // each direction is written as — Norte, Leste, Sul, Oeste, as the prototype prints them.
   'hud.camera': 'Câmera',

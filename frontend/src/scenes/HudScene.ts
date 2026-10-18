@@ -45,6 +45,7 @@ import {
   INSPECT_RECT,
   INSPECT_VALUE_X,
   PADDING,
+  PANEL_ALPHA,
   RESULT_BUTTON_RECT,
   SETTINGS_BUTTON_RECT,
   SETTINGS_COVERS_ROW_RECT,
@@ -55,6 +56,7 @@ import {
   SETTINGS_PAN_VALUE_RECT,
   SETTINGS_TOGGLE_RECT,
   STATUS_RECT,
+  TOOLTIP,
   abilityMenuRowRect,
   buttonRect,
   cameraControlRect,
@@ -66,9 +68,11 @@ import {
   inspectRowPoint,
   logRect,
   moveChipRect,
+  tooltipPoint,
   type CameraControl,
   type Rect,
 } from '../view/layout';
+import type { Pixel } from '../view/grid';
 import type { ViewDirection } from '../view/rotation';
 import {
   CURRENT_TURN_COLOR,
@@ -301,6 +305,15 @@ export class HudScene extends Phaser.Scene {
   private stamp!: Phaser.GameObjects.Graphics;
   private wayOut!: Button;
 
+  /**
+   * The label the mouse carries while it rests over something the rules explain (ADR 0023 §3, §4 and
+   * §7): its frame and its text. The match scene words the sentence; this only draws it.
+   */
+  private tooltipFrame!: Phaser.GameObjects.Rectangle;
+  private tooltipText!: Phaser.GameObjects.Text;
+  /** What the label says now, so the same hover is never written into the text twice. */
+  private tooltipLabel: string | null = null;
+
   /** The settings of the match (EA-4): the gear, the panel it opens, and the row inside it. */
   private settingsButton!: Button;
   private settingsPanel!: Phaser.GameObjects.Container;
@@ -323,6 +336,9 @@ export class HudScene extends Phaser.Scene {
   }
 
   create(): void {
+    // A HUD that was stopped and launched again starts from nothing: no label outlives its match.
+    this.tooltipLabel = null;
+
     // The dashboard carries no title: the line under its buttons says what every part of it is, and a
     // heading over a band the player reads at a glance would only take room from the numbers.
     createPanel(this, DASHBOARD_RECT, '');
@@ -447,6 +463,23 @@ export class HudScene extends Phaser.Scene {
     // Added last: a turn change floats over the panels, and it is gone before the next one comes.
     this.banner = new Banner(this, BANNER_RECT);
 
+    // The label of what the mouse is over (ADR 0023), built last so it starts above every panel. It
+    // is drawn in this unzoomed scene, so the camera of the map never scales it with the board.
+    this.tooltipFrame = this.add
+      .rectangle(0, 0, 0, 0, PANEL_FILL)
+      .setOrigin(0)
+      .setStrokeStyle(1, PANEL_STROKE)
+      .setAlpha(PANEL_ALPHA)
+      .setVisible(false);
+    this.tooltipText = this.add
+      .text(0, 0, '', {
+        fontFamily: FONT_BODY,
+        fontSize: FONT_SIZE.log,
+        color: TEXT_COLOR,
+        wordWrap: { width: TOOLTIP.maxWidth },
+      })
+      .setVisible(false);
+
     this.built = true;
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.teardown());
     this.apply(this.view);
@@ -518,6 +551,56 @@ export class HudScene extends Phaser.Scene {
     if (this.built) this.apply(view);
   }
 
+  /**
+   * Shows the label of what the mouse is over, or takes it down when there is nothing to say. The
+   * match scene words the sentence and names the pointer point; this only draws the box beside it.
+   *
+   * A mouse resting still reports the same hover again and again, so the text is only rewritten when
+   * the sentence changes; the box still moves with the pointer and goes back to the top of the display
+   * list, because a redraw may have built chips and buttons over it in the meantime (D2).
+   */
+  showTooltip(text: string | null, at: Pixel | null): void {
+    if (!this.built) return;
+
+    if (text === null || at === null) {
+      this.hideTooltip();
+      return;
+    }
+
+    if (text !== this.tooltipLabel) {
+      this.tooltipText.setText(text);
+      this.tooltipLabel = text;
+    }
+
+    const box = tooltipPoint(at, {
+      width: this.tooltipText.width,
+      height: this.tooltipText.height,
+    });
+
+    this.tooltipFrame
+      .setPosition(box.x, box.y)
+      .setSize(
+        this.tooltipText.width + 2 * TOOLTIP.paddingX,
+        this.tooltipText.height + 2 * TOOLTIP.paddingY,
+      )
+      .setVisible(true);
+    this.tooltipText
+      .setPosition(box.x + TOOLTIP.paddingX, box.y + TOOLTIP.paddingY)
+      .setVisible(true);
+
+    // The HUD is ordered by insertion, and what the scene rebuilt on the last redraw sits above the
+    // label: bringing it back to the top is what keeps it readable (no `setDepth` in this scene).
+    this.children.bringToTop(this.tooltipFrame);
+    this.children.bringToTop(this.tooltipText);
+  }
+
+  /** Takes the label down, and forgets what it said. */
+  private hideTooltip(): void {
+    this.tooltipLabel = null;
+    this.tooltipFrame.setVisible(false);
+    this.tooltipText.setVisible(false);
+  }
+
   /** A stopped HUD takes its objects with it, so the next match starts from nothing. */
   private teardown(): void {
     this.children.removeAll(true);
@@ -525,6 +608,7 @@ export class HudScene extends Phaser.Scene {
     this.moveChipButtons = [];
     this.cameraButtons = [];
     this.lastActive = null;
+    this.tooltipLabel = null;
     this.built = false;
   }
 
@@ -546,6 +630,13 @@ export class HudScene extends Phaser.Scene {
     this.result.setText(view.result);
     this.drawStamp();
     this.wayOut.setVisible(view.wayOutVisible);
+
+    // A redraw builds chips, rows and buttons again, which land over the label: while it is on the
+    // screen it goes back on top of everything the redraw just built.
+    if (this.tooltipFrame.visible) {
+      this.children.bringToTop(this.tooltipFrame);
+      this.children.bringToTop(this.tooltipText);
+    }
   }
 
   /** One chip per unit still in play, in turn order, so the queue shrinks as units fall. */
