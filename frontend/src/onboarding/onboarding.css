@@ -16,7 +16,9 @@
   inset: 0;
   z-index: 1;
   display: grid;
-  place-items: center;
+  /* A card taller than the phone scrolls instead of losing its top and bottom. */
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 20px;
   background: rgba(5, 7, 15, 0.72);
 }
@@ -31,6 +33,9 @@
    the hard shadow are the call to action's, which is what makes this read as the same client. */
 .onboarding-card {
   width: min(560px, 100%);
+  /* Auto margins center the card when it fits and fall to zero when it does not, which is what
+     keeps the top reachable in the scrollable layer above. */
+  margin: auto;
   padding: 28px 26px 22px;
   background: var(--game);
   border: 2px solid #e07a6f;
@@ -150,4 +155,43 @@
 .how-to-play:focus-visible {
   outline: 2px solid var(--ink);
   outline-offset: 2px;
+}
+
+/* A narrow screen: the layer keeps 5 % of the viewport on every side, the card gives its padding back
+   to the words, and the three controls shrink enough to stay on one row. Geometry only — every colour
+   above is untouched. */
+@media (max-width: 480px) {
+  .onboarding {
+    padding: 5vh 5vw;
+  }
+
+  .onboarding-card {
+    padding: 20px 16px 18px;
+  }
+
+  .onboarding-body {
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  .onboarding-dots {
+    margin-top: 16px;
+  }
+
+  .onboarding-controls {
+    gap: 6px;
+    margin-top: 14px;
+  }
+
+  .onboarding-back,
+  .onboarding-skip {
+    padding: 10px 8px;
+    font-size: 12px;
+  }
+
+  .onboarding-forward {
+    padding: 12px 14px;
+    font: 600 13px/1 var(--body);
+    letter-spacing: 0.04em;
+  }
 }

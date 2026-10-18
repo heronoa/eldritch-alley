@@ -205,6 +205,9 @@ export const ptBR = {
 
   // The battle log. One sentence per event, and the placeholders are filled by `interpolate`.
   'log.event.moved': '{actor} moveu de {from} para {to}',
+  // A pending move taken back or confirmed (EA-5); the walk itself is `moved`.
+  'log.event.moveCancelled': '{actor} cancelou o movimento',
+  'log.event.moveCommitted': '{actor} confirmou o movimento',
   'log.event.attacked': '{actor} acertou {target} por {damage}',
   // The same shot told with the crate one of the two ends was behind: the engine's word is cover, the
   // screen's is the fiction's (ADR 0012 § D3). Which end it was is the whole difference between the
