@@ -434,11 +434,11 @@ export function inspectRowPoint(index: number): Pixel {
 export const INSPECT_VALUE_X = INSPECT_RECT.x + INSPECT_RECT.width - PADDING;
 
 /**
- * How many rows the menu is built for. One, because the engine reads one active slot (ADR 0016 §6): the
- * panel is a fixed rectangle a scene builds once, so this is both how tall it is drawn and how many rows
- * its press reads (D6). A second slot means this number and the model behind it, and nothing else.
+ * How many rows the menu is built for. Two: the class's old ability and its secondary one (ADR 0023
+ * §2). The panel is a fixed rectangle a scene builds once, so this is both how tall it is drawn and how
+ * many rows its press reads (D6).
  */
-export const ABILITY_MENU_ROWS = 1;
+export const ABILITY_MENU_ROWS = 2;
 
 /** How tall one row is: the name with its cost, and the effect line under them. */
 export const ABILITY_MENU_ROW = 56;

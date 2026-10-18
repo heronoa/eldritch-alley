@@ -6,6 +6,7 @@ import { topFace } from './iso';
 import {
   ABILITY_MENU_CLOSE_RECT,
   ABILITY_MENU_RECT,
+  ABILITY_MENU_ROW,
   ABILITY_MENU_ROWS,
   ACTION_BAR_RECT,
   ACTION_BUTTON,
@@ -542,6 +543,17 @@ describe('the ability menu', () => {
       expect(right(row), `row ${index}`).toBeLessThan(right(ABILITY_MENU_RECT));
       expect(bottom(row), `row ${index}`).toBeLessThanOrEqual(bottom(ABILITY_MENU_RECT));
     }
+  });
+
+  it('grows to two rows for the second active set, with the panel growing with them (ADR 0023 §2)', () => {
+    // The first row stays where it was; the second one sits under it and the panel takes the room. The
+    // scene builds the panel once from this rectangle, so a height that did not follow the constant
+    // would hide the row it still lets the player press.
+    expect(ABILITY_MENU_ROWS).toBe(2);
+    expect(ABILITY_MENU_RECT.height).toBe(
+      PADDING + ABILITY_MENU_CLOSE_RECT.height + 8 + ABILITY_MENU_ROWS * ABILITY_MENU_ROW + PADDING,
+    );
+    expect(bottom(abilityMenuRowRect(1))).toBeLessThanOrEqual(bottom(ABILITY_MENU_RECT));
   });
 
   it('never overlaps two rows, so the row under a press is never ambiguous', () => {

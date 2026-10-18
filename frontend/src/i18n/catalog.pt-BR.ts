@@ -204,6 +204,13 @@ export const ptBR = {
   'log.event.ability-used-named': '{actor} usou {ability} em {cell}',
   'log.event.damaged': '{target} sofreu {damage} de dano',
   'log.event.healed': '{target} recuperou {amount} de vida',
+  // The four events of the second active set (ADR 0023 §4). A camouflage ends for one of two reasons,
+  // and the sentence says which: the turns ran out, or a blow broke it.
+  'log.event.camouflageExpired': 'A camuflagem de {target} sumiu',
+  'log.event.camouflageBroken': 'A camuflagem de {target} quebrou',
+  'log.event.stoodUp': '{actor} se levantou',
+  'log.event.terrainExpired': 'O chão secou',
+  'log.event.revived': '{target} está de pé de novo',
   'log.event.unknown': 'evento desconhecido',
 
   // One sentence per `RejectReason`, keyed by the code the server answers with. `unknown` is the
@@ -269,6 +276,10 @@ export const ptBR = {
   'ability.piercing-shot': 'Tiro Perfurante',
   'ability.fireball': 'Bola de Fogo',
   'ability.area-heal': 'Cura em Área',
+  // The three abilities of the second active set (ADR 0023 §2).
+  'ability.camouflage': 'Camuflagem',
+  'ability.mud': 'Lama',
+  'ability.resurrection': 'Ressurreição',
   'ability.detail.damage': 'Dano {amount}',
   'ability.detail.heal': 'Cura {amount}',
   'ability.detail.radius': 'raio {radius}',
@@ -277,6 +288,12 @@ export const ptBR = {
   // A damage effect that covers more than one cell hurts every body in it, the caster's own side
   // included (ADR 0016 §12): the rule the player has to read before aiming.
   'ability.detail.hitsAllies': 'atinge todos, inclusive aliados',
+  // The three new effects, each fragment read from the definition the match carries (ADR 0023 §2).
+  'ability.detail.camouflage': '{turns} turnos',
+  'ability.detail.breakChance': 'quebra {chance}%',
+  'ability.detail.terrain': '{rounds} rodadas',
+  'ability.detail.difficultTerrain': 'terreno difícil',
+  'ability.detail.revive': 'Revive um aliado caído',
 
   // The rest of the HUD, and the lines the match shows over it: the two endings, the notice a
   // refused protocol version raises, and the two states of a dropped connection.

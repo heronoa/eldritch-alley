@@ -15,6 +15,7 @@ import type {
 } from '../protocol';
 import type { Cell } from '../view/grid';
 import type { ActionMode } from './actions';
+import { carriedAbility } from './ability-menu';
 
 export type Intent =
   | { kind: 'none' }
@@ -30,7 +31,12 @@ export type Intent =
    * happening, and the reason is the engine's own code, so the sentence is the one a refusal gets.
    */
   | { kind: 'refused'; reason: RejectReason }
-  | { kind: 'send'; action: ClientAction };
+  | { kind: 'send'; action: ClientAction }
+  /**
+   * The fallen ally chosen first, while a resurrection is armed and waiting for its cell (ADR 0023 §7).
+   * It sends nothing: it arms the second step, which the scene keeps until the next click.
+   */
+  | { kind: 'revive-target'; unitId: UnitId };
 
 export interface ClickInput {
   state: PublicState;
@@ -56,6 +62,11 @@ export interface ClickInput {
    * carries (ADR 0016 §6), which is what every caller that never opened a menu means.
    */
   abilityId?: string | null;
+  /**
+   * The fallen ally chosen first, while a resurrection is armed and waiting for its cell (ADR 0023 §7),
+   * or null before the body is chosen. The scene keeps it between clicks; the module only reads it.
+   */
+  reviveTargetId?: UnitId | null;
 }
 
 /** The unit standing on a cell, living or a body. A cell with a body is not empty. */
@@ -90,19 +101,9 @@ function poolRefusal(unit: UnitState, cost: number): RejectReason | null {
 }
 
 /**
- * The ability the unit carries in its first active set, resolved in the match's own catalog, or undefined
- * when the slots name none and when the catalog defines none of them (ADR 0016 §6).
- */
-function carriedAbility(state: PublicState, unit: UnitState): AbilityDefinition | undefined {
-  const id = unit.abilities.activeSets[0];
-  if (id === null) return undefined;
-  return abilityById(state.catalog, id);
-}
-
-/**
- * The ability an aim is aimed with: the one the menu armed when it names one, and the one the unit's own
- * first active set carries otherwise (EA-16). Both are resolved in the match's own catalog, so an id the
- * match does not define is the same refusal whichever way it arrived.
+ * The ability an aim is aimed with: the one the menu armed when it names one, and the first one the
+ * unit's own slots carry otherwise (EA-16, I11). Both are resolved in the match's own catalog, so an id
+ * the match does not define is the same refusal whichever way it arrived.
  */
 function armedAbility(
   state: PublicState,
@@ -153,22 +154,88 @@ function actingUnit(state: PublicState, selectedId: string | null): UnitState | 
 }
 
 /**
+ * The fallen ally a resurrection may name, when the press landed on one: a defeated unit of the
+ * caster's own side whose body still waits (ADR 0023 §7).
+ */
+function fallenAlly(
+  state: PublicState,
+  caster: UnitState,
+  cell: Cell,
+): UnitState | undefined {
+  const occupant = occupantOf(state, cell);
+  if (occupant === undefined || !occupant.defeated || occupant.team !== caster.team) return undefined;
+  return occupant;
+}
+
+/**
+ * What a press means while a resurrection is armed (ADR 0023 §7): the first click names the body, the
+ * second names the free cell it is brought to. The local checks mirror the engine's
+ * `validateUseAbility` — the pool, the bounds, the reach, the body in `target` and the occupied cell —
+ * so the refusal the player reads is the one the server would answer with. Clicking the chosen body
+ * again takes the choice back.
+ */
+function aimRevive(
+  state: PublicState,
+  caster: UnitState,
+  ability: AbilityDefinition,
+  cell: Cell,
+  reviveTargetId: UnitId | null | undefined,
+): Intent {
+  const body =
+    reviveTargetId === null || reviveTargetId === undefined
+      ? undefined
+      : state.units.find((unit) => unit.id === reviveTargetId);
+
+  if (body === undefined) {
+    const chosen = fallenAlly(state, caster, cell);
+    return chosen === undefined
+      ? { kind: 'refused', reason: 'target-invalid' }
+      : { kind: 'revive-target', unitId: chosen.id };
+  }
+
+  if (body.position.x === cell.x && body.position.y === cell.y) return { kind: 'none' };
+
+  const refusal = aimRefusal(state, caster, ability, cell);
+  if (refusal !== null) return { kind: 'refused', reason: refusal };
+  if (!body.defeated || body.permanentlyDead || body.team !== caster.team) {
+    return { kind: 'refused', reason: 'target-invalid' };
+  }
+  if (occupantOf(state, cell) !== undefined) return { kind: 'refused', reason: 'cell-occupied' };
+
+  return {
+    kind: 'send',
+    action: {
+      type: 'useAbility',
+      abilityId: ability.id,
+      to: { x: cell.x, y: cell.y },
+      target: body.id,
+    },
+  };
+}
+
+/**
  * What a press means while an ability is armed: the cell the press covered is the aim, whatever stands on
  * it (ADR 0016 §5). It is read before the selection and the attack, because an area reaches every body it
  * covers — the ally a heal is thrown at, and the ally a blast will hurt, which is what an effect that
- * spares nobody means (D2). A press the ability cannot be aimed at is refused in the engine's own words.
+ * spares nobody means (D2). A resurrection is aimed in two clicks (ADR 0023 §7). A press the ability
+ * cannot be aimed at is refused in the engine's own words.
  */
 function aimAbility(
   state: PublicState,
   selectedId: string | null,
   cell: Cell,
   abilityId: string | null,
+  reviveTargetId: UnitId | null | undefined,
 ): Intent {
   const caster = actingUnit(state, selectedId);
   if (caster === undefined) return { kind: 'none' };
 
   const ability = armedAbility(state, caster, abilityId);
   if (ability === undefined) return { kind: 'refused', reason: 'ability-unknown' };
+
+  if (ability.effect.kind === 'revive') {
+    return aimRevive(state, caster, ability, cell, reviveTargetId);
+  }
 
   const refusal = aimRefusal(state, caster, ability, cell);
   if (refusal !== null) return { kind: 'refused', reason: refusal };
@@ -197,10 +264,13 @@ export function resolveClick({
   humanTeam,
   mode = 'inspect',
   abilityId = null,
+  reviveTargetId = null,
 }: ClickInput): Intent {
   // An armed ability is aimed first: the action names a cell, never a unit, so the aim is read before
   // anything else the press could mean and the `Atacar`/`Mover` rules below never see it (EA-7).
-  if (mode === 'ability') return aimAbility(state, selectedId, cell, abilityId);
+  if (mode === 'ability') {
+    return aimAbility(state, selectedId, cell, abilityId, reviveTargetId);
+  }
 
   // The figure the press landed on decides first: only a press that covered no figure is read against
   // the cell under it, which is what keeps a walk onto a free cell working (EA-8).
@@ -219,6 +289,10 @@ export function resolveClick({
     // reach and never halves the damage: an attack is refused only for the rules below (ADR 0011).
     // The distance and the sight are read of the target's own cell: the press may well have covered
     // another one (EA-8).
+    // A camouflaged enemy cannot be named by a basic attack (ADR 0023 §3), and the engine answers
+    // `target-hidden` before the pool and the reach — so the client does the same, and the player is
+    // told the real reason even when the shot is also unaffordable and out of range.
+    if (occupant.camouflage !== null) return { kind: 'refused', reason: 'target-hidden' };
     const refusal = resourceRefusal(selected);
     if (refusal !== null) return { kind: 'refused', reason: refusal };
     if (chebyshev(selected.position, occupant.position) > selected.range) {

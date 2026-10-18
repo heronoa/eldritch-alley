@@ -6,9 +6,10 @@
 //
 // The labels come from the catalog, keyed by the button's own id, so a button cannot be added
 // without a word for it.
-import { abilityById, attackArea, canStillAct, reachableCells } from '@eldritch-alley/engine';
+import { attackArea, canStillAct, reachableCells } from '@eldritch-alley/engine';
 import { t } from '../i18n';
-import type { AbilityDefinition, ClientAction, PublicState, Team, UnitState } from '../protocol';
+import type { ClientAction, PublicState, Team, UnitState } from '../protocol';
+import { carriedAbility } from './ability-menu';
 import { allowsIntent, type Intent } from './selection';
 
 export type ActionMode = 'inspect' | 'move' | 'attack' | 'ability';
@@ -46,17 +47,6 @@ export interface ActionButton {
 /** The unit whose turn it is, or undefined in a match that is over. */
 function actorOf(state: PublicState): UnitState | undefined {
   return state.units.find((unit) => unit.id === state.initiative[state.currentIndex]);
-}
-
-/**
- * The ability the unit carries in its first active set, resolved in the match's own catalog, or
- * undefined when the slots name none and when the catalog defines none of them (ADR 0016 §6). Only
- * the first set is read: the second one, the reaction and the movement slots are unread this milestone.
- */
-function carriedAbility(state: PublicState, unit: UnitState): AbilityDefinition | undefined {
-  const id = unit.abilities.activeSets[0];
-  if (id === null) return undefined;
-  return abilityById(state.catalog, id);
 }
 
 /** The action the acting unit is not allowed to take leaves the mode with nothing to do. */

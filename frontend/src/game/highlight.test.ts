@@ -26,6 +26,10 @@ interface UnitSpec {
   movement?: number;
   /** The id of the one active ability the unit carries, in `activeSets[0]` (ADR 0016 §6). */
   ability?: string | null;
+  /** The secondary ability, in `activeSets[1]`, once m3's classes carry two (ADR 0023 §2). */
+  secondAbility?: string | null;
+  /** A fallen unit, whose body occupies its tile and waits for a resurrection. */
+  defeated?: boolean;
 }
 
 function makeUnit(spec: UnitSpec): UnitState {
@@ -45,11 +49,16 @@ function makeUnit(spec: UnitSpec): UnitState {
     attunement: 50,
     primaryClass: 'sniper',
     equipment: { armor: null, helmet: null, mainHand: null, offHand: null, accessory1: null, accessory2: null },
-    abilities: { activeSets: [spec.ability ?? null, null], reaction: null, movement: null, support: null },
+    abilities: {
+      activeSets: [spec.ability ?? null, spec.secondAbility ?? null],
+      reaction: null,
+      movement: null,
+      support: null,
+    },
     movementProfile: { maxStepUp: 1, maxStepDown: 1, climbCost: 1 },
     facing: 'E',
     resourceKind: 'ammo',
-    defeated: false,
+    defeated: spec.defeated ?? false,
     ammo: 3,
     permanentlyDead: false,
     corpseExpiresAtRound: null,
@@ -588,5 +597,138 @@ describe('the client and the engine agree on what a move reaches', () => {
 
       expect(painted, map.id).toEqual(keys(reachableCells(state, 'A-sniper')));
     }
+  });
+});
+
+/** The three secondary definitions m3's classes carry (ADR 0023 §2). */
+const CAMOUFLAGE = {
+  id: 'camouflage',
+  cost: 3,
+  range: 0,
+  needsSight: false,
+  effect: { kind: 'camouflage' as const, radius: 0, turns: 3, breakChance: 30 },
+};
+const MUD = {
+  id: 'mud',
+  cost: 1,
+  range: 3,
+  needsSight: true,
+  effect: { kind: 'terrain' as const, radius: 1, durationRounds: 3 },
+};
+const RESURRECTION = {
+  id: 'resurrection',
+  cost: 3,
+  range: 3,
+  needsSight: false,
+  effect: { kind: 'revive' as const, radius: 0 },
+};
+
+/**
+ * The second slot (ADR 0023 §2) and the two-step revival (ADR 0023 §7): the reach of an ability that
+ * hides its caster, of one thrown over a wall it cannot see past, and of a resurrection that is aimed
+ * only once the body has been chosen.
+ */
+describe('the second slot and the two-step revival', () => {
+  /** In the open, carrying the secondary ability in the slot after the unused first one. */
+  const CASTER = makeUnit({
+    id: 'A-sniper',
+    team: 'A',
+    at: { x: 3, y: 3 },
+    secondAbility: 'camouflage',
+  });
+  const ENEMY = makeUnit({ id: 'B-wizard', team: 'B', at: { x: 7, y: 7 }, range: 1 });
+
+  it('paints only the caster own cell for a camouflage, whose reach is 0', () => {
+    const state = withCatalog(makeState([CASTER, ENEMY]), [CAMOUFLAGE]);
+
+    const cells = keys(
+      highlightedCells({
+        state,
+        selectedId: 'A-sniper',
+        mode: 'ability',
+        humanTeam: 'A',
+        abilityId: 'camouflage',
+      }),
+    );
+
+    // Hiding is aimed at oneself (ADR 0023 §2), so the one cell the player may click is the caster's.
+    expect(cells).toEqual(['3,3']);
+  });
+
+  it('paints the mud over the cells in reach and in sight, and none behind a wall', () => {
+    const walled: BoardState = {
+      ...BOARD,
+      props: [{ position: { x: 4, y: 3 }, kind: 'wall' }],
+    };
+    const state = withCatalog(makeState([CASTER, ENEMY], 0, walled), [MUD]);
+
+    const cells = keys(
+      highlightedCells({
+        state,
+        selectedId: 'A-sniper',
+        mode: 'ability',
+        humanTeam: 'A',
+        abilityId: 'mud',
+      }),
+    );
+
+    expect(cells).toContain('3,3'); // the cell it stands on
+    expect(cells).toContain('1,2'); // distance 2, an open diagonal
+    expect(cells).toContain('3,6'); // distance 3, the edge of the reach
+    expect(cells).not.toContain('5,3'); // distance 2, but the wall at 4,3 is in the way
+    expect(cells).not.toContain('7,3'); // distance 4, past the reach
+  });
+
+  it('paints the free cells of a revive once the body is chosen, never a cell somebody holds', () => {
+    const priest = makeUnit({
+      id: 'A-priest',
+      team: 'A',
+      at: { x: 3, y: 3 },
+      secondAbility: 'resurrection',
+    });
+    const body = makeUnit({
+      id: 'A-sniper',
+      team: 'A',
+      at: { x: 1, y: 3 },
+      defeated: true,
+    });
+    const living = makeUnit({ id: 'B-wizard', team: 'B', at: { x: 5, y: 3 } });
+    const state = withCatalog(makeState([priest, body, living]), [RESURRECTION]);
+
+    const cells = keys(
+      highlightedCells({
+        state,
+        selectedId: 'A-priest',
+        mode: 'ability',
+        humanTeam: 'A',
+        abilityId: 'resurrection',
+        reviveTargetId: 'A-sniper',
+      }),
+    );
+
+    expect(cells).toContain('4,3'); // free, adjacent
+    expect(cells).toContain('3,4'); // free, adjacent
+    expect(cells).toContain('6,3'); // free, distance 3, the edge of the reach
+    expect(cells).not.toContain('3,3'); // the caster's own cell, which is occupied
+    expect(cells).not.toContain('1,3'); // the body
+    expect(cells).not.toContain('5,3'); // a living enemy
+    expect(cells).not.toContain('7,3'); // distance 4, past the reach
+  });
+
+  it('paints the reach of the row the menu armed, even when it is the second one', () => {
+    const state = withCatalog(makeState([CASTER, ENEMY]), [MUD]);
+
+    const cells = keys(
+      highlightedCells({
+        state,
+        selectedId: 'A-sniper',
+        mode: 'ability',
+        humanTeam: 'A',
+        abilityId: 'mud',
+      }),
+    );
+
+    expect(cells).toContain('6,3'); // distance 3, inside the mud
+    expect(cells).not.toContain('7,3'); // distance 4, past it
   });
 });

@@ -183,6 +183,13 @@ export const enUS: Record<MessageKey, string> = {
   'log.event.ability-used-named': '{actor} used {ability} on {cell}',
   'log.event.damaged': '{target} took {damage} damage',
   'log.event.healed': '{target} recovered {amount} health',
+  // The four events of the second active set (ADR 0023 §4). A camouflage ends for one of two reasons,
+  // and the sentence says which: the turns ran out, or a blow broke it.
+  'log.event.camouflageExpired': "{target}'s camouflage faded",
+  'log.event.camouflageBroken': "{target}'s camouflage broke",
+  'log.event.stoodUp': '{actor} stood up',
+  'log.event.terrainExpired': 'The ground dried up',
+  'log.event.revived': '{target} is back on their feet',
   'log.event.unknown': 'unknown event',
 
   // One sentence per `RejectReason`, keyed by the code the server answers with. `unknown` is the
@@ -241,11 +248,21 @@ export const enUS: Record<MessageKey, string> = {
   'ability.piercing-shot': 'Piercing Shot',
   'ability.fireball': 'Fireball',
   'ability.area-heal': 'Area Heal',
+  // The three abilities of the second active set (ADR 0023 §2).
+  'ability.camouflage': 'Camouflage',
+  'ability.mud': 'Mud',
+  'ability.resurrection': 'Resurrection',
   'ability.detail.damage': 'Damage {amount}',
   'ability.detail.heal': 'Heal {amount}',
   'ability.detail.radius': 'radius {radius}',
   'ability.detail.ignoresCover': 'ignores cover',
   'ability.detail.hitsAllies': 'hits everyone, allies included',
+  // The three new effects, each fragment read from the definition the match carries (ADR 0023 §2).
+  'ability.detail.camouflage': '{turns} turns',
+  'ability.detail.breakChance': '{chance}% break',
+  'ability.detail.terrain': '{rounds} rounds',
+  'ability.detail.difficultTerrain': 'difficult terrain',
+  'ability.detail.revive': 'Revive a fallen ally',
 
   // The rest of the HUD, and the lines the match shows over it.
   'hud.legend':

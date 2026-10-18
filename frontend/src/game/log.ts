@@ -118,6 +118,21 @@ export function describeEvent(event: Event, names: UnitNames, battlefield?: Batt
         target: nameOf(names, event.target),
         amount: event.amount,
       });
+    case 'camouflage-ended':
+      // The silhouette is gone either way; the sentence says whether it ran out or a blow broke it
+      // (ADR 0023 §3).
+      return t(
+        event.reason === 'expired'
+          ? 'log.event.camouflageExpired'
+          : 'log.event.camouflageBroken',
+        { target: nameOf(names, event.target) },
+      );
+    case 'stood-up':
+      return t('log.event.stoodUp', { actor: nameOf(names, event.actor) });
+    case 'terrain-expired':
+      return t('log.event.terrainExpired');
+    case 'revived':
+      return t('log.event.revived', { target: nameOf(names, event.target) });
     default:
       return t('log.event.unknown');
   }

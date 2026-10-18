@@ -38,7 +38,14 @@ export type Cue =
    */
   | { kind: 'ability'; actorId: string; cell: Position; impact: AbilityImpact }
   | { kind: 'defeat'; unitId: string }
-  | { kind: 'remove'; unitId: string };
+  | { kind: 'remove'; unitId: string }
+  /** A camouflage ended, and the reason the scene may draw differently (ADR 0023 §3). */
+  | { kind: 'camouflage-ended'; unitId: string; reason: 'expired' | 'broken' }
+  | { kind: 'stand-up'; unitId: string }
+  /** The cells the mud dried off, exactly the ones the event named (ADR 0023 §4). */
+  | { kind: 'terrain-expired'; cells: Position[] }
+  /** The revived unit, and the cell the event brought it to (ADR 0023 §7). */
+  | { kind: 'revive'; unitId: string; to: Position };
 
 /** What the client knew about a unit when the event was played. */
 export interface Snapshot {
@@ -177,14 +184,20 @@ export function presentationOf(
     case 'healed':
       return [];
 
-    // The three effects of the second active set carry no animation of their own in this milestone:
-    // the status, the standing up, the drying mud and the revived body are read from the state and
-    // the log (ADR 0023).
+    // The four effects of the second active set carry a cue each; the drawing itself is m4. The fade
+    // and the break are two cues because the scene may want to tell them apart (ADR 0023 §3), and the
+    // revived unit travels to the cell the event names.
     case 'camouflage-ended':
+      return [{ kind: 'camouflage-ended', unitId: event.target, reason: event.reason }];
+
     case 'stood-up':
+      return [{ kind: 'stand-up', unitId: event.actor }];
+
     case 'terrain-expired':
+      return [{ kind: 'terrain-expired', cells: event.cells }];
+
     case 'revived':
-      return [];
+      return [{ kind: 'revive', unitId: event.target, to: event.to }];
 
     // A pending move taken back or confirmed (EA-5) has no animation of its own: the cancel is a
     // correction, not a walk, and the state that follows puts the figure back where it started.

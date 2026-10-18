@@ -229,6 +229,34 @@ describe('describeEvent', () => {
     expect(describeEvent(event, NAMES)).toBe('Priest recuperou 3 de vida');
   });
 
+  it('tells the fade of a camouflage from its break (ADR 0023 §3)', () => {
+    // The two endings read the same on the board — the silhouette is gone — but the log says why: one
+    // ran its course, the other was broken by a blow.
+    const expired: Event = { type: 'camouflage-ended', target: 'A-priest', reason: 'expired' };
+    const broken: Event = { type: 'camouflage-ended', target: 'A-priest', reason: 'broken' };
+
+    expect(describeEvent(expired, NAMES)).toBe('A camuflagem de Priest sumiu');
+    expect(describeEvent(broken, NAMES)).toBe('A camuflagem de Priest quebrou');
+  });
+
+  it('describes a unit standing up at the start of its turn', () => {
+    const event: Event = { type: 'stood-up', actor: 'A-sniper' };
+
+    expect(describeEvent(event, NAMES)).toBe('Sniper se levantou');
+  });
+
+  it('describes the difficult terrain drying up', () => {
+    const event: Event = { type: 'terrain-expired', cells: [{ x: 2, y: 3 }, { x: 3, y: 3 }] };
+
+    expect(describeEvent(event, NAMES)).toBe('O chão secou');
+  });
+
+  it('describes a fallen ally back on their feet, on the cell they were brought to', () => {
+    const event: Event = { type: 'revived', target: 'A-priest', to: { x: 2, y: 3 } };
+
+    expect(describeEvent(event, NAMES)).toBe('Priest está de pé de novo');
+  });
+
   it('falls back for an unknown type', () => {
     const event = { type: 'something-else' } as unknown as Event;
 
@@ -278,5 +306,11 @@ describe('describeRejection', () => {
     const sentences = Object.keys(SENTENCES).map((reason) => describeRejection(reason as RejectReason));
 
     expect(new Set(sentences).size).toBe(sentences.length);
+  });
+
+  it('falls back for a reason this build does not know', () => {
+    // A server newer than this build can refuse with a reason this catalog has no word for; the player
+    // still reads that the action was refused rather than an empty line.
+    expect(describeRejection('teleported' as RejectReason)).toBe('Ação recusada');
   });
 });

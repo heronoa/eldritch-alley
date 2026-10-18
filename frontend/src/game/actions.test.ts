@@ -27,8 +27,10 @@ interface UnitSpec {
   ammo?: number;
   /** Which pool the basic attack spends, for a class that carries one of the magic kind. */
   resourceKind?: 'ammo' | 'mana';
-  /** The id of the one active ability the unit carries, in `activeSets[0]` (ADR 0016 §6). */
+  /** The id of the ability the unit carries in the first active set (ADR 0016 §6). */
   ability?: string | null;
+  /** The id the second active set carries (ADR 0023 §1). */
+  secondAbility?: string | null;
 }
 
 function makeUnit(spec: UnitSpec): UnitState {
@@ -49,7 +51,12 @@ function makeUnit(spec: UnitSpec): UnitState {
     attunement: 50,
     primaryClass: 'sniper',
     equipment: { armor: null, helmet: null, mainHand: null, offHand: null, accessory1: null, accessory2: null },
-    abilities: { activeSets: [spec.ability ?? null, null], reaction: null, movement: null, support: null },
+    abilities: {
+      activeSets: [spec.ability ?? null, spec.secondAbility ?? null],
+      reaction: null,
+      movement: null,
+      support: null,
+    },
     movementProfile: { maxStepUp: 1, maxStepDown: 1, climbCost: 1 },
     facing: 'E',
     // The pool a basic attack spends, filled the way `newMatch` fills it: a magazine implies a kind.
@@ -184,6 +191,35 @@ describe('availableActions', () => {
     const state = catalogState([caster, ENEMY]);
 
     expect(availableActions(state, 'A').canUseAbility).toBe(true);
+  });
+
+  it('offers the ability when only the second active set names one', () => {
+    // The class gained a second ability (ADR 0023 §1), and the button opens the menu of both slots.
+    const caster = makeUnit({
+      id: 'A-wizard',
+      team: 'A',
+      at: { x: 1, y: 0 },
+      range: 1,
+      magazine: 3,
+      ammo: 2,
+      resourceKind: 'mana',
+      ability: null,
+      secondAbility: 'fireball',
+    });
+    const state = catalogState([caster, ENEMY]);
+
+    expect(availableActions(state, 'A').canUseAbility).toBe(true);
+  });
+
+  it('ignores names in the reaction, movement and support slots', () => {
+    // Only the two active sets are read, however many other slots name an ability (ADR 0016 §6).
+    const caster: UnitState = {
+      ...makeUnit({ id: 'A-wizard', team: 'A', at: { x: 1, y: 0 }, magazine: 3, ammo: 2, resourceKind: 'mana' }),
+      abilities: { activeSets: [null, null], reaction: 'fireball', movement: 'fireball', support: 'fireball' },
+    };
+    const state = catalogState([caster, ENEMY]);
+
+    expect(availableActions(state, 'A').canUseAbility).toBe(false);
   });
 
   it('refuses the ability to a unit whose slots name none', () => {
