@@ -145,6 +145,19 @@ export function pipsFor(unit: {
 }
 
 /**
+ * How many rounds a body has left, or null when there is no body to count. The engine removes the
+ * corpse as the round named by `corpseExpiresAtRound` begins (ADR 0003 addendum), so a visible body
+ * never reaches zero in normal play; the clamp keeps a stale state from counting below it.
+ */
+export function corpseRoundsLeft(
+  round: number,
+  unit: Pick<UnitState, 'defeated' | 'permanentlyDead' | 'corpseExpiresAtRound'>,
+): number | null {
+  if (!unit.defeated || unit.permanentlyDead || unit.corpseExpiresAtRound === null) return null;
+  return Math.max(0, unit.corpseExpiresAtRound - round);
+}
+
+/**
  * How solid a unit is drawn while somebody else is on turn. Decision D2 of the EA-3 plan assumed
  * 0.6 for the units that are not acting, to be confirmed or changed after a phone test.
  */

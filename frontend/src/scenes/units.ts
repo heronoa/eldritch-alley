@@ -28,6 +28,7 @@ import {
   CORPSE_OUTLINE_COLOR,
   FONT_BODY,
   FONT_SIZE,
+  INK_COLOR,
   MANA_COLOR,
   PANEL_FILL,
   PANEL_STROKE,
@@ -108,6 +109,28 @@ const COVER_BADGE = { gapAboveHitChance: 18, strokeThickness: 4 };
  */
 const BADGE_TAG = { paddingX: 5, paddingY: 2 };
 
+/**
+ * The countdown over a body (ADR 0023 §7): a small speech bubble whose tail points down at the fallen
+ * figure's head, carrying a skull and the rounds left before the body is removed. The skull sits
+ * behind the number and a little to its left, tilted 15 degrees counterclockwise — Phaser rotates
+ * clockwise for positive angles, so the sign is negative.
+ */
+const CORPSE_COUNTDOWN = {
+  width: 40,
+  height: 28,
+  radius: 6,
+  /** The bottom edge, above the head at -BODY_HEIGHT; the tail reaches down from here. */
+  bottom: -BODY_HEIGHT - 10,
+  tailWidth: 8,
+  tailHeight: 8,
+  /** The centre of the bubble, where the skull and the number sit. */
+  centreY: -BODY_HEIGHT - 24,
+  skullX: -4,
+  numberX: 4,
+  skullRotation: -Math.PI / 12,
+  strokeThickness: 3,
+} as const;
+
 /** What the sprite is busy with, and when it started. Only one action runs at a time. */
 type Action =
   | { kind: 'attack'; style: 'melee' | 'ranged'; hit: boolean; start: number; impactAt: number; impactUntil: number }
@@ -159,6 +182,11 @@ export class UnitSprite extends Phaser.GameObjects.Container {
   private readonly hitChanceBadge: Phaser.GameObjects.Text;
   /** The tag the hit-chance badge sits on, resized to the words it backs each time they change. */
   private readonly hitChanceTag: Phaser.GameObjects.Rectangle;
+  /** The speech bubble over a body and the skull behind its number; their geometry never changes. */
+  private readonly countdownBubble: Phaser.GameObjects.Graphics;
+  private readonly countdownSkull: Phaser.GameObjects.Graphics;
+  /** The rounds left before the body is removed, drawn over the skull. */
+  private readonly countdownText: Phaser.GameObjects.Text;
 
   private team: Team = 'A';
   /** The row of the sheet this unit is drawn from. A class without one falls back to Combatant. */
@@ -227,6 +255,64 @@ export class UnitSprite extends Phaser.GameObjects.Container {
       .setOrigin(0.5, 1)
       .setStroke(cssColor(COVER_BADGE_STROKE), COVER_BADGE.strokeThickness)
       .setVisible(false);
+
+    const countdownLeft = -CORPSE_COUNTDOWN.width / 2;
+    const countdownTop = CORPSE_COUNTDOWN.bottom - CORPSE_COUNTDOWN.height;
+    const tailHalf = CORPSE_COUNTDOWN.tailWidth / 2;
+    const tailTip = CORPSE_COUNTDOWN.bottom + CORPSE_COUNTDOWN.tailHeight;
+    this.countdownBubble = scene.add.graphics().setVisible(false);
+    this.countdownBubble.fillStyle(PANEL_FILL, PANEL_ALPHA);
+    // The tail first, so the body's fill hides the seam where the two join.
+    this.countdownBubble.fillTriangle(
+      -tailHalf,
+      CORPSE_COUNTDOWN.bottom,
+      tailHalf,
+      CORPSE_COUNTDOWN.bottom,
+      0,
+      tailTip,
+    );
+    this.countdownBubble.fillRoundedRect(
+      countdownLeft,
+      countdownTop,
+      CORPSE_COUNTDOWN.width,
+      CORPSE_COUNTDOWN.height,
+      CORPSE_COUNTDOWN.radius,
+    );
+    this.countdownBubble.lineStyle(1, PANEL_STROKE, 1);
+    this.countdownBubble.strokeRoundedRect(
+      countdownLeft,
+      countdownTop,
+      CORPSE_COUNTDOWN.width,
+      CORPSE_COUNTDOWN.height,
+      CORPSE_COUNTDOWN.radius,
+    );
+
+    this.countdownSkull = scene.add.graphics();
+    this.countdownSkull.fillStyle(PAPER_COLOR, 1);
+    this.countdownSkull.fillCircle(0, -1, 7);
+    this.countdownSkull.fillRoundedRect(-5, 3, 10, 6, 2);
+    this.countdownSkull.fillStyle(INK_COLOR, 1);
+    this.countdownSkull.fillCircle(-2.5, -2, 2);
+    this.countdownSkull.fillCircle(2.5, -2, 2);
+    this.countdownSkull.fillTriangle(-1, 2, 1, 2, 0, 4);
+    this.countdownSkull.lineStyle(1, INK_COLOR, 1);
+    this.countdownSkull.lineBetween(-4, 6, 4, 6);
+    this.countdownSkull.lineBetween(-4, 8, 4, 8);
+    this.countdownSkull
+      .setPosition(CORPSE_COUNTDOWN.skullX, CORPSE_COUNTDOWN.centreY)
+      .setRotation(CORPSE_COUNTDOWN.skullRotation)
+      .setVisible(false);
+
+    this.countdownText = scene.add
+      .text(CORPSE_COUNTDOWN.numberX, CORPSE_COUNTDOWN.centreY, '', {
+        fontFamily: FONT_BODY,
+        fontSize: `${FONT_SIZE.unit}px`,
+        color: cssColor(PAPER_COLOR),
+      })
+      .setOrigin(0.5, 0.5)
+      .setStroke(cssColor(INK_COLOR), CORPSE_COUNTDOWN.strokeThickness)
+      .setVisible(false);
+
     this.add([
       this.marker,
       this.corpse,
@@ -238,6 +324,9 @@ export class UnitSprite extends Phaser.GameObjects.Container {
       this.coverBadge,
       this.hitChanceTag,
       this.hitChanceBadge,
+      this.countdownBubble,
+      this.countdownSkull,
+      this.countdownText,
     ]);
 
     scene.add.existing(this);
@@ -287,6 +376,8 @@ export class UnitSprite extends Phaser.GameObjects.Container {
     this.setCoverBadge(null);
     // Nor is it a target left to aim at (EA-18).
     this.setHitChanceBadge(null);
+    // Nothing of the living unit's head lingers on the body while the new state arrives.
+    this.setCorpseCountdown(null);
     this.drawMarker();
     this.drawCorpse();
     this.drawArrow();
@@ -315,6 +406,17 @@ export class UnitSprite extends Phaser.GameObjects.Container {
     this.hitChanceBadge.setVisible(text !== null);
     this.hitChanceTag.setVisible(text !== null);
     if (text !== null) this.fitTag(this.hitChanceTag, this.hitChanceBadge);
+  }
+
+  /**
+   * Draws the rounds a body has left over its head, or takes the count down with `null`. The count is
+   * the scene's arithmetic (`view/unit-look.ts`); the sprite draws what it is handed, for either team.
+   */
+  setCorpseCountdown(rounds: number | null): void {
+    const visible = rounds !== null;
+    this.countdownBubble.setVisible(visible);
+    this.countdownSkull.setVisible(visible);
+    this.countdownText.setText(rounds === null ? '' : String(rounds)).setVisible(visible);
   }
 
   /** Grows `tag` to fit `label` plus the padding every badge tag keeps around its words. */

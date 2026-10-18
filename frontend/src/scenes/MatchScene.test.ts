@@ -985,6 +985,29 @@ describe('the match scene', () => {
     }
   });
 
+  it('counts the rounds left over every body, on both teams, and shows nothing over the living', () => {
+    const { session } = startMatch();
+    const living = makeUnit('A-sniper', 'A', 0, 0);
+    const allyBody = { ...makeUnit('A-wizard', 'A', 1, 0), defeated: true, corpseExpiresAtRound: 6 };
+    const enemyBody = { ...makeUnit('B-priest', 'B', 7, 7), defeated: true, corpseExpiresAtRound: 5 };
+    const state = {
+      ...stateFor({ onTurn: 'A', spent: false }),
+      units: [living, allyBody, enemyBody],
+    };
+
+    // Phaser's Text cannot be read back here, so the number is read at the seam the scene hands it
+    // over, exactly like the cover badge above.
+    const countdown = vi.spyOn(UnitSprite.prototype, 'setCorpseCountdown');
+    try {
+      session.emit.state(message(state));
+
+      // `stateFor` is round 4: the ally body (expiry 6) has two rounds left, the enemy body (5) one.
+      expect(countdown.mock.calls.map(([rounds]) => rounds)).toEqual([null, 2, 1]);
+    } finally {
+      countdown.mockRestore();
+    }
+  });
+
   it('starts with the cover marks off when the browser was told so, and says so in the HUD', () => {
     withStorage({ [HIGHLIGHT_COVERS_KEY]: 'false' });
     const { session, render } = startMatch();

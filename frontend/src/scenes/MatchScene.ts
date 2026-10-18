@@ -122,7 +122,7 @@ import {
   HOVER_HIGHLIGHT_ALPHA,
   HOVER_HIGHLIGHT_COLOR,
 } from '../view/theme';
-import { BODY_HEIGHT, SPRITE_SIZE } from '../view/unit-look';
+import { BODY_HEIGHT, SPRITE_SIZE, corpseRoundsLeft } from '../view/unit-look';
 import { download } from './download';
 import { playEffect, playImpact } from './effects';
 import { MapView } from './map/MapView';
@@ -2076,6 +2076,9 @@ export class MatchScene extends Phaser.Scene {
       // The words over its head are read from the board's own sides (EA-15), so they say the same thing
       // the rule does — and a unit that has fallen is covered by nothing.
       sprite.setCoverBadge(unit.defeated ? null : coverSentence(state.board, unit.position));
+      // A body is a resource while a resurrection can still reach it, so its remaining rounds are
+      // drawn over it for either team (ADR 0023 §7).
+      sprite.setCorpseCountdown(corpseRoundsLeft(state.round, unit));
     }
 
     for (const id of [...this.sprites.keys()]) {
