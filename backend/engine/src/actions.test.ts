@@ -202,6 +202,9 @@ describe('actions: move', () => {
         from: { x: 0, y: 0 },
         to: { x: 1, y: 0 },
         path: [{ x: 1, y: 0 }],
+        // A walk that enters no difficult cell rolls nothing, so the random source is untouched.
+        rngState: state.rng.state,
+        prone: false,
       },
     ]);
     expect(unitAt(first.state, 'a1').position).toEqual({ x: 1, y: 0 });
@@ -240,6 +243,8 @@ describe('actions: move', () => {
           { x: 1, y: 0 },
           { x: 2, y: 0 },
         ],
+        rngState: state.rng.state,
+        prone: false,
       },
     ]);
     expect(unitAt(result.state, 'a1').position).toEqual({ x: 2, y: 0 });
@@ -424,6 +429,119 @@ describe('actions: attack', () => {
     const first = accepted(applyAction(state, { type: 'attack', actor: 'a1', target: 'b1' }));
     const second = rejected(applyAction(first.state, { type: 'attack', actor: 'a1', target: 'b1' }));
     expect(second.reason).toBe('already-acted');
+  });
+});
+
+describe('actions: attack and camouflage', () => {
+  /** The standard duel with a status written onto `b1`, which is how a body hides before the rules run. */
+  function hidden(b1: Partial<Unit> = {}, a1: Partial<Unit> = {}): MatchState {
+    const state = newMatch(twoUnitSetup(a1, { position: { x: 0, y: 1 }, ...b1 }));
+    return {
+      ...state,
+      units: state.units.map((unit) =>
+        unit.id === 'b1' ? { ...unit, camouflage: { turns: 2, breakChance: 30 } } : unit,
+      ),
+    };
+  }
+
+  it('refuses a basic attack against a living camouflaged enemy with target-hidden', () => {
+    const state = hidden();
+    const snapshot = JSON.parse(JSON.stringify(state)) as MatchState;
+
+    const result = rejected(applyAction(state, { type: 'attack', actor: 'a1', target: 'b1' }));
+
+    expect(result.reason).toBe('target-hidden');
+    expect(state).toEqual(snapshot);
+    expect(hashState(state)).toBe(hashState(snapshot));
+  });
+
+  it('answers target-hidden before the reach, so a far hidden target is not reported as out of range', () => {
+    const state = hidden({ position: { x: 2, y: 0 } }, { range: 1 });
+
+    expect(rejected(applyAction(state, { type: 'attack', actor: 'a1', target: 'b1' })).reason).toBe(
+      'target-hidden',
+    );
+  });
+
+  it('answers target-hidden before the pool, so an empty magazine does not hide the reason', () => {
+    const state = hidden({}, { magazine: 3 });
+    const empty: MatchState = {
+      ...state,
+      units: state.units.map((unit) => (unit.id === 'a1' ? { ...unit, ammo: 0 } : unit)),
+    };
+
+    expect(rejected(applyAction(empty, { type: 'attack', actor: 'a1', target: 'b1' })).reason).toBe(
+      'target-hidden',
+    );
+  });
+
+  it('keeps a body targetable by the ordinary validity rules, hidden or not', () => {
+    // The status closes the basic-attack rule only for a living enemy: a fallen one is target-invalid.
+    // A second living enemy keeps the match from ending before the target rule is read.
+    const state = hidden();
+    const living: MatchState = {
+      ...state,
+      units: [...state.units, { ...state.units[1], id: 'b2', position: { x: 5, y: 5 } }],
+      initiative: [...state.initiative, 'b2'],
+    };
+    const dead: MatchState = {
+      ...living,
+      units: living.units.map((unit) => (unit.id === 'b1' ? { ...unit, defeated: true } : unit)),
+    };
+
+    expect(rejected(applyAction(dead, { type: 'attack', actor: 'a1', target: 'b1' })).reason).toBe(
+      'target-invalid',
+    );
+  });
+});
+
+describe('actions: the turn-end order', () => {
+  it('announces the turn, the standing up, the drying ground and the ending status in that order', () => {
+    // b1 is last in the queue, so its passed turn wraps the round: every kind of turn-end event is due
+    // at once, which is what fixes their order.
+    let state = newMatch(twoUnitSetup({ movement: 4 }, { movement: 4 }));
+    state = {
+      ...state,
+      currentIndex: 1,
+      movementLeft: 4,
+      hasActed: false,
+      difficultTerrain: [{ position: { x: 1, y: 1 }, expiresAtRound: 2 }],
+      units: state.units.map((unit) =>
+        unit.id === 'a1'
+          ? { ...unit, prone: true }
+          : unit.id === 'b1'
+            ? { ...unit, camouflage: { turns: 1, breakChance: 30 } }
+            : unit,
+      ),
+    };
+
+    const result = accepted(
+      applyAction(state, { type: 'endTurn', actor: 'b1', round: state.round }),
+    );
+
+    expect(result.events.map((event) => event.type)).toEqual([
+      'turn-ended',
+      'stood-up',
+      'terrain-expired',
+      'camouflage-ended',
+    ]);
+    expect(result.events[1]).toEqual({ type: 'stood-up', actor: 'a1' });
+    expect(result.events[2]).toEqual({
+      type: 'terrain-expired',
+      cells: [{ x: 1, y: 1 }],
+    });
+    expect(result.events[3]).toEqual({
+      type: 'camouflage-ended',
+      target: 'b1',
+      reason: 'expired',
+    });
+
+    expect(result.state.round).toBe(2);
+    expect(unitAt(result.state, 'a1').prone).toBe(false);
+    // The unit that stood up this turn walks at half its movement.
+    expect(result.state.movementLeft).toBe(2);
+    expect(result.state.difficultTerrain).toEqual([]);
+    expect(unitAt(result.state, 'b1').camouflage).toBeNull();
   });
 });
 

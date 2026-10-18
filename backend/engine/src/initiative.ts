@@ -31,6 +31,36 @@ export function removeFromInitiative(queue: readonly UnitId[], unitId: UnitId): 
   return queue.filter((id) => id !== unitId);
 }
 
+/**
+ * Puts a unit back into the queue by the same rule `buildInitiativeQueue` sorts it by: speed, highest
+ * first, and a tie broken by the position in `units`, which is setup order (ADR 0023 §7). It returns
+ * the index the unit took, which is what the caller compares with `currentIndex`: a slot at or before
+ * the pointer has already passed this round.
+ *
+ * The state it receives is the one `applyEvent` has already cloned, so writing the queue here rebuilds
+ * the same match a replay of the event would.
+ */
+export function insertIntoInitiative(state: MatchState, unitId: UnitId): number {
+  const position = state.units.findIndex((unit) => unit.id === unitId);
+  if (position < 0) throw new RangeError(`unknown unit: ${unitId}`);
+  const unit = state.units[position];
+  const slotOf = (id: UnitId): number =>
+    state.units.findIndex((candidate) => candidate.id === id);
+
+  let at = state.initiative.length;
+  for (let index = 0; index < state.initiative.length; index += 1) {
+    const otherPosition = slotOf(state.initiative[index]);
+    const other = state.units[otherPosition];
+    if (other.speed < unit.speed || (other.speed === unit.speed && otherPosition > position)) {
+      at = index;
+      break;
+    }
+  }
+
+  state.initiative.splice(at, 0, unitId);
+  return at;
+}
+
 export function currentUnitId(state: PublicState): UnitId {
   return state.initiative[state.currentIndex];
 }

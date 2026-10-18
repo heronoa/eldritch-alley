@@ -42,14 +42,30 @@ export function stepAllowed(
   return climb <= profile.maxStepUp && -climb <= profile.maxStepDown;
 }
 
-/** What one step costs: 1, plus the profile's price for each level climbed. A descent is free. */
+/**
+ * Whether the cell is difficult terrain today (ADR 0023 §4). The layer lives in the match state and the
+ * board stays immutable, so the search and the replay read the same answer from the same place.
+ */
+export function isDifficult(state: PublicState, cell: Position): boolean {
+  return state.difficultTerrain.some(
+    (terrain) => terrain.position.x === cell.x && terrain.position.y === cell.y,
+  );
+}
+
+/**
+ * What one step costs: 1, plus the profile's price for each level climbed. A descent is free. Entering
+ * a difficult cell doubles the full cost, the climb included (ADR 0023 §4); the flag reads the
+ * destination, so a step out of the mud is an ordinary step.
+ */
 export function stepCost(
   profile: MovementProfile,
   board: Board,
   from: Position,
   to: Position,
+  difficult = false,
 ): number {
-  return 1 + profile.climbCost * Math.max(0, climbBetween(board, from, to));
+  const cost = 1 + profile.climbCost * Math.max(0, climbBetween(board, from, to));
+  return difficult ? cost * 2 : cost;
 }
 
 /** A step at the default profile, which is what a cell has cost since M1. */
@@ -96,9 +112,10 @@ function mover(state: PublicState, unitId: UnitId): UnitState | null {
 }
 
 /**
- * Dijkstra over the board, bounded by the movement left. A step costs 1 or 2, so one bucket per cost
- * is enough. A cell is written once: the first route to reach it is the one kept, and since the
- * neighbours are visited in a fixed order, that route is the same on every run.
+ * Dijkstra over the board, bounded by the movement left. A step costs 1 or 2 on plain ground and twice
+ * that on difficult terrain, so one bucket per cost up to the budget is enough. A cell is written once:
+ * the first route to reach it is the one kept, and since the neighbours are visited in a fixed order,
+ * that route is the same on every run.
  */
 function walkFrom(state: PublicState, unit: UnitState): Walk {
   const board = state.board;
@@ -108,6 +125,11 @@ function walkFrom(state: PublicState, unit: UnitState): Walk {
   const parent = gridOf<Position | null>(board, null);
   const taken = gridOf(board, false);
   const blocked = gridOf(board, false);
+  const difficult = gridOf(board, false);
+
+  for (const terrain of state.difficultTerrain) {
+    if (inBounds(board, terrain.position)) difficult[terrain.position.y][terrain.position.x] = true;
+  }
 
   for (const other of state.units) {
     if (other.permanentlyDead) continue;
@@ -119,7 +141,8 @@ function walkFrom(state: PublicState, unit: UnitState): Walk {
   const start = { x: unit.position.x, y: unit.position.y };
   cost[start.y][start.x] = 0;
 
-  // No step is longer than 2, so nothing is ever queued past the budget: the buckets go that far.
+  // The buckets go as far as the budget: an arrival past it is dropped above, so no cell out of
+  // budget is ever queued.
   const buckets: Position[][] = Array.from({ length: budget + 1 }, () => []);
   buckets[0].push(start);
 
@@ -134,7 +157,7 @@ function walkFrom(state: PublicState, unit: UnitState): Walk {
         if (blocked[to.y][to.x]) continue;
         if (!stepAllowed(profile, board, from, to)) continue;
 
-        const arriving = spent + stepCost(profile, board, from, to);
+        const arriving = spent + stepCost(profile, board, from, to, difficult[to.y][to.x]);
         if (arriving > budget) continue;
         // The first route to a cell wins, which is what keeps the tie-break fixed.
         if (cost[to.y][to.x] !== -1) continue;

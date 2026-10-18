@@ -179,13 +179,51 @@ function validateCatalog(catalog: readonly AbilityDefinition[]): void {
     }
 
     const effect = ability.effect;
-    if (!effect || (effect.kind !== 'damage' && effect.kind !== 'heal')) {
-      throw new RangeError(`catalog[${index}].effect.kind must be damage or heal`);
+    if (!effect || typeof effect !== 'object') {
+      throw new RangeError(`catalog[${index}].effect must be an effect`);
     }
-    requireNonNegativeInteger(effect.amount, `catalog[${index}].effect.amount`);
-    requireNonNegativeInteger(effect.radius, `catalog[${index}].effect.radius`);
-    if (effect.kind === 'damage' && typeof effect.ignoresCover !== 'boolean') {
-      throw new RangeError(`catalog[${index}].effect.ignoresCover must be a boolean`);
+
+    switch (effect.kind) {
+      case 'damage':
+        requireNonNegativeInteger(effect.amount, `catalog[${index}].effect.amount`);
+        requireNonNegativeInteger(effect.radius, `catalog[${index}].effect.radius`);
+        if (typeof effect.ignoresCover !== 'boolean') {
+          throw new RangeError(`catalog[${index}].effect.ignoresCover must be a boolean`);
+        }
+        break;
+      case 'heal':
+        requireNonNegativeInteger(effect.amount, `catalog[${index}].effect.amount`);
+        requireNonNegativeInteger(effect.radius, `catalog[${index}].effect.radius`);
+        break;
+      case 'camouflage':
+        if (effect.radius !== 0) {
+          throw new RangeError(`catalog[${index}].effect.radius must be 0 for camouflage`);
+        }
+        if (!Number.isInteger(effect.turns) || effect.turns <= 0) {
+          throw new RangeError(`catalog[${index}].effect.turns must be a positive integer`);
+        }
+        requireIntegerInRange(
+          effect.breakChance,
+          `catalog[${index}].effect.breakChance`,
+          0,
+          100,
+        );
+        break;
+      case 'terrain':
+        requireNonNegativeInteger(effect.radius, `catalog[${index}].effect.radius`);
+        if (!Number.isInteger(effect.durationRounds) || effect.durationRounds <= 0) {
+          throw new RangeError(`catalog[${index}].effect.durationRounds must be a positive integer`);
+        }
+        break;
+      case 'revive':
+        if (effect.radius !== 0) {
+          throw new RangeError(`catalog[${index}].effect.radius must be 0 for revive`);
+        }
+        break;
+      default:
+        throw new RangeError(
+          `catalog[${index}].effect.kind must be damage, heal, camouflage, terrain or revive`,
+        );
     }
   });
 }
@@ -254,6 +292,9 @@ function toUnitState(unit: Unit, board: Board): UnitState {
     resourceKind: unit.magazine === null ? null : (unit.resourceKind ?? 'ammo'),
     permanentlyDead: false,
     corpseExpiresAtRound: null,
+    // Every unit opens with no status: the cast is what writes one (ADR 0023 §3 and §4).
+    camouflage: null,
+    prone: false,
   };
 }
 
@@ -295,6 +336,8 @@ export function newMatch(setup: MatchSetup): MatchState {
     round: 1,
     hasActed: false,
     pendingMove: null,
+    // No cast has poured anything onto the ground yet; the layer is state the casts write (ADR 0023 §4).
+    difficultTerrain: [],
     rng: createRng(setup.seed),
     eventCount: 0,
   };

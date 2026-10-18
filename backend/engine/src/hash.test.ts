@@ -141,6 +141,50 @@ describe('hashState', () => {
     expect(hashState(swapped)).not.toBe(hashState(state));
   });
 
+  it('changes when a unit is camouflaged or prone', () => {
+    const state = newMatch(makeSetup());
+    const hidden: MatchState = {
+      ...state,
+      units: state.units.map((unit) =>
+        unit.id === 'b1' ? { ...unit, camouflage: { turns: 3, breakChance: 30 } } : unit,
+      ),
+    };
+    const down: MatchState = {
+      ...state,
+      units: state.units.map((unit) => (unit.id === 'b1' ? { ...unit, prone: true } : unit)),
+    };
+
+    expect(hashState(hidden)).not.toBe(hashState(state));
+    expect(hashState(down)).not.toBe(hashState(state));
+    expect(hashState(hidden)).not.toBe(hashState(down));
+    // A camouflage with other numbers is another state.
+    const weaker: MatchState = {
+      ...state,
+      units: state.units.map((unit) =>
+        unit.id === 'b1' ? { ...unit, camouflage: { turns: 3, breakChance: 10 } } : unit,
+      ),
+    };
+    expect(hashState(weaker)).not.toBe(hashState(hidden));
+  });
+
+  it('changes when the difficult terrain changes, and keeps its array order as state', () => {
+    const state = newMatch(makeSetup());
+    const first = { position: { x: 1, y: 0 }, expiresAtRound: 4 };
+    const second = { position: { x: 1, y: 1 }, expiresAtRound: 4 };
+    const wet: MatchState = { ...state, difficultTerrain: [first, second] };
+    const reversed: MatchState = { ...state, difficultTerrain: [second, first] };
+    const dried: MatchState = {
+      ...state,
+      difficultTerrain: [{ ...first, expiresAtRound: 5 }, second],
+    };
+
+    expect(hashState(wet)).not.toBe(hashState(state));
+    expect(hashState(reversed)).not.toBe(hashState(wet));
+    expect(hashState(dried)).not.toBe(hashState(wet));
+    // The same state always hashes the same.
+    expect(hashState(wet)).toBe(hashState(wet));
+  });
+
   it('returns an unsigned 32-bit integer', () => {
     const hash = hashState(newMatch(makeSetup()));
     expect(Number.isInteger(hash)).toBe(true);
