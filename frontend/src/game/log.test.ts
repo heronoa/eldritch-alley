@@ -70,6 +70,17 @@ describe('describeEvent', () => {
     expect(describeEvent(event, NAMES)).toBe('Sniper moveu de (0,0) para (1,0)');
   });
 
+  it('describes a pending move taken back or confirmed', () => {
+    // The two events close the run a move opens (EA-5); without their cases the log read them as
+    // unknown events.
+    expect(describeEvent({ type: 'move-cancelled', actor: 'A-sniper' }, NAMES)).toBe(
+      'Sniper cancelou o movimento',
+    );
+    expect(describeEvent({ type: 'move-committed', actor: 'A-sniper' }, NAMES)).toBe(
+      'Sniper confirmou o movimento',
+    );
+  });
+
   it('describes a hit with the damage', () => {
     const event: Event = {
       type: 'attacked',

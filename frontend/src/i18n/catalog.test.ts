@@ -150,6 +150,11 @@ describe('the pt-BR the game shows', () => {
 
   it('carries the sentences of the battle log, with their placeholders', () => {
     expect(ptBR['log.event.moved']).toBe('{actor} moveu de {from} para {to}');
+    // The two events that close a pending move (EA-5).
+    expect(ptBR['log.event.moveCancelled']).toBe('{actor} cancelou o movimento');
+    expect(enUS['log.event.moveCancelled']).toBe('{actor} cancelled the move');
+    expect(ptBR['log.event.moveCommitted']).toBe('{actor} confirmou o movimento');
+    expect(enUS['log.event.moveCommitted']).toBe('{actor} confirmed the move');
     expect(ptBR['log.event.attacked']).toBe('{actor} acertou {target} por {damage}');
     expect(ptBR['log.event.missed']).toBe('{actor} errou {target}');
     expect(ptBR['log.event.reloaded']).toBe('{actor} recarregou');

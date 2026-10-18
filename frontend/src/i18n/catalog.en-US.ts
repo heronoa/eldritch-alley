@@ -185,6 +185,9 @@ export const enUS: Record<MessageKey, string> = {
 
   // The battle log. One sentence per event, and the placeholders are filled by `interpolate`.
   'log.event.moved': '{actor} moved from {from} to {to}',
+  // A pending move taken back or confirmed (EA-5); the walk itself is `moved`.
+  'log.event.moveCancelled': '{actor} cancelled the move',
+  'log.event.moveCommitted': '{actor} confirmed the move',
   'log.event.attacked': '{actor} hit {target} for {damage}',
   // Which end of the shot the crate was on is the whole difference between the four pairs, and the
   // shooter's own cover is read on the board (ADR 0012 § D4, ADR 0013).
