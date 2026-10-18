@@ -1,0 +1,451 @@
+/* The account (m4-04): the control in the corner, the three cards over the title and the two pages a
+   mailed link lands on. The palette is the title screen's, not a second one: every colour here is a
+   token `title.css` defines or a literal that sheet already writes (the card's border, its hard shadow,
+   the pool behind the switcher). `contrast.test.ts` holds both halves of that — that nothing is
+   invented, and that every text pair clears its floor.
+
+   The cards live outside `main.title` for the same reason the language switcher does: that layer is a
+   fixed box, and a stacking context opened inside it would trap their numbers. */
+
+/* The markup says `hidden` and the browser has to obey it even where a rule below sets a display: a
+   card that is down, a field the step does not ask for, and a line with nothing to say are all
+   `display: none`, never a box that only looks empty. */
+[hidden] {
+  display: none !important;
+}
+
+/* The control, in the corner the language switcher leaves free. It borrows the switcher's pool of
+   night, so its contrast does not depend on what the city happens to be drawing under it. */
+.account {
+  position: fixed;
+  top: 12px;
+  left: 16px;
+  z-index: 2;
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  background: rgba(5, 7, 15, 0.92);
+}
+
+.account-control {
+  min-width: 64px;
+  min-height: 34px;
+  max-width: 220px;
+  padding: 0 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  font: 600 13px/1 var(--body);
+  letter-spacing: 0.1em;
+  color: var(--muted);
+  background: var(--night);
+  border: 2px solid var(--muted);
+  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.45);
+}
+
+.account-control:hover {
+  color: var(--ink);
+  border-color: var(--ink);
+}
+
+/* A signed-in player: the ink of the title, edged in the stamp's red — the same mark the active
+   language wears. */
+.account-control.on {
+  color: var(--ink);
+  border-color: var(--stamp);
+}
+
+.account-control:focus-visible,
+.account-close:focus-visible,
+.account-tab:focus-visible,
+.account-provider:focus-visible,
+.account-link:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+/* A card over the title: the whole screen is the backdrop, so a click behind it cannot reach the call
+   to action. The number is the page's one number for "a card over the title" — the notice and the
+   onboarding use it too — and it is below the switcher's 2 and the board's 3. */
+.account-card {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(5, 7, 15, 0.72);
+}
+
+/* The card itself is opaque: its contrast does not depend on the city behind it. The background, the
+   border and the shadow are the notice card's own values, so the account cannot drift from it. */
+.account-card-body {
+  width: min(420px, 100%);
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+  padding: 16px;
+  background: var(--game);
+  border: 2px solid #e07a6f;
+  box-shadow: 6px 6px 0 rgba(0, 0, 0, 0.45);
+}
+
+.account-card-wide .account-card-body {
+  width: min(640px, 100%);
+}
+
+.account-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.account-card-title {
+  margin: 0;
+  font: 600 12px/1.4 var(--body);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.account-close {
+  flex: none;
+  min-width: 26px;
+  min-height: 26px;
+  padding: 0 8px;
+  cursor: pointer;
+  font: 600 12px/1 var(--body);
+  color: var(--muted);
+  background: none;
+  border: 1px solid transparent;
+}
+
+.account-close:hover {
+  color: var(--ink);
+}
+
+/* The tabs of the dialog: the step that changes, never a card that closes. The selected one wears the
+   stamp's red as its underline, the way the active language does. */
+.account-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.account-tab {
+  padding: 8px 10px;
+  cursor: pointer;
+  font: 600 12px/1 var(--body);
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  background: none;
+  border: 1px solid transparent;
+  border-bottom: 2px solid transparent;
+}
+
+.account-tab:hover {
+  color: var(--ink);
+}
+
+.account-tab[aria-selected='true'] {
+  color: var(--ink);
+  border-bottom-color: var(--stamp);
+}
+
+.account-hint {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.account-problem {
+  margin: 12px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #e07a6f;
+}
+
+.account-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+/* A field is a well of the title's night on the card: the input's own ink is then held against the
+   night, which is the title's own 14.75:1 pair. The border is muted and not the border red, so the
+   card's frame stays the one loud edge in the picture. */
+.account-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.account-field input {
+  min-height: 40px;
+  padding: 10px;
+  font: 400 14px/1.4 var(--body);
+  color: var(--ink);
+  background: var(--night);
+  border: 1px solid var(--muted);
+}
+
+.account-field input:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
+}
+
+.account-form .cta {
+  align-self: flex-start;
+  margin-top: 6px;
+}
+
+/* The providers: one button per name the deployment answered. The box stays empty — and so draws
+   nothing — when the platform has no OAuth app. */
+.account-providers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.account-provider {
+  padding: 10px 14px;
+  cursor: pointer;
+  font: 600 13px/1 var(--body);
+  color: var(--ink);
+  background: var(--night);
+  border: 1px solid var(--muted);
+}
+
+.account-provider:hover {
+  border-color: #e07a6f;
+}
+
+/* A press that changes the card or leaves the page, without the weight of the call to action. */
+.account-link {
+  padding: 0;
+  cursor: pointer;
+  font: 600 13px/1.4 var(--body);
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  background: none;
+  border: none;
+}
+
+.account-link:hover {
+  color: #e07a6f;
+}
+
+.account-identity {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.account-avatar {
+  width: 56px;
+  height: 56px;
+  object-fit: cover;
+  background: var(--night);
+  border: 2px solid #e07a6f;
+}
+
+.account-name {
+  margin: 0;
+  font: 400 20px/1.2 var(--title);
+  color: var(--ink);
+}
+
+.account-email {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.account-section {
+  margin: 16px 0 8px;
+  font: 600 11px/1.4 var(--body);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* The squad, in the order the platform sent it. Each row is a well of night with the stamp's red on
+   its edge, the same mark the control wears when someone is signed in. */
+.account-agents {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.account-agent {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  font-size: 13px;
+  color: var(--ink);
+  background: var(--night);
+  border-left: 2px solid var(--stamp);
+}
+
+.account-level {
+  color: var(--muted);
+}
+
+.account-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+/* The security card's method line: how the account signs in. It stays a hint — muted and small — and
+   is written here, above the exit it introduces, so the contrast matrix reads it from this rule. */
+.account-security-methods {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+/* The exit from the account. The problem's red, edged and never filled: it is a warning, not the
+   primary action, so hover underlines the label instead of flooding the button and the focus ring is
+   the dialog's ink. Sign out stays a plain link, which keeps the two distinguishable at rest and with
+   the keyboard. */
+.account-danger {
+  padding: 8px 12px;
+  cursor: pointer;
+  font: 600 13px/1.4 var(--body);
+  color: #e07a6f;
+  background: none;
+  border: 1px solid #e07a6f;
+}
+
+.account-danger:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.account-danger:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+/* The history: a page of rows, then a button that asks for the next one. */
+.history-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  max-height: 50vh;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.history-row {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr) auto auto;
+  gap: 10px;
+  align-items: baseline;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--ink);
+  background: var(--night);
+}
+
+.history-date,
+.history-rounds {
+  color: var(--muted);
+}
+
+.history-map {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-result {
+  font-weight: 600;
+  color: #e07a6f;
+}
+
+.account-more {
+  display: block;
+  margin: 16px 0 0 auto;
+}
+
+/* The page a mailed link lands on. The title's own markup is hidden by `boot.ts`; this is the whole
+   screen, on the night the game sits on, and a card like the others. */
+.mail {
+  position: fixed;
+  inset: 0;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: var(--night);
+}
+
+.mail-card {
+  width: min(460px, 100%);
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  padding: 24px;
+  background: var(--game);
+  border: 2px solid #e07a6f;
+  box-shadow: 6px 6px 0 rgba(0, 0, 0, 0.45);
+}
+
+.mail-body {
+  margin: 12px 0 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.mail-card .account-link {
+  display: inline-block;
+  margin-top: 18px;
+}
+
+/* A phone: the cards take the screen's width less a 16px gutter, and the rows become one column. */
+@media (max-width: 520px) {
+  .account {
+    top: 10px;
+    left: 12px;
+  }
+
+  .account-control {
+    max-width: 150px;
+  }
+
+  .account-card {
+    padding: 16px;
+  }
+
+  .account-card-body,
+  .mail-card {
+    width: 100%;
+    max-height: calc(100vh - 32px);
+  }
+
+  .history-row {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+}

@@ -6,13 +6,14 @@ Based on [pitch.md](pitch.md) (MVP scope) and the state of the repository.
 
 | Package | Status |
 |---|---|
-| `backend/engine` | Only `ENGINE_VERSION` and one test. No game rules implemented. |
-| `backend/game-server` | Starts Colyseus over WebSocket, no rooms yet. |
-| `backend/platform-api` | NestJS with `/health`. No database, no authentication. |
-| `frontend` | Phaser with a boot scene that shows the title. |
-| Infra | Docker Compose with Postgres, Redis, LocalStack and a single Dockerfile. |
+| `backend/engine` | The combat rules: board and movement, attack, cover, facing, height advantage, classes, abilities and resources, initiative. Deterministic integer math (ADR 0005). |
+| `backend/game-server` | A Colyseus room that plays a complete match against the bot, with reconnection and the reaction abilities (ADRs 0007, 0014, 0015, 0017). |
+| `backend/platform-api` | NestJS with `/health`, PostgreSQL through MikroORM, and the schema applied by a migration step before the service starts (ADR 0019). Accounts arrive with m4-02. |
+| `frontend` | Phaser: title, the onboarding sequence, and the match client with its board, hit-chance badges and action log, in both locales (ADR 0009). |
+| Infra | Docker Compose with Postgres, Redis, LocalStack and a single Dockerfile, plus a CI workflow running typecheck, migrations, tests and build. |
 
-Not yet built: combat rules, persistence, login, match client, CI.
+Not yet built: accounts and login, the persistent squad, the battle history and replay screen, ranked
+matchmaking, and the production deploy.
 
 ## Order and principles
 
@@ -47,6 +48,13 @@ The decisions below are recorded as ADRs in [docs/adr/](docs/adr/).
 | PvP turn timer (30 s hypothesis) | M5 | [0004](docs/adr/0004-pvp-turn-timer.md) (Proposed) |
 | Deterministic engine with integer math | M1 | [0005](docs/adr/0005-deterministic-integer-engine.md) (Accepted) |
 | NestJS 11 instead of 12 | M4 | [0006](docs/adr/0006-nestjs-11.md) (Accepted) |
+| Sign-in with GitHub and Google, a session cookie and a game ticket | M4 | 0018 (to write, m4-02) |
+| Migrations as a single step, before the services start | M4 | [0019](docs/adr/0019-migrations-as-a-single-step.md) (Accepted) |
+| A persistent squad with a starter set; death and level-up deferred | M4 | 0020 (to write, m4-02) |
+
+This table carries the decisions that reach beyond one milestone. The rules of M2 and M3 raised thirteen
+more (0007–0017, from reaction abilities to mana regeneration); each is recorded in
+[docs/adr/](docs/adr/) and linked from the plan of the milestone that took it.
 
 Resolved, with no ADR needed (it does not affect code): the setting is its own universe, not shared with Magia Urbana (owner, 2026-10-07, see `.ia_context/plans/m3-rules-and-content.index.md` § Decisions, B2). See `pitch.md` § Setting.
 
@@ -118,7 +126,7 @@ Every cloud resource needs its own approval before it is created.
 
 **Done when:** the same match is played in the browser on the published version, and the tunnel tests above are recorded. The comparison with Wizard Battle is decided at this point.
 
-### M3. Rules and content (G). Only if this project is chosen.
+### M3. Rules and content (G, done)
 
 - Line of sight and cover (walls, crates, cars), using an integer algorithm (ADR 0005).
 - Direction bonus: attacks from behind and from the flank.
@@ -132,7 +140,13 @@ Every cloud resource needs its own approval before it is created.
 
 **Done when:** playtest matches end with varied winners, not one dominant strategy, and the playtest is documented.
 
-### M3.5. Onboarding (P)
+**Delivered (2026-10-14).** m3-01 to m3-03 merged (cover, facing and height, abilities, mana per turn);
+ADRs 0012–0017 accepted. The m3-04 harness was not run: the owner played the m3-03 build and judged the
+three classes balanced, which closed the item as
+[DT-15](.ia_context/inputs/technical-debt-closed.md). The playtest happened, and its corrections are in
+[docs/plans/m4-correcoes-playtest.md](docs/plans/m4-correcoes-playtest.md) (PR #22).
+
+### M3.5. Onboarding (P, done)
 
 Motivated by playtest feedback: players did not understand the game's concept or how to play. One static sequence, shown before the title's call to action is usable:
 
@@ -144,16 +158,39 @@ Motivated by playtest feedback: players did not understand the game's concept or
 
 **Done when:** a first-time visitor sees the sequence before the title's call to action is usable, a returning visitor does not, the footer link reopens it at any time, and every card passes the client's own contrast floor (see the `visual-identity` lesson).
 
+**Delivered (2026-10-15).** Merged in PR #23, in three steps reviewed on their own — logic, integration,
+design ([.ia_context/plans/onboarding.index.md](.ia_context/plans/onboarding.index.md)).
+
 ### M4. Accounts and persistence (G)
 
-- `platform-api` with MikroORM and PostgreSQL: players, matches and events.
-- Sign-up and login with a JWT issued by NestJS. The match server validates the token when joining a room.
-- Choosing the three units before the match (no roster management).
-- When a match ends, the match server publishes "match ended" with the events to a queue (SQS on LocalStack). The platform-api consumes it and stores the match.
-- Replay endpoint and a replay screen in the client, using the same engine.
-- Reconnection in the middle of a match.
+Two deliveries. The first is everything below under **This delivery**; the second is what the rest of
+this section lists, planned when the first is merged.
 
-**Done when:** a replay built from the stored events produces the same final state as the live match, and a match survives a client disconnection.
+**This delivery** — signing in, a persistent squad, a battle history, and the database all of it needs:
+
+- `platform-api` with MikroORM and PostgreSQL, and the schema applied by a migration step before any
+  instance starts. The step is a process of its own, so that M6 can run it as a one-off task before the
+  rolling update (ADR 0019).
+- Sign-in with GitHub and Google, a session cookie and a short-lived game ticket the match server
+  validates (ADR 0018, to write).
+- A persistent squad with a starter set (ADR 0020, to write).
+- When a match ends, the match server publishes it with its events to a queue (SQS on LocalStack) and
+  `platform-api` consumes it into `matches` and `match_events`.
+- The contact form, the release-email opt-in, and the privacy policy page.
+
+**Done when:** a player signs in and comes back to a squad that is still there, and a match played with
+that account is in the battle history with everything a replay needs — `seed`, `map_id`,
+`protocol_version` and the final state hash.
+
+**The rest of M4** — the second delivery, after this one:
+
+- Replay endpoint and a replay screen in the client, rebuilding the match with the same engine.
+- Choosing which three agents go into a match (roster management beyond the starter set).
+- Agent death and level-up between matches, extending ADR 0003.
+- Reconnection in the middle of a match, on top of the protocol the match server already has.
+
+**Done when:** a replay built from the stored events produces the same final state as the live match,
+and a match survives a client disconnection.
 
 ### M5. Ranked PvP (G)
 

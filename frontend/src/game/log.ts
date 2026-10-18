@@ -79,6 +79,12 @@ export function describeEvent(event: Event, names: UnitNames, battlefield?: Batt
       return t(event.resource === 'mana' ? 'log.event.meditated' : 'log.event.reloaded', {
         actor: nameOf(names, event.actor),
       });
+    // A pending move taken back or confirmed (EA-5). The walk itself is `moved`; these two close the
+    // run, and the player is told which of the two happened.
+    case 'move-cancelled':
+      return t('log.event.moveCancelled', { actor: nameOf(names, event.actor) });
+    case 'move-committed':
+      return t('log.event.moveCommitted', { actor: nameOf(names, event.actor) });
     case 'unit-defeated':
       return t('log.event.defeated', { target: nameOf(names, event.target) });
     case 'corpse-removed':

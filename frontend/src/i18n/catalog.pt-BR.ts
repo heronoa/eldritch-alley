@@ -74,6 +74,11 @@ export const ptBR = {
   'onboarding.abilities.heading': 'Habilidades',
   'onboarding.abilities.body':
     'Cada classe carrega habilidades: magias de área, curas, golpes próprios. O botão Habilidade abre a lista, mostra o custo de cada uma e desenha no mapa as casas que ela alcança antes de você confirmar.',
+  // The account card: optional for a guest, what an account keeps, and how to sign in. It closes the
+  // sequence because it is about keeping the squad, not about the first match.
+  'onboarding.account.heading': 'A sua conta',
+  'onboarding.account.body':
+    'Você pode jogar como visitante. Com uma conta, o esquadrão e o histórico de batalhas ficam guardados, e você continua de outro aparelho; avisos de novidades e novas versões só chegam se você marcar a opção no perfil. O botão Entrar fica no canto superior da tela: dá para criar a conta com e-mail e senha, GitHub, Google ou SSO.',
 
   'onboarding.advance': 'Continuar',
   'onboarding.back': 'Voltar',
@@ -82,8 +87,127 @@ export const ptBR = {
   // The footer link of the title, which reopens the sequence: a question, never a first visit.
   'onboarding.howToPlay': 'Como jogar',
 
+  // The account (m4-04): the control in the corner, the sign-in dialog, the profile and the history.
+  // The failure lines are one per code a player can act on, read by `account/auth-flow.ts`; the two
+  // forms say the same sentence for a known and an unknown address, which is the anti-enumeration
+  // answer of the whole flow.
+  'account.control': 'Conta',
+  'account.dialog.title': 'Conta',
+  'account.signIn': 'Entrar',
+  'account.signOut': 'Sair',
+  'account.close': 'Fechar',
+  'account.tab.signIn': 'Entrar',
+  'account.tab.signUp': 'Criar conta',
+  'account.tab.forgot': 'Esqueci a senha',
+  'account.providers': 'Entrar com',
+  'account.provider.keycloak': 'SSO',
+  'account.provider.github': 'GitHub',
+  'account.provider.google': 'Google',
+  'account.field.email': 'Endereço de e-mail',
+  'account.field.password': 'Senha',
+  'account.field.confirmation': 'Repita a senha',
+  'account.field.displayName': 'Nome de agente',
+  'account.password.hint': 'De 12 a 128 caracteres',
+  'account.submit.signIn': 'Entrar',
+  'account.submit.signUp': 'Criar conta',
+  'account.submit.forgot': 'Enviar o link',
+  'account.checkMail.heading': 'Verifique o seu e-mail',
+  'account.checkMail.body':
+    'Se este endereço tiver conta, o link já está a caminho. Abra-o neste navegador.',
+  'account.checkMail.back': 'Voltar',
+  'account.problem.invalidCredentials': 'Endereço ou senha incorretos',
+  'account.problem.emailNotVerified': 'Confirme o seu e-mail antes de entrar',
+  'account.problem.tooManyAttempts': 'Muitas tentativas. Espere alguns minutos.',
+  'account.problem.offline': 'O serviço não respondeu',
+  'account.problem.unknown': 'Não foi possível completar o pedido',
+  'account.problem.invalidPassword': 'A senha tem de ter entre 12 e 128 caracteres',
+  'account.problem.invalidBody': 'Confira o que foi preenchido',
+  'account.problem.tooShort': 'A senha tem de ter pelo menos 12 caracteres',
+  'account.problem.tooLong': 'A senha não pode passar de 128 caracteres',
+  'account.problem.mismatch': 'As duas senhas não conferem',
+  'account.profile.title': 'Perfil',
+  'account.profile.agents': 'Esquadrão',
+  'account.profile.noAgents': 'Nenhum agente registrado',
+  'account.profile.level': 'nível {level}',
+  'account.history': 'Histórico',
+  'account.history.title': 'Histórico de batalhas',
+  'account.history.empty': 'Nenhuma batalha registrada ainda',
+  'account.history.loadMore': 'Carregar mais',
+  'account.history.loading': 'Carregando…',
+  'account.history.failure': 'Não foi possível carregar o histórico',
+  'account.history.rounds': '{rounds} rodadas',
+  'account.history.won': 'Vitória',
+  'account.history.lost': 'Derrota',
+  // The release e-mails (m4-05, D6): the consent is off until the player presses it, and the label is
+  // the only line the checkbox needs.
+  'account.releaseEmails.label': 'Receber novidades e novas versões por e-mail',
+
+  // The security card and the deletion confirmation. The confirmation word is not copy: `DELETE` is
+  // spelled the same in both languages because it is the token the platform checks
+  // (`frontend/src/account/delete-account.ts`).
+  'account.security.label': 'Segurança',
+  'account.security.methods.password': 'Entra com e-mail e senha',
+  'account.security.methods.provider': 'Entra por um provedor de identidade',
+  'account.security.delete': 'Excluir conta',
+  'account.delete.title': 'Excluir conta',
+  'account.delete.warning':
+    'A conta, o esquadrão e o histórico de batalhas serão apagados. Não é possível desfazer.',
+  'account.delete.confirmLabel': 'Digite DELETE para confirmar',
+  'account.delete.submit': 'Excluir conta',
+  'account.delete.cancel': 'Cancelar',
+  'account.delete.problem.confirmation': 'Digite DELETE exatamente como está escrito',
+  'account.delete.problem.password': 'Senha incorreta',
+  'account.delete.problem.signedOut': 'A sessão terminou. Entre outra vez.',
+
+  // The two pages a mailed link lands on. The link only opens the page: the token is spent on a press
+  // (ADR 0021 § D12), which is why each page carries the sentence that asks for one.
+  'mail.verify.heading': 'Confirmar o seu e-mail',
+  'mail.verify.body': 'Clique no botão para confirmar este endereço e entrar na sua conta.',
+  'mail.verify.action': 'Confirmar endereço',
+  'mail.verify.working': 'Confirmando…',
+  'mail.verify.doneHeading': 'Endereço confirmado',
+  'mail.verify.doneBody': 'A sua conta está pronta. Volte ao início e comece uma partida.',
+  'mail.reset.heading': 'Escolher nova senha',
+  'mail.reset.body': 'Escolha uma senha de 12 a 128 caracteres.',
+  'mail.reset.action': 'Guardar a senha',
+  'mail.reset.working': 'Guardando…',
+  'mail.reset.doneHeading': 'Senha alterada',
+  'mail.reset.doneBody': 'Já pode entrar com a nova senha.',
+  'mail.invalid.heading': 'Este link já não vale',
+  'mail.invalid.body': 'Os links valem uma vez. Peça outro no início do jogo.',
+  'mail.missing.heading': 'Link incompleto',
+  'mail.missing.body': 'Este endereço não trouxe um token. Abra o link do e-mail outra vez.',
+  'mail.back': 'Voltar ao início',
+
+  // The contact form (m4-05): the one unauthenticated write in the client. Each failure says what the
+  // player can do about it — the challenge is retried, the limit is waited out, an outage is retried
+  // later — and the field lines name the field that stopped the form before any request existed.
+  'contact.open': 'Contato',
+  'contact.title': 'Contato',
+  'contact.field.name': 'Seu nome',
+  'contact.field.email': 'Endereço de e-mail',
+  'contact.field.message': 'Mensagem',
+  'contact.submit': 'Enviar',
+  'contact.sending': 'Enviando…',
+  'contact.close': 'Fechar',
+  'contact.privacyLabel': 'Política de privacidade',
+  'contact.sent.heading': 'Mensagem enviada',
+  'contact.sent.body': 'Obrigado. Vamos responder pelo endereço que você deixou.',
+  'contact.problem.name': 'Escreva o seu nome',
+  'contact.problem.email': 'Informe um endereço de e-mail válido',
+  'contact.problem.message': 'Escreva uma mensagem de até 5000 caracteres',
+  'contact.problem.rateLimited': 'Muitas mensagens. Tente de novo mais tarde.',
+  'contact.problem.challengeFailed': 'A verificação não passou. Tente de novo.',
+  'contact.problem.offline': 'O serviço não respondeu. Tente de novo.',
+  'contact.problem.unknown': 'Não foi possível enviar a mensagem.',
+  // The footer's third link, next to the contact one.
+  'privacy.link': 'Privacidade',
+
   // The battle log. One sentence per event, and the placeholders are filled by `interpolate`.
   'log.event.moved': '{actor} moveu de {from} para {to}',
+  // A pending move taken back or confirmed (EA-5); the walk itself is `moved`.
+  'log.event.moveCancelled': '{actor} cancelou o movimento',
+  'log.event.moveCommitted': '{actor} confirmou o movimento',
   'log.event.attacked': '{actor} acertou {target} por {damage}',
   // The same shot told with the crate one of the two ends was behind: the engine's word is cover, the
   // screen's is the fiction's (ADR 0012 § D3). Which end it was is the whole difference between the

@@ -70,6 +70,13 @@ describe('the en-US catalog', () => {
     expect(untranslatedOnboarding).toEqual([]);
   });
 
+  it('translates the account screens and the mailed-link pages, which m4-04 ships', () => {
+    const untranslated = missingKeys('en-US').filter(
+      (key) => key.startsWith('account.') || key.startsWith('mail.'),
+    );
+    expect(untranslated).toEqual([]);
+  });
+
   it('carries the English copy the owner reviews before this milestone closes', () => {
     expect(enUS['title.document']).toBe('Eldritch Alley: Tactics');
     expect(enUS['title.meta']).toBe('BUREAU OF OCCULT AFFAIRS · INCIDENT NO. 2026/0001');
@@ -143,6 +150,11 @@ describe('the pt-BR the game shows', () => {
 
   it('carries the sentences of the battle log, with their placeholders', () => {
     expect(ptBR['log.event.moved']).toBe('{actor} moveu de {from} para {to}');
+    // The two events that close a pending move (EA-5).
+    expect(ptBR['log.event.moveCancelled']).toBe('{actor} cancelou o movimento');
+    expect(enUS['log.event.moveCancelled']).toBe('{actor} cancelled the move');
+    expect(ptBR['log.event.moveCommitted']).toBe('{actor} confirmou o movimento');
+    expect(enUS['log.event.moveCommitted']).toBe('{actor} confirmed the move');
     expect(ptBR['log.event.attacked']).toBe('{actor} acertou {target} por {damage}');
     expect(ptBR['log.event.missed']).toBe('{actor} errou {target}');
     expect(ptBR['log.event.reloaded']).toBe('{actor} recarregou');

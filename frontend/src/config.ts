@@ -5,10 +5,18 @@ import { HIGHLIGHT_COVERS_DEFAULT } from './game/highlightCovers';
 /** The development endpoint. It exists only in development: a build for players must declare its own. */
 const DEV_GAME_SERVER = 'ws://localhost:2567';
 
+/**
+ * The platform in development (`PLATFORM_API_PORT` in the root `.env.example`). Like the match server,
+ * it is a development default only: a build for players declares its own.
+ */
+const DEV_API = 'http://localhost:3000';
+
 /** The slice of `import.meta.env` the client reads. Passed in, so the rules can be tested without Vite. */
 export interface BuildEnv {
   VITE_GAME_SERVER?: string;
+  VITE_API_URL?: string;
   VITE_HIGHLIGHT_COVERS?: string;
+  VITE_TURNSTILE_SITE_KEY?: string;
   DEV: boolean;
 }
 
@@ -45,6 +53,45 @@ export function gameServerEndpoint(env: BuildEnv): string {
   }
 
   return declared;
+}
+
+/**
+ * The platform the client talks to. A declared value must be an http(s) URL; an undeclared one falls
+ * back to the development platform only under `vite dev`. Anywhere else it throws, so a build without
+ * a platform fails at load instead of calling the player's own machine.
+ *
+ * The value's registrable domain must be the client's own: the session cookie is `SameSite=Lax`, and a
+ * platform under a different site would never see it. That is a deployment rule, not a runtime check.
+ */
+export function apiBaseUrl(env: BuildEnv): string {
+  const declared = env.VITE_API_URL;
+
+  if (declared === undefined || declared === '') {
+    if (env.DEV) return DEV_API;
+    throw new Error('VITE_API_URL is not set: the build has no platform to sign in to');
+  }
+
+  let protocol: string;
+  try {
+    protocol = new URL(declared).protocol;
+  } catch {
+    throw new Error(`VITE_API_URL is not a URL: ${declared}`);
+  }
+  if (protocol !== 'http:' && protocol !== 'https:') {
+    throw new Error(`VITE_API_URL must be http:// or https://, got ${declared}`);
+  }
+
+  return declared;
+}
+
+/**
+ * The public site key Cloudflare's Turnstile widget is drawn with, or `null` when the build has none.
+ * The challenge is verified on the platform, not here: the key only loads the widget, and a build
+ * without one still shows the form — the local flow's verifier accepts the fallback token.
+ */
+export function turnstileSiteKey(env: BuildEnv): string | null {
+  const declared = env.VITE_TURNSTILE_SITE_KEY?.trim() ?? '';
+  return declared === '' ? null : declared;
 }
 
 /**

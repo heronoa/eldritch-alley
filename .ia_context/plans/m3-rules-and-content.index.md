@@ -26,11 +26,30 @@ roadmap lists seven lines; what each one needs today:
 
 | # | Plan | Status | PR |
 |---|------|--------|----|
-| 1 | [m3-01-cover.plan.md](./m3-01-cover.plan.md) | [ ] pending | — |
-| 2 | [m3-02-facing-and-height.plan.md](./m3-02-facing-and-height.plan.md) | [ ] pending | — |
-| 3 | [m3-03-abilities.plan.md](./m3-03-abilities.plan.md) | [ ] pending | — |
-| 4 | [m3-04-classes-and-balance.plan.md](./m3-04-classes-and-balance.plan.md) | [ ] pending | — |
-| 5 | [m3-05-playtest.plan.md](./m3-05-playtest.plan.md) | [ ] pending | — |
+| 1 | [m3-01-cover.plan.md](./m3-01-cover.plan.md) | [x] delivered | #19 |
+| 2 | [m3-02-facing-and-height.plan.md](./m3-02-facing-and-height.plan.md) | [x] delivered | #19 |
+| 3 | [m3-03-abilities.plan.md](./m3-03-abilities.plan.md) | [x] delivered | #19 |
+| 4 | [m3-04-classes-and-balance.plan.md](./m3-04-classes-and-balance.plan.md) | [x] closed on the owner's signal | — |
+| 5 | [m3-05-playtest.plan.md](./m3-05-playtest.plan.md) | [x] delivered — corrections in #22 | #22 |
+
+## How the milestone closed (recorded 2026-10-16)
+
+The index above said `awaiting approval` while the work had shipped; this section is what was found in
+the repository when M4 was planned, so a reviewer does not have to reconstruct it.
+
+- **m3-01 to m3-03** merged in PR #19 (`c7db2b3`, 2026-10-13): cover with typed props, facing and height
+  advantage, abilities as data, mana regeneration. ADRs 0012–0017 accepted.
+- **m3-04 closed without the harness.** The plan asked for a bot-versus-bot win-rate report
+  (`npm run balance`); the owner played matches on the m3-03 build and judged the three classes balanced.
+  Recorded as CLOSED in [technical-debt-closed.md](../inputs/technical-debt-closed.md) (DT-15,
+  2026-10-14), including the instruction not to reopen it on a later imbalance. The plan stays
+  unexecuted.
+- **m3-05, the playtest, happened.** Its findings and their fixes are in
+  [docs/plans/m4-correcoes-playtest.md](../../docs/plans/m4-correcoes-playtest.md), and the fixes landed
+  in PR #22 (`59178df`).
+- **The M2-b item this index carried** — the tunnel reconnection test, pending since M2 — was carried
+  into M3's acceptance rather than run. The owner approved M2 on 2026-10-07, and the playtest above was
+  played on a published build. The item is not reopened by M4.
 
 ## Dependency notes
 
@@ -52,11 +71,16 @@ by a later one rather than edited.
 
 | ADR | Decision | Milestone | State |
 |---|---|---|---|
-| 0012 | Cover and typed props on the board | m3-01 | to write |
-| 0013 | Facing and the direction bonus | m3-02 | to write |
-| 0014 | Height advantage | m3-02 | to write |
-| 0015 | Abilities as data | m3-03 | to write |
-| 0016 | Mana regeneration (amends 0011) | m3-03 | to write |
+| 0012 | Cover and typed props on the board | m3-01 | Accepted |
+| 0013 | A prop under the feet gives no cover | m3-01 | Accepted |
+| 0014 | Facing and the direction bonus | m3-02 | Accepted |
+| 0015 | Height advantage | m3-02 | Accepted |
+| 0016 | Abilities as data | m3-03 | Accepted |
+| 0017 | Mana regenerates one point at the start of the turn (amends 0011) | m3-03 | Accepted |
+
+The table planned five records and six were written: 0013 was written the same day as 0012, as a
+correction to it, when "a prop under the feet" turned out to be a rule of its own. The files are the
+truth — [docs/adr/](../../docs/adr/).
 
 ## Documentation debt found while planning
 
