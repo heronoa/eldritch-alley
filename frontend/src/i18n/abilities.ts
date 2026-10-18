@@ -13,6 +13,9 @@ const NAME_KEYS: Readonly<Record<string, MessageKey>> = {
   'piercing-shot': 'ability.piercing-shot',
   fireball: 'ability.fireball',
   'area-heal': 'ability.area-heal',
+  camouflage: 'ability.camouflage',
+  mud: 'ability.mud',
+  resurrection: 'ability.resurrection',
 };
 
 /** The catalog's word for an ability id, or null when this build has no word for it. */

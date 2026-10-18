@@ -7,11 +7,12 @@ import {
   type Board,
   type MatchSetup,
   type MatchState,
+  type Position,
   type UnitState,
 } from '@eldritch-alley/engine';
 import { describe, expect, it } from 'vitest';
 import { ABILITY_CATALOG } from './abilities';
-import { chooseBotAction } from './bot';
+import { botCandidates, chooseBotAction } from './bot';
 import { createMatchSetup, MATCH_SEED, rosterFor } from './map';
 
 const NEIGHBOUR_OFFSETS: readonly { x: number; y: number }[] = [
@@ -316,5 +317,290 @@ describe('chooseBotAction and abilities', () => {
       }),
     ).toEqual({ ok: false, reason: 'no-mana' });
     expect(chooseBotAction(state, 'B').type).toBe('attack');
+  });
+});
+
+/**
+ * A turn of the bot's own, built on a flat board so nothing but the numbers of the units decides what
+ * it picks: the named unit is put on turn, every unit keeps the health the roster gives it unless the
+ * case overrides one, and the turn stands still unless the case asks for movement.
+ */
+function craftedTurn(
+  current: string,
+  spawns: Readonly<{ A: readonly Position[]; B: readonly Position[] }>,
+  options: {
+    movementLeft?: number;
+    ammo?: Readonly<Record<string, number>>;
+    health?: Readonly<Record<string, number>>;
+    props?: Board['props'];
+    defeated?: readonly string[];
+    camouflaged?: readonly string[];
+    activeSets?: readonly [string | null, string | null];
+  } = {},
+): MatchState {
+  const setup: MatchSetup = {
+    seed: 1,
+    map: { ...flatBoard(), props: options.props ?? [] },
+    catalog: ABILITY_CATALOG,
+    teams: rosterFor({ A: [...spawns.A], B: [...spawns.B] }),
+  };
+  const base = newMatch(setup);
+  const units = base.units.map((unit) => ({
+    ...unit,
+    position: { ...unit.position },
+    abilities: { ...unit.abilities, activeSets: [...unit.abilities.activeSets] },
+  }));
+
+  const byId = (id: string): UnitState => {
+    const found = units.find((unit) => unit.id === id);
+    if (!found) throw new Error(`unknown unit: ${id}`);
+    return found;
+  };
+
+  for (const id of options.defeated ?? []) {
+    const fallen = byId(id);
+    fallen.defeated = true;
+    fallen.health = 0;
+    // The body is still on the board this round, which is the window a revive has to work in.
+    fallen.corpseExpiresAtRound = base.round + 1;
+  }
+  for (const id of options.camouflaged ?? []) byId(id).camouflage = { turns: 3, breakChance: 30 };
+  for (const [id, ammo] of Object.entries(options.ammo ?? {})) byId(id).ammo = ammo;
+  for (const [id, health] of Object.entries(options.health ?? {})) byId(id).health = health;
+  if (options.activeSets) {
+    const actor = byId(current);
+    actor.abilities = { ...actor.abilities, activeSets: [...options.activeSets] };
+  }
+
+  const absent = new Set([...(options.defeated ?? []), current]);
+  return {
+    ...base,
+    units,
+    initiative: [current, ...base.initiative.filter((id) => !absent.has(id))],
+    currentIndex: 0,
+    movementLeft: options.movementLeft ?? 0,
+    hasActed: false,
+  };
+}
+
+/** The Chebyshev distance between two cells, which is how the engine measures reach. */
+function distance(a: Position, b: Position): number {
+  return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
+}
+
+describe('chooseBotAction and the secondary abilities', () => {
+  // Both squads are far apart, so no attack competes with the cast the case is about.
+  const spawns = {
+    A: [{ x: 7, y: 7 }, { x: 7, y: 6 }, { x: 6, y: 7 }],
+    B: [{ x: 7, y: 0 }, { x: 7, y: 1 }, { x: 0, y: 0 }],
+  };
+
+  it('revives a fallen ally on a free cell instead of passing', () => {
+    const state = craftedTurn('B-priest', spawns, { defeated: ['B-sniper'] });
+
+    const revives = botCandidates(state, 'B').filter(
+      (candidate) =>
+        candidate.action.type === 'useAbility' && candidate.action.abilityId === 'resurrection',
+    );
+    expect(revives).toHaveLength(1);
+
+    const action = chooseBotAction(state, 'B');
+    expect(action).toMatchObject({
+      type: 'useAbility',
+      actor: 'B-priest',
+      abilityId: 'resurrection',
+      target: 'B-sniper',
+    });
+    if (action.type !== 'useAbility') throw new Error('unreachable');
+
+    // The body holds its own tile until the revive consumes it, so the destination is another cell.
+    expect(
+      state.units.some(
+        (unit) => unit.position.x === action.to.x && unit.position.y === action.to.y,
+      ),
+    ).toBe(false);
+    expect(applyAction(state, action).ok).toBe(true);
+  });
+
+  it('offers no revive when no ally has fallen', () => {
+    const state = craftedTurn('B-priest', spawns);
+
+    expect(
+      botCandidates(state, 'B').some(
+        (candidate) =>
+          candidate.action.type === 'useAbility' && candidate.action.abilityId === 'resurrection',
+      ),
+    ).toBe(false);
+  });
+
+  it('casts mud on an area that covers a camouflaged enemy, which its basic attack cannot name', () => {
+    const state = craftedTurn(
+      'B-wizard',
+      {
+        A: [{ x: 6, y: 4 }, { x: 7, y: 7 }, { x: 7, y: 6 }],
+        // Sniper, wizard, priest: the wizard is the one on turn, three cells from the hidden enemy.
+        B: [{ x: 0, y: 0 }, { x: 3, y: 3 }, { x: 0, y: 1 }],
+      },
+      { camouflaged: ['A-sniper'], activeSets: [null, 'mud'] },
+    );
+    const hidden = state.units.find((unit) => unit.id === 'A-sniper');
+    if (!hidden) throw new Error('no A-sniper');
+
+    expect(
+      applyAction(state, { type: 'attack', actor: 'B-wizard', target: 'A-sniper' }),
+    ).toEqual({ ok: false, reason: 'target-hidden' });
+
+    const casts = botCandidates(state, 'B').filter(
+      (candidate) => candidate.action.type === 'useAbility' && candidate.action.abilityId === 'mud',
+    );
+    expect(casts.length).toBeGreaterThan(0);
+    expect(
+      casts.some((candidate) =>
+        (candidate.abilityCells ?? []).some(
+          (cell) => cell.x === hidden.position.x && cell.y === hidden.position.y,
+        ),
+      ),
+    ).toBe(true);
+
+    expect(chooseBotAction(state, 'B')).toMatchObject({ type: 'useAbility', abilityId: 'mud' });
+  });
+
+  it('does not offer terrain that covers only allies, nor any other candidate worth nothing', () => {
+    const state = craftedTurn(
+      'B-wizard',
+      {
+        A: [{ x: 7, y: 7 }, { x: 7, y: 6 }, { x: 6, y: 7 }],
+        // The wizard in the corner with both allies beside it: every cell it can reach is friendly.
+        B: [{ x: 1, y: 0 }, { x: 0, y: 0 }, { x: 1, y: 1 }],
+      },
+      { activeSets: [null, 'mud'] },
+    );
+
+    expect(
+      botCandidates(state, 'B').some(
+        (candidate) => candidate.action.type === 'useAbility' && candidate.action.abilityId === 'mud',
+      ),
+    ).toBe(false);
+    expect(chooseBotAction(state, 'B')).toEqual({
+      type: 'endTurn',
+      actor: 'B-wizard',
+      round: state.round,
+    });
+  });
+
+  it('hides a wounded sniper from a nearby enemy, and leaves a safe one in the open', () => {
+    const field = {
+      A: [{ x: 3, y: 5 }, { x: 7, y: 7 }, { x: 7, y: 6 }],
+      B: [{ x: 3, y: 3 }, { x: 0, y: 0 }, { x: 0, y: 1 }],
+    };
+    // A wall across the line of the shot: the enemy is close, and out of the sniper's reach.
+    const props: Board['props'] = [{ position: { x: 3, y: 4 }, kind: 'wall' }];
+
+    const wounded = craftedTurn('B-sniper', field, {
+      props,
+      health: { 'B-sniper': 5 },
+      // The case is about hiding, so the class carries nothing that could shoot over the wall instead.
+      activeSets: [null, 'camouflage'],
+    });
+    expect(
+      applyAction(wounded, { type: 'attack', actor: 'B-sniper', target: 'A-sniper' }),
+    ).toEqual({ ok: false, reason: 'no-line-of-sight' });
+
+    expect(chooseBotAction(wounded, 'B')).toMatchObject({
+      type: 'useAbility',
+      actor: 'B-sniper',
+      abilityId: 'camouflage',
+      to: { x: 3, y: 3 },
+    });
+
+    // The same board, the same enemy, an unhurt sniper: there is nothing to hide from, and a cast
+    // that scores nothing is not on the table (the same rule that drops an empty mud or revive).
+    const safe = craftedTurn('B-sniper', field, { props, activeSets: [null, 'camouflage'] });
+    expect(
+      botCandidates(safe, 'B').some(
+        (candidate) =>
+          candidate.action.type === 'useAbility' && candidate.action.abilityId === 'camouflage',
+      ),
+    ).toBe(false);
+    expect(chooseBotAction(safe, 'B').type).toBe('endTurn');
+  });
+
+  it('chases the enemy it can see, not the one hiding beside it', () => {
+    const state = craftedTurn(
+      'B-sniper',
+      {
+        A: [{ x: 2, y: 3 }, { x: 3, y: 7 }, { x: 0, y: 7 }],
+        B: [{ x: 3, y: 3 }, { x: 7, y: 0 }, { x: 7, y: 1 }],
+      },
+      { movementLeft: 1, activeSets: [null, null], camouflaged: ['A-sniper'] },
+    );
+    const actor = state.units.find((unit) => unit.id === 'B-sniper');
+    const visible = state.units.find((unit) => unit.id === 'A-wizard');
+    if (!actor || !visible) throw new Error('no sniper');
+
+    const action = chooseBotAction(state, 'B');
+    expect(action.type).toBe('move');
+    if (action.type !== 'move') throw new Error('unreachable');
+
+    // The walk answers the enemy that can be shot, not the neighbour no basic attack can name.
+    expect(distance(action.to, visible.position)).toBeLessThan(
+      distance(actor.position, visible.position),
+    );
+  });
+
+  it('aims an area spell at the cell of a camouflaged enemy as readily as at a visible one', () => {
+    const state = craftedTurn(
+      'B-wizard',
+      {
+        A: [{ x: 3, y: 5 }, { x: 3, y: 6 }, { x: 0, y: 7 }],
+        B: [{ x: 7, y: 0 }, { x: 3, y: 3 }, { x: 7, y: 1 }],
+      },
+      { camouflaged: ['A-sniper'] },
+    );
+    const hidden = state.units.find((unit) => unit.id === 'A-sniper');
+    if (!hidden) throw new Error('no A-sniper');
+
+    const spells = botCandidates(state, 'B').filter(
+      (candidate) =>
+        candidate.action.type === 'useAbility' && candidate.action.abilityId === 'fireball',
+    );
+    expect(
+      spells.some((candidate) =>
+        (candidate.abilityCells ?? []).some(
+          (cell) => cell.x === hidden.position.x && cell.y === hidden.position.y,
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it('aims a heal at the wounded ally, not at the empty ground between them', () => {
+    const state = craftedTurn(
+      'B-priest',
+      {
+        A: [{ x: 7, y: 7 }, { x: 7, y: 6 }, { x: 6, y: 7 }],
+        B: [{ x: 3, y: 5 }, { x: 0, y: 7 }, { x: 3, y: 3 }],
+      },
+      { health: { 'B-sniper': 5 } },
+    );
+    const wounded = state.units.find((unit) => unit.id === 'B-sniper');
+    if (!wounded) throw new Error('no B-sniper');
+
+    const heals = botCandidates(state, 'B').filter(
+      (candidate) =>
+        candidate.action.type === 'useAbility' && candidate.action.abilityId === 'area-heal',
+    );
+    expect(
+      heals.some(
+        (candidate) =>
+          candidate.action.type === 'useAbility' &&
+          candidate.action.to.x === wounded.position.x &&
+          candidate.action.to.y === wounded.position.y,
+      ),
+    ).toBe(true);
+
+    expect(chooseBotAction(state, 'B')).toMatchObject({
+      type: 'useAbility',
+      abilityId: 'area-heal',
+    });
   });
 });

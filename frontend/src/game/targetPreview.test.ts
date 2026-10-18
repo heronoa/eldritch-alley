@@ -33,6 +33,8 @@ function makeUnit(id: string, overrides: Partial<UnitState> = {}): UnitState {
     ammo: 3,
     permanentlyDead: false,
     corpseExpiresAtRound: null,
+    camouflage: null,
+    prone: false,
     ...overrides,
   };
 }
@@ -50,6 +52,7 @@ function stateWith(units: UnitState[], catalog: readonly AbilityDefinition[] = [
     hasActed: false,
     eventCount: 0,
     pendingMove: null,
+    difficultTerrain: [],
   };
 }
 

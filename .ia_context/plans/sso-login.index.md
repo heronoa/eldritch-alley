@@ -4,8 +4,7 @@
 **Roadmap:** [ROADMAP.md](../../ROADMAP.md) § M4. Accounts and persistence
 **Spec:** [sso.login.input.md](../inputs/sso.login.input.md)
 **Branches:** `feat/keycloak-provider` (m1), `feat/account-deletion` (m2), `feat/client-sso` (m3–m5)
-**Status:** in progress — milestones 0–4 done and approved (2026-10-17); m5 implemented and awaiting
-approval (2026-10-17)
+**Status:** delivered (2026-10-17) — milestones 0–5 approved; closed on the owner's smoke test
 
 ## What this delivery covers
 
@@ -24,6 +23,11 @@ The delivery also gives the account an exit of its own: `DELETE /auth/account` e
 everything that hangs off it, revokes the session on every device, mails a confirmation, and returns the
 player to the title as a guest. The account dialog gains the security card where that happens.
 
+The smoke test that closed the delivery (2026-10-17) found the mail written only in English. The platform
+now writes it in the player's language — pt-BR or en-US — chosen by `Accept-Language` on every request
+and by the `locale` query on the OAuth start, which carries it through the signed flow cookie to the
+callback. No column and no migration: the browser holds the choice.
+
 ## Milestones
 
 ### Backend
@@ -40,7 +44,7 @@ player to the title as a guest. The account dialog gains the security card where
 |---|------|--------|----|
 | 3 | [sso-login-m3-logic.plan.md](./sso-login-m3-logic.plan.md) | [x] approved (2026-10-17) | — |
 | 4 | [sso-login-m4-integration.plan.md](./sso-login-m4-integration.plan.md) | [x] approved (2026-10-17) | — |
-| 5 | [sso-login-m5-design.plan.md](./sso-login-m5-design.plan.md) | [~] implemented (2026-10-17), awaiting approval | — |
+| 5 | [sso-login-m5-design.plan.md](./sso-login-m5-design.plan.md) | [x] approved (2026-10-17) | — |
 
 Milestone 0 is a documentation commit and not a milestone of its own, as m4-01's index correction was.
 Milestones 1–2 are backend vertical slices: there is no repository layer to add, because the schema

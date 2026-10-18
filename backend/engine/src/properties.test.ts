@@ -66,8 +66,9 @@ function assertInteger(value: number, label: string): void {
 }
 
 /**
- * The two definitions the property match carries: one area that hurts everybody standing in it and one
- * that heals them. They share a cost and a reach so neither is ever favoured by the shape alone.
+ * The definitions the property match carries: the two it always had, an area that hurts everybody
+ * standing in it and one that heals them, plus the three the second class abilities need (ADR 0023).
+ * They share cheap costs so the generator picks each of them often enough to exercise its branch.
  */
 const PROPERTY_CATALOG: readonly AbilityDefinition[] = [
   {
@@ -84,6 +85,27 @@ const PROPERTY_CATALOG: readonly AbilityDefinition[] = [
     needsSight: false,
     effect: { kind: 'heal', amount: 2, radius: 1 },
   },
+  {
+    id: 'camouflage',
+    cost: 3,
+    range: 0,
+    needsSight: false,
+    effect: { kind: 'camouflage', radius: 0, turns: 3, breakChance: 30 },
+  },
+  {
+    id: 'mud',
+    cost: 1,
+    range: 2,
+    needsSight: false,
+    effect: { kind: 'terrain', radius: 1, durationRounds: 3 },
+  },
+  {
+    id: 'resurrection',
+    cost: 3,
+    range: 2,
+    needsSight: false,
+    effect: { kind: 'revive', radius: 0 },
+  },
 ];
 
 /** A four-unit match whose numbers move with the seed, so the 200 runs are not clones of each other. */
@@ -99,6 +121,9 @@ function makePropertySetup(seed: number): MatchSetup {
       attack: 1 + (seed % 4),
       hitChance: 10 + (seed % 90),
       range: 1 + (seed % 2),
+      // Camouflage sits in the second set: the generator and the rules must read both (ADR 0023).
+      magazine: 4,
+      abilities: { activeSets: [null, 'camouflage'], reaction: null, movement: null, support: null },
     }),
     makeUnit({
       id: 'a2',
@@ -114,7 +139,7 @@ function makePropertySetup(seed: number): MatchSetup {
       // spends, so the two costs meet on the same unit (ADR 0011, ADR 0016).
       magazine: 3,
       resourceKind: 'mana',
-      abilities: { activeSets: ['mend', null], reaction: null, movement: null, support: null },
+      abilities: { activeSets: ['mend', 'mud'], reaction: null, movement: null, support: null },
     }),
     makeUnit({
       id: 'b1',
@@ -126,6 +151,10 @@ function makePropertySetup(seed: number): MatchSetup {
       attack: 2,
       hitChance: 30 + (seed % 60),
       range: 1,
+      // The Priest's resurrection also lives in the second set.
+      magazine: 4,
+      resourceKind: 'mana',
+      abilities: { activeSets: [null, 'resurrection'], reaction: null, movement: null, support: null },
     }),
     makeUnit({
       id: 'b2',
@@ -139,7 +168,7 @@ function makePropertySetup(seed: number): MatchSetup {
       range: 2,
       magazine: 3,
       resourceKind: 'mana',
-      abilities: { activeSets: ['zap', null], reaction: null, movement: null, support: null },
+      abilities: { activeSets: ['zap', 'mud'], reaction: null, movement: null, support: null },
     }),
   ];
   const team = (id: Team) => units.filter((unit) => unit.team === id);
@@ -230,15 +259,43 @@ function randomAction(state: MatchState, rng: Rng): Action {
   // An ability the unit carries and the match defines, aimed at the unit's own cell and at the cells of
   // the two nearest enemies: the places a unit is most likely to be standing, so the effect lands on
   // somebody and the roll of the resolution is exercised. It is a candidate on the same terms as an
-  // attack, and a refused use is a rejection like any other.
+  // attack, and a refused use is a rejection like any other. Both active sets are read (ADR 0023).
   if (!state.hasActed) {
-    const abilityId = current.abilities.activeSets[0];
-    const ability = abilityId === null ? undefined : abilityById(state.catalog, abilityId);
+    const nearby = [current.position, ...enemies.slice(0, 2).map((enemy) => enemy.position)];
 
-    if (ability) {
-      for (const to of [current.position, ...enemies.slice(0, 2).map((enemy) => enemy.position)]) {
+    for (const abilityId of current.abilities.activeSets) {
+      const ability = abilityId === null ? undefined : abilityById(state.catalog, abilityId);
+      if (!ability) continue;
+
+      for (const to of nearby) {
         if (distance(current.position, to) <= ability.range) {
           candidates.push({ type: 'useAbility', actor, abilityId: ability.id, to });
+        }
+      }
+
+      // A resurrection names the body and the free cell it comes back on. The caster's own cell and
+      // its neighbours are what the generator offers; a use that lands on a living unit or a body is
+      // a refusal like any other, and the rule reads it there.
+      if (ability.effect.kind === 'revive') {
+        const bodies = state.units.filter(
+          (unit) => unit.team === current.team && unit.defeated && !unit.permanentlyDead,
+        );
+        const cells = [
+          current.position,
+          ...DIRECTIONS.map(([dx, dy]) => ({ x: current.position.x + dx, y: current.position.y + dy })),
+        ];
+        for (const body of bodies) {
+          for (const to of cells) {
+            if (!inBounds(state.board, to)) continue;
+            if (distance(current.position, to) > ability.range) continue;
+            candidates.push({
+              type: 'useAbility',
+              actor,
+              abilityId: ability.id,
+              to,
+              target: body.id,
+            });
+          }
         }
       }
     }
@@ -256,6 +313,9 @@ describe('properties', () => {
     let casts = 0;
     let damaged = 0;
     let healed = 0;
+    let camouflageCasts = 0;
+    let terrainCasts = 0;
+    let proneStops = 0;
 
     for (let seed = 0; seed < 200; seed++) {
       const setup = makePropertySetup(seed);
@@ -277,7 +337,34 @@ describe('properties', () => {
               attacks++;
               if (event.hit) hits++;
             }
-            if (event.type === 'ability-used') casts++;
+            if (event.type === 'ability-used') {
+              casts++;
+              const used = state.catalog.find((ability) => ability.id === event.abilityId);
+              if (used?.effect.kind === 'camouflage') camouflageCasts++;
+              if (used?.effect.kind === 'terrain') terrainCasts++;
+              assertInteger(event.rngState, 'ability rngState');
+            }
+            if (event.type === 'moved') {
+              assertInteger(event.rngState, 'move rngState');
+              if (event.prone) proneStops++;
+            }
+            if (event.type === 'revived') {
+              assertInteger(event.to.x, 'revived cell x');
+              assertInteger(event.to.y, 'revived cell y');
+              const brought = state.units.find((unit) => unit.id === event.target);
+              if (!brought || brought.defeated) {
+                throw new Error(`a revived unit is still defeated: ${event.target}`);
+              }
+              if (brought.position.x !== event.to.x || brought.position.y !== event.to.y) {
+                throw new Error(`a revived unit is not on the cell of its event: ${event.target}`);
+              }
+            }
+            if (event.type === 'terrain-expired') {
+              for (const cell of event.cells) {
+                assertInteger(cell.x, 'expired cell x');
+                assertInteger(cell.y, 'expired cell y');
+              }
+            }
             if (event.type === 'damaged') {
               assertInteger(event.damage, 'ability damage');
               damaged++;
@@ -305,6 +392,25 @@ describe('properties', () => {
           if (unit.health > unit.maxHealth) {
             throw new Error(`health rose above the maximum: ${unit.health} > ${unit.maxHealth}`);
           }
+          if (unit.camouflage !== null) {
+            assertInteger(unit.camouflage.turns, 'camouflage turns');
+            assertInteger(unit.camouflage.breakChance, 'camouflage breakChance');
+            if (unit.camouflage.turns < 0) {
+              throw new Error(`camouflage went below zero turns: ${unit.camouflage.turns}`);
+            }
+            if (unit.camouflage.breakChance < 0 || unit.camouflage.breakChance > 100) {
+              throw new Error(`break chance outside 0..100: ${unit.camouflage.breakChance}`);
+            }
+          }
+        }
+
+        for (const cell of state.difficultTerrain) {
+          assertInteger(cell.position.x, 'terrain x');
+          assertInteger(cell.position.y, 'terrain y');
+          assertInteger(cell.expiresAtRound, 'terrain expiry');
+          if (!inBounds(state.board, cell.position)) {
+            throw new Error(`terrain outside the board at ${cell.position.x},${cell.position.y}`);
+          }
         }
       }
 
@@ -325,6 +431,11 @@ describe('properties', () => {
     expect(casts).toBeGreaterThan(0);
     expect(damaged).toBeGreaterThan(0);
     expect(healed).toBeGreaterThan(0);
+    // The two abilities that need no fallen ally are exercised often enough to force their branches
+    // through the replay: the status, the terrain layer, the prone stop and the expiry.
+    expect(camouflageCasts).toBeGreaterThan(0);
+    expect(terrainCasts).toBeGreaterThan(0);
+    expect(proneStops).toBeGreaterThan(0);
   }, 30_000);
 
   it('gives the same final state twice for the same seed and the same actions, props on the board', () => {

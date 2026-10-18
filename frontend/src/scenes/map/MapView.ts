@@ -17,7 +17,8 @@ import type { Prop } from '../../protocol';
 import type { Cell, Pixel } from '../../view/grid';
 import { NO_FLOOR } from '../../view/grid';
 import { LAYER } from '../../view/depth';
-import { PIXEL, cellToScreen } from '../../view/iso';
+import { PIXEL, TILE_H, TILE_W, cellToScreen } from '../../view/iso';
+import { MUD_COLOR } from '../../view/theme';
 import { CANVAS_HEIGHT, CANVAS_WIDTH } from '../../view/layout';
 import { COVERED_ALPHA } from '../../view/cutaway';
 import { drawBackdrop } from './backdrop';
@@ -28,6 +29,9 @@ import { drawProp, isAnimatedProp, propsInPaintOrder } from './props';
 /** How far a wire hangs over the street, and a clothesline over the gap, in the prototype's pixels. */
 const WIRE_LIFT = 23;
 const LINE_LIFT = 18;
+
+/** How solid the mud is: opaque enough to read as ground, light enough to show the tile beneath it. */
+const MUD_FILL_ALPHA = 0.85;
 
 /** The overlay covers the whole canvas, so a wire that runs off the board still has somewhere to go. */
 const VIEW_WIDTH = CANVAS_WIDTH / PIXEL;
@@ -77,6 +81,8 @@ export class MapView {
   private marksVisible = true;
   /** The cells drawn translucent now, so the next call can put them back to solid. */
   private covered: Cell[] = [];
+  /** One mud diamond per difficult cell, by cell, so a recast replaces rather than stacks. */
+  private readonly mud = new Map<string, Phaser.GameObjects.Graphics>();
 
   /**
    * `marks` are the cells the state's board calls cover or wall (ADR 0012). They are read from the state
@@ -137,6 +143,28 @@ export class MapView {
   setMarksVisible(visible: boolean): void {
     this.marksVisible = visible;
     for (const layer of this.markLayers) layer.image.setVisible(visible);
+    // The mud is a mark of the rules too, so it follows the same setting (ADR 0012, ADR 0023 §4).
+    for (const graphic of this.mud.values()) graphic.setVisible(visible);
+  }
+
+  /**
+   * Paints a mud diamond on every difficult cell of the state (ADR 0023 §4), replacing whatever was
+   * there: the scene always hands the whole set, so a recast redraws a cell instead of stacking a
+   * second diamond on it.
+   */
+  setDifficultTerrain(cells: readonly Cell[]): void {
+    for (const graphic of this.mud.values()) graphic.destroy();
+    this.mud.clear();
+    for (const cell of cells) this.addMud(cell);
+  }
+
+  /** Takes the diamonds of the cells a drying event named off the board. */
+  removeDifficultTerrain(cells: readonly Cell[]): void {
+    for (const cell of cells) {
+      const key = `${cell.x},${cell.y}`;
+      this.mud.get(key)?.destroy();
+      this.mud.delete(key);
+    }
   }
 
   /** Repaints what moves: the cells with an animated prop, the water, and the clotheslines. */
@@ -158,12 +186,36 @@ export class MapView {
       layer.image.destroy();
       this.scene.textures.remove(layer.texture.key);
     }
+    for (const graphic of this.mud.values()) graphic.destroy();
 
     this.layers.length = 0;
     this.moving.length = 0;
     this.markLayers.length = 0;
     this.cellLayers.clear();
     this.covered = [];
+    this.mud.clear();
+  }
+
+  /** One mud diamond on the top face of a cell, at the depth the mud layer claims in the table. */
+  private addMud(cell: Cell): void {
+    const level = this.terrain.levelAt(cell);
+    if (level === NO_FLOOR) return;
+
+    const at = cellToScreen(cell, level, this.terrain.lift);
+    const points: Pixel[] = [
+      { x: 0, y: -TILE_H / 2 },
+      { x: TILE_W / 2, y: 0 },
+      { x: 0, y: TILE_H / 2 },
+      { x: -TILE_W / 2, y: 0 },
+    ];
+
+    const graphic = this.scene.add.graphics({ x: at.x, y: at.y });
+    graphic.fillStyle(MUD_COLOR, MUD_FILL_ALPHA);
+    graphic.fillPoints(points, true);
+    graphic.lineStyle(1, MUD_COLOR, 1);
+    graphic.strokePoints(points, true, true);
+    graphic.setDepth(LAYER.mud(cell)).setVisible(this.marksVisible);
+    this.mud.set(`${cell.x},${cell.y}`, graphic);
   }
 
   /** Sets how opaque the canvases of one cell are drawn. A cell with no canvas is nothing to do. */

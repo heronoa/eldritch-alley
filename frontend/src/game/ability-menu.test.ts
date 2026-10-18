@@ -53,6 +53,8 @@ function makeUnit(spec: UnitSpec): UnitState {
     ammo: spec.ammo ?? (magazine === null ? 0 : magazine),
     permanentlyDead: false,
     corpseExpiresAtRound: null,
+    camouflage: null,
+    prone: false,
   };
 }
 
@@ -69,6 +71,7 @@ function makeState(units: readonly UnitState[], catalog: readonly AbilityDefinit
     hasActed: false,
     eventCount: 0,
     pendingMove: null,
+    difficultTerrain: [],
   };
 }
 
@@ -94,7 +97,35 @@ const AREA_HEAL: AbilityDefinition = {
   needsSight: false,
   effect: { kind: 'heal', amount: 3, radius: 1 },
 };
-const CATALOG: readonly AbilityDefinition[] = [PIERCING_SHOT, FIREBALL, AREA_HEAL];
+const CAMOUFLAGE: AbilityDefinition = {
+  id: 'camouflage',
+  cost: 3,
+  range: 0,
+  needsSight: false,
+  effect: { kind: 'camouflage', radius: 0, turns: 3, breakChance: 30 },
+};
+const MUD: AbilityDefinition = {
+  id: 'mud',
+  cost: 1,
+  range: 3,
+  needsSight: true,
+  effect: { kind: 'terrain', radius: 1, durationRounds: 3 },
+};
+const RESURRECTION: AbilityDefinition = {
+  id: 'resurrection',
+  cost: 3,
+  range: 3,
+  needsSight: false,
+  effect: { kind: 'revive', radius: 0 },
+};
+const CATALOG: readonly AbilityDefinition[] = [
+  PIERCING_SHOT,
+  FIREBALL,
+  AREA_HEAL,
+  CAMOUFLAGE,
+  MUD,
+  RESURRECTION,
+];
 
 describe('abilityOptions', () => {
   it('names the ability, its cost in the unit\'s own pool, and what it does', () => {
@@ -173,9 +204,9 @@ describe('abilityOptions', () => {
     expect(abilityOptions(makeState([sniper], CATALOG), sniper)).toEqual([]);
   });
 
-  it('offers nothing the match does not define, and nothing for the slots the engine does not read', () => {
-    // `unknown` is named by the slot and defined by nobody, and the other four slots are named and
-    // defined: the engine reads the first active set alone (ADR 0016 §6), so only one row comes back.
+  it('reads both active sets and leaves the other slots alone', () => {
+    // `unknown` is named by the first slot and defined by nobody; the second one is real. The
+    // reaction, movement and support slots stay unread (ADR 0016 §6, amended by ADR 0023 §1).
     const sniper = makeUnit({
       id: 'A-sniper',
       team: 'A',
@@ -188,7 +219,106 @@ describe('abilityOptions', () => {
       },
     });
 
-    expect(abilityOptions(makeState([sniper], CATALOG), sniper)).toEqual([]);
+    expect(abilityOptions(makeState([sniper], CATALOG), sniper).map((row) => row.id)).toEqual([
+      'fireball',
+    ]);
+  });
+
+  it('offers both active sets, in slot order', () => {
+    // The class's old ability first and the secondary one second (ADR 0023 §2).
+    const sniper = makeUnit({
+      id: 'A-sniper',
+      team: 'A',
+      ammo: 3,
+      extraSlots: { activeSets: ['piercing-shot', 'camouflage'] },
+    });
+    const rows = abilityOptions(makeState([sniper], CATALOG), sniper);
+
+    expect(rows.map((row) => row.id)).toEqual(['piercing-shot', 'camouflage']);
+    expect(rows[1]).toEqual({
+      id: 'camouflage',
+      name: 'Camuflagem',
+      cost: '3 Munição',
+      detail: '3 turnos · quebra 30%',
+      affordable: true,
+    });
+  });
+
+  it('offers a single row to a class that carries a single ability', () => {
+    const sniper = makeUnit({
+      id: 'A-sniper',
+      team: 'A',
+      extraSlots: { activeSets: ['piercing-shot', null] },
+    });
+
+    expect(abilityOptions(makeState([sniper], CATALOG), sniper).map((row) => row.id)).toEqual([
+      'piercing-shot',
+    ]);
+  });
+
+  it('reads the numbers of the new kinds from the definition, not from constants', () => {
+    // The row has to say what the match's own catalog says, so a server that tunes a number tunes
+    // the sentence with it (ADR 0016 §1).
+    const sniper = makeUnit({
+      id: 'A-sniper',
+      team: 'A',
+      ammo: 3,
+      extraSlots: { activeSets: [null, 'camouflage'] },
+    });
+    const shorter = {
+      ...CAMOUFLAGE,
+      effect: { kind: 'camouflage' as const, radius: 0 as const, turns: 2, breakChance: 45 },
+    };
+    expect(abilityOptions(makeState([sniper], [shorter]), sniper)[0]?.detail).toBe(
+      '2 turnos · quebra 45%',
+    );
+
+    const wizard = makeUnit({
+      id: 'A-wizard',
+      team: 'A',
+      magazine: null,
+      resourceKind: 'mana',
+      extraSlots: { activeSets: [null, 'mud'] },
+    });
+    const wider = {
+      ...MUD,
+      effect: { kind: 'terrain' as const, radius: 2, durationRounds: 5 },
+    };
+    expect(abilityOptions(makeState([wizard], [wider]), wizard)[0]?.detail).toBe(
+      '5 rodadas · raio 2 · terreno difícil',
+    );
+
+    const priest = makeUnit({
+      id: 'A-priest',
+      team: 'A',
+      magazine: null,
+      resourceKind: 'mana',
+      extraSlots: { activeSets: [null, 'resurrection'] },
+    });
+    expect(abilityOptions(makeState([priest], [RESURRECTION]), priest)[0]?.detail).toBe(
+      'Revive um aliado caído',
+    );
+  });
+
+  it('dims the camouflage a sniper cannot pay for, and keeps it on the menu', () => {
+    const rich = makeUnit({
+      id: 'A-sniper',
+      team: 'A',
+      ammo: 3,
+      extraSlots: { activeSets: [null, 'camouflage'] },
+    });
+    const poor = makeUnit({
+      id: 'A-sniper',
+      team: 'A',
+      ammo: 2,
+      extraSlots: { activeSets: [null, 'camouflage'] },
+    });
+
+    expect(abilityOptions(makeState([rich], CATALOG), rich)[0]).toMatchObject({
+      cost: '3 Munição',
+      affordable: true,
+    });
+    expect(abilityOptions(makeState([poor], CATALOG), poor)[0]?.affordable).toBe(false);
   });
 
   it('names an ability this build cannot translate by its id rather than by a blank', () => {

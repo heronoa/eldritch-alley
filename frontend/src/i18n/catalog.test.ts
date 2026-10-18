@@ -10,6 +10,7 @@ import { COVER_SIDES, type CoverSide } from '../game/coverBadge';
 import { describeRejection } from '../game/log';
 import type { PanelKey } from '../game/panel';
 import type { RejectReason } from '../protocol';
+import { abilityName } from './abilities';
 import { ptBR, type MessageKey } from './catalog.pt-BR';
 import { enUS } from './catalog.en-US';
 import { getLocale, setLocale } from './translate';
@@ -54,6 +55,12 @@ describe('the en-US catalog', () => {
     for (const key of Object.keys(enUS)) {
       expect(Object.keys(ptBR), key).toContain(key);
     }
+  });
+
+  it('holds exactly the keys of the reference, neither less nor more', () => {
+    // The fallback keeps a missing translation readable, but a key only one side carries is a screen
+    // that reads differently in the two languages. m3 finishes the catalogs, so the sets match.
+    expect(Object.keys(enUS).sort()).toEqual(Object.keys(ptBR).sort());
   });
 
   it('translates the whole title screen, which is what this feature ships', () => {
@@ -246,6 +253,39 @@ describe('the pt-BR the game shows', () => {
     expect(message('en-US', 'hud.target.chance')).toBe('Hit {value}%');
   });
 
+  it('carries the hover tooltips, with the body counted in the singular and the plural', () => {
+    // The owner's copy, in the catalog's sentence case. The side is the local player's, so each side
+    // and each count is a key of its own: the catalog has no plural rule to lean on.
+    expect(message('pt-BR', 'hud.tooltip.difficultTerrain')).toBe('Terreno difícil! Chance de queda.');
+    expect(message('en-US', 'hud.tooltip.difficultTerrain')).toBe('Difficult terrain! Chance of falling.');
+    expect(message('pt-BR', 'hud.tooltip.camouflage')).toBe(
+      'Em camuflagem. Não pode ser alvejado diretamente.',
+    );
+    expect(message('en-US', 'hud.tooltip.camouflage')).toBe('Camouflaged. Cannot be targeted directly.');
+    expect(message('pt-BR', 'hud.tooltip.corpse.ally.one')).toBe(
+      'Aliado caído. Morte permanente em 1 turno.',
+    );
+    expect(message('en-US', 'hud.tooltip.corpse.ally.one')).toBe('Fallen ally. Permanent death in 1 turn.');
+    expect(message('pt-BR', 'hud.tooltip.corpse.ally.other')).toBe(
+      'Aliado caído. Morte permanente em {rounds} turnos.',
+    );
+    expect(message('en-US', 'hud.tooltip.corpse.ally.other')).toBe(
+      'Fallen ally. Permanent death in {rounds} turns.',
+    );
+    expect(message('pt-BR', 'hud.tooltip.corpse.enemy.one')).toBe(
+      'Inimigo caído. Morte permanente em 1 turno.',
+    );
+    expect(message('en-US', 'hud.tooltip.corpse.enemy.one')).toBe(
+      'Fallen enemy. Permanent death in 1 turn.',
+    );
+    expect(message('pt-BR', 'hud.tooltip.corpse.enemy.other')).toBe(
+      'Inimigo caído. Morte permanente em {rounds} turnos.',
+    );
+    expect(message('en-US', 'hud.tooltip.corpse.enemy.other')).toBe(
+      'Fallen enemy. Permanent death in {rounds} turns.',
+    );
+  });
+
   it('answers every refusal code out of the catalog, keyed by the code itself', () => {
     // A code with no key of its own is a compile error: the key is built from the code.
     const reasons: readonly RejectReason[] = [
@@ -267,6 +307,7 @@ describe('the pt-BR the game shows', () => {
       'no-line-of-sight',
       'no-pending-move',
       'ability-unknown',
+      'target-hidden',
     ];
 
     for (const reason of reasons) {
@@ -338,6 +379,57 @@ describe('the pt-BR the game shows', () => {
     // The actor names an id its slots do not carry, or the catalog does not define (ADR 0016 §7).
     expect(message('pt-BR', 'log.rejection.ability-unknown')).toBe('Habilidade desconhecida');
     expect(message('en-US', 'log.rejection.ability-unknown')).toBe('Unknown ability');
+  });
+
+  it('carries the three names of the second active set in both catalogs', () => {
+    // ADR 0023 §2: the three classes of the milestone carry one more ability, and the menu reads it by
+    // these three words.
+    expect(message('pt-BR', 'ability.camouflage')).toBe('Camuflagem');
+    expect(message('en-US', 'ability.camouflage')).toBe('Camouflage');
+    expect(message('pt-BR', 'ability.mud')).toBe('Lama');
+    expect(message('en-US', 'ability.mud')).toBe('Mud');
+    expect(message('pt-BR', 'ability.resurrection')).toBe('Ressurreição');
+    expect(message('en-US', 'ability.resurrection')).toBe('Resurrection');
+  });
+
+  it('carries the details of the three new effects in both catalogs', () => {
+    expect(message('pt-BR', 'ability.detail.camouflage')).toBe('{turns} turnos');
+    expect(message('en-US', 'ability.detail.camouflage')).toBe('{turns} turns');
+    expect(message('pt-BR', 'ability.detail.breakChance')).toBe('quebra {chance}%');
+    expect(message('en-US', 'ability.detail.breakChance')).toBe('{chance}% break');
+    expect(message('pt-BR', 'ability.detail.terrain')).toBe('{rounds} rodadas');
+    expect(message('en-US', 'ability.detail.terrain')).toBe('{rounds} rounds');
+    expect(message('pt-BR', 'ability.detail.difficultTerrain')).toBe('terreno difícil');
+    expect(message('en-US', 'ability.detail.difficultTerrain')).toBe('difficult terrain');
+    expect(message('pt-BR', 'ability.detail.revive')).toBe('Revive um aliado caído');
+    expect(message('en-US', 'ability.detail.revive')).toBe('Revive a fallen ally');
+  });
+
+  it('carries the four events of the second active set in both catalogs', () => {
+    // The camouflage names why it ended; the other three are one sentence each (ADR 0023 §4).
+    expect(message('pt-BR', 'log.event.camouflageExpired')).toBe('A camuflagem de {target} sumiu');
+    expect(message('en-US', 'log.event.camouflageExpired')).toBe("{target}'s camouflage faded");
+    expect(message('pt-BR', 'log.event.camouflageBroken')).toBe('A camuflagem de {target} quebrou');
+    expect(message('en-US', 'log.event.camouflageBroken')).toBe("{target}'s camouflage broke");
+    expect(message('pt-BR', 'log.event.stoodUp')).toBe('{actor} se levantou');
+    expect(message('en-US', 'log.event.stoodUp')).toBe('{actor} stood up');
+    expect(message('pt-BR', 'log.event.terrainExpired')).toBe('O chão secou');
+    expect(message('en-US', 'log.event.terrainExpired')).toBe('The ground dried up');
+    expect(message('pt-BR', 'log.event.revived')).toBe('{target} está de pé de novo');
+    expect(message('en-US', 'log.event.revived')).toBe('{target} is back on their feet');
+  });
+
+  it('carries the hidden-target refusal in both catalogs', () => {
+    // A camouflaged enemy cannot be named by a basic attack (ADR 0023 §3).
+    expect(message('pt-BR', 'log.rejection.target-hidden')).toBe('Alvo oculto');
+    expect(message('en-US', 'log.rejection.target-hidden')).toBe('Target hidden');
+  });
+
+  it('names the three new abilities and answers null for an id it does not know', () => {
+    expect(abilityName('camouflage')).toBe('Camuflagem');
+    expect(abilityName('mud')).toBe('Lama');
+    expect(abilityName('resurrection')).toBe('Ressurreição');
+    expect(abilityName('time-stop')).toBeNull();
   });
 
   it('carries the HUD lines', () => {

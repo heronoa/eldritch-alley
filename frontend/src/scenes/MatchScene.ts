@@ -49,6 +49,7 @@ import { describeEvent, describeRejection, type Battlefield, type UnitNames } fr
 import { presentationOf, type Cue, type Snapshot } from '../game/presentation';
 import { Gestures, LONG_PRESS_MS, type Pinch, type PressPointer } from '../game/press';
 import { resolveClick, resolveInspect } from '../game/selection';
+import { hoverTooltip } from '../game/tooltip';
 import { activeSlot, isHumanTurn, turnOrder, type TurnSlot } from '../game/turn-order';
 import { t } from '../i18n';
 import { terrainOf, type Terrain } from '../maps/terrain';
@@ -63,6 +64,7 @@ import {
   type RejectReason,
   type StateMessage,
   type Team,
+  type UnitId,
   type UnitState,
 } from '../protocol';
 import { NO_FLOOR, type Cell, type Pixel } from '../view/grid';
@@ -122,7 +124,7 @@ import {
   HOVER_HIGHLIGHT_ALPHA,
   HOVER_HIGHLIGHT_COLOR,
 } from '../view/theme';
-import { BODY_HEIGHT, SPRITE_SIZE } from '../view/unit-look';
+import { BODY_HEIGHT, SPRITE_SIZE, corpseRoundsLeft } from '../view/unit-look';
 import { download } from './download';
 import { playEffect, playImpact } from './effects';
 import { MapView } from './map/MapView';
@@ -228,6 +230,11 @@ export class MatchScene extends Phaser.Scene {
    * picked. It is only set while the ability mode is armed, and the mode is what the aim reads.
    */
   private armedAbilityId: string | null = null;
+  /**
+   * The fallen ally a two-click resurrection has already named, or null before the body is chosen
+   * (ADR 0023 §7). It is the first step of the aim; the next click names the cell.
+   */
+  private reviveTargetId: string | null = null;
   /** Whether the ability menu is on the screen. It is a question, not a mode: it arms nothing by itself. */
   private menuOpen = false;
   /** The rows the open menu showed, so a press on one arms the ability the player read (EA-16). */
@@ -249,6 +256,13 @@ export class MatchScene extends Phaser.Scene {
    * anywhere — and it is kept apart from `previewCell`, which answers a different question (D1).
    */
   private hoveredCell: Cell | null = null;
+  /**
+   * The unit whose figure the mouse is over, when there is one, and the screen point it reported: the
+   * two halves of the tooltip's question (ADR 0023). A portrait of the turn queue marks a cell but says
+   * nothing here — the label is about the board, not the HUD.
+   */
+  private hoveredUnitId: UnitId | null = null;
+  private hoverAt: Pixel | null = null;
   /**
    * The gestures of the match, by their own rules (DT-79, DT-84): the fingers that are down, the press
    * waiting on its own lift and the drag the map follows. The scene asks it what a pointer event means
@@ -353,6 +367,8 @@ export class MatchScene extends Phaser.Scene {
     this.gestures.cancel();
     this.previewCell = null;
     this.hoveredCell = null;
+    this.hoveredUnitId = null;
+    this.hoverAt = null;
     this.pinchFrom = 0;
     this.pinchZoom = MIN_ZOOM;
     // Switching maps resets the view to N, so a match never opens from a side the last one was left on.
@@ -379,6 +395,7 @@ export class MatchScene extends Phaser.Scene {
     this.buttonModel = [];
     this.chipModel = [];
     this.menuModel = [];
+    this.reviveTargetId = null;
     this.statusText = '';
     this.resultText = '';
     this.camera = { zoom: MIN_ZOOM, centre: { x: CANVAS_WIDTH / 2, y: CANVAS_HEIGHT / 2 } };
@@ -420,6 +437,9 @@ export class MatchScene extends Phaser.Scene {
     // Phaser has no event for a pointer the browser takes away: it is read straight off the canvas,
     // because a finger lost mid-gesture — a call, a system gesture — must not leave the map stuck.
     this.game.canvas.addEventListener('pointercancel', this.onPointerCancel);
+    // A mouse leaving the canvas gets no move of its own, so the hover and its label are taken down
+    // here, the same way a cancelled pointer ends a gesture.
+    this.game.canvas.addEventListener('pointerleave', this.onPointerLeave);
     this.input.on('wheel', (pointer: Phaser.Input.Pointer, _objects: unknown, _dx: number, dy: number) => {
       this.handleWheel(pointer, dy);
     });
@@ -444,6 +464,7 @@ export class MatchScene extends Phaser.Scene {
       this.disarmLongPress();
       this.gestures.cancel();
       this.game.canvas.removeEventListener('pointercancel', this.onPointerCancel);
+      this.game.canvas.removeEventListener('pointerleave', this.onPointerLeave);
       this.turn?.view.destroy();
       this.turn = null;
       this.mapView?.destroy();
@@ -532,7 +553,15 @@ export class MatchScene extends Phaser.Scene {
     if (outcome.kind === 'hover') {
       this.updatePreview(pointer);
       this.updateHoveredCell(pointer);
-    } else if (outcome.kind === 'pinch') this.pinchTo(outcome.pinch);
+      return;
+    }
+
+    // A finger has no hover at all, and a drag is not resting on anything: whatever label the mouse
+    // left on the screen goes with this move.
+    this.forgetHoveredUnit();
+    this.refreshTooltip();
+
+    if (outcome.kind === 'pinch') this.pinchTo(outcome.pinch);
     else if (outcome.kind === 'pan') {
       // The one place the drag sensitivity is read: the travel is the whole of it from where the finger
       // went down, so scaling it scales the gesture and never accumulates. The keys call the camera
@@ -575,18 +604,26 @@ export class MatchScene extends Phaser.Scene {
   }
 
   /**
-   * The cell a point of the world answers to, read the way a press reads one (EA-8): the cell of the
-   * figure of a unit drawn under the point, and the tile the projection finds there only when no figure
-   * covers it. The aim's preview and the mark of the tile under the mouse ask the same question, so they
-   * take the same answer.
+   * What a point of the world answers to, read the way a press reads one (EA-8): the unit whose drawn
+   * figure covers the point, and the cell that figure stands on — or the tile the projection finds
+   * there when no figure covers it. The aim's preview, the mark of the tile under the mouse and the
+   * tooltip all ask this same question, so they take the same answer.
    */
-  private cellUnderPointer(world: Pixel, state: PublicState): Cell | null {
-    const hit = unitAtPoint(this.inView(state.units), world, this.spriteLayout);
+  private underPointer(
+    world: Pixel,
+    state: PublicState,
+  ): { cell: Cell | null; unit: UnitState | null } {
+    const unit = unitAtPoint(this.inView(state.units), world, this.spriteLayout);
     const view =
-      hit?.position ??
+      unit?.position ??
       cellAt(world, this.map?.size ?? state.board, (candidate) => this.levelAt(candidate), this.lift);
 
-    return view === null ? null : this.mapCell(view);
+    return { cell: view === null ? null : this.mapCell(view), unit };
+  }
+
+  /** The cell a point of the world answers to, for the callers that only need the cell. */
+  private cellUnderPointer(world: Pixel, state: PublicState): Cell | null {
+    return this.underPointer(world, state).cell;
   }
 
   /** Keeps the cell the preview is asking about, and redraws only the badges it can change (D2). */
@@ -677,27 +714,56 @@ export class MatchScene extends Phaser.Scene {
    */
   private updateHoveredCell(pointer: Phaser.Input.Pointer): void {
     const state = this.state;
-    if (state === null || this.finished) {
-      this.setHoveredCell(null);
-      return;
-    }
-
     const point = { x: pointer.x, y: pointer.y };
-    const portrait = this.portraitAt(state, point);
-    if (portrait !== null) {
-      this.setHoveredCell(portrait.position);
-      return;
-    }
 
-    // A point the HUD owns is the HUD's, whatever tile the world has behind it.
-    if (this.hudCoversPoint(point)) {
+    if (state === null || this.finished) {
+      this.forgetHoveredUnit();
       this.setHoveredCell(null);
+    } else {
+      const portrait = this.portraitAt(state, point);
+      if (portrait !== null) {
+        // The portrait marks the unit's cell, but the label is about the board: the mouse is over the
+        // HUD, which has nothing to explain about the unit it merely names.
+        this.forgetHoveredUnit();
+        this.setHoveredCell(portrait.position);
+      } else if (this.hudCoversPoint(point)) {
+        // A point the HUD owns is the HUD's, whatever tile the world has behind it.
+        this.forgetHoveredUnit();
+        this.setHoveredCell(null);
+      } else {
+        // The same resolution a press runs: the figure of a unit first, and the cell under the point
+        // only when no drawn figure covers it (EA-8).
+        const hit = this.underPointer({ x: pointer.worldX, y: pointer.worldY }, state);
+        this.hoveredUnitId = hit.unit?.id ?? null;
+        this.hoverAt = point;
+        this.setHoveredCell(hit.cell);
+      }
+    }
+
+    this.refreshTooltip();
+  }
+
+  /** Forgets what the mouse was over, and with it the label on the screen. */
+  private forgetHoveredUnit(): void {
+    this.hoveredUnitId = null;
+    this.hoverAt = null;
+  }
+
+  /**
+   * Hands the HUD the label of what the mouse is over, or takes it down. The sentence is worded by the
+   * tested `hoverTooltip`, so the scene only knows where the pointer is; the HUD draws it.
+   */
+  private refreshTooltip(): void {
+    const state = this.state;
+    if (state === null || this.hoverAt === null || this.finished) {
+      this.hud.showTooltip(null, null);
       return;
     }
 
-    // The same resolution a press runs: the figure of a unit first, and the cell under the point only
-    // when no drawn figure covers it (EA-8).
-    this.setHoveredCell(this.cellUnderPointer({ x: pointer.worldX, y: pointer.worldY }, state));
+    const text = hoverTooltip(state, this.hoveredCell, this.hoveredUnitId, HUMAN_TEAM);
+    // Nothing to say is also no place to say it: the HUD takes the box down on either null.
+    if (text === null) this.hud.showTooltip(null, null);
+    else this.hud.showTooltip(text, this.hoverAt);
   }
 
   /**
@@ -772,6 +838,16 @@ export class MatchScene extends Phaser.Scene {
     this.gestures.cancel();
     this.disarmLongPress();
     this.endPinch();
+  };
+
+  /**
+   * The mouse left the canvas. Phaser reports no move for that, so the last hover would stay marked
+   * and its label would stay on the screen: both go with the pointer.
+   */
+  private onPointerLeave = (): void => {
+    this.forgetHoveredUnit();
+    this.setHoveredCell(null);
+    this.refreshTooltip();
   };
 
   /** Two fingers move: the zoom follows how far apart they are, about the point between them. */
@@ -1000,18 +1076,27 @@ export class MatchScene extends Phaser.Scene {
     // The armed mode decides what the click may send: a move only with `Mover` armed, an attack only
     // with `Atacar` armed (EA-7 as amended: the destination is the move, Confirmar commits it), and an
     // aim with `Habilidade` armed, which is the one mode the click itself has to read (ADR 0016 §5).
-    const intent = applyMode(
-      this.mode,
-      resolveClick({
-        state,
-        selectedId: this.selectedId,
-        cell,
-        targetId: named?.id ?? null,
-        humanTeam: HUMAN_TEAM,
-        mode: this.mode,
-        abilityId: this.armedAbilityId,
-      }),
-    );
+    const clicked = resolveClick({
+      state,
+      selectedId: this.selectedId,
+      cell,
+      targetId: named?.id ?? null,
+      humanTeam: HUMAN_TEAM,
+      mode: this.mode,
+      abilityId: this.armedAbilityId,
+      reviveTargetId: this.reviveTargetId,
+    });
+
+    // A resurrection is aimed in two clicks (ADR 0023 §7). This intent is not an action of any armed
+    // mode, so it is kept here, before `applyMode` narrows it away: the first click only names the body,
+    // and the panel asks for the cell the next one has to name.
+    if (clicked.kind === 'revive-target') {
+      this.reviveTargetId = clicked.unitId;
+      this.pushHud();
+      return;
+    }
+
+    const intent = applyMode(this.mode, clicked);
 
     switch (intent.kind) {
       case 'select':
@@ -1196,6 +1281,7 @@ export class MatchScene extends Phaser.Scene {
 
     this.armedAbilityId = option.id;
     this.mode = 'ability';
+    this.reviveTargetId = null;
     this.closeAbilityMenu();
     if (this.state !== null) this.redraw(this.state);
   }
@@ -1301,6 +1387,8 @@ export class MatchScene extends Phaser.Scene {
     // The question only stands while the turn can still answer it (EA-16): an aim that fell back to
     // another mode is put down, and so is a menu whose unit has nothing left to offer.
     if (this.mode !== 'ability') this.armedAbilityId = null;
+    // A new state settles the board: a body chosen before it may no longer be there (ADR 0023 §7).
+    this.reviveTargetId = null;
     if (!available.canUseAbility) this.closeAbilityMenu();
     this.syncAutoEndTurn();
 
@@ -1347,6 +1435,12 @@ export class MatchScene extends Phaser.Scene {
     this.map = terrainOf(mapId, this.viewSteps);
     this.mapView = new MapView(this, this.map, board === null ? [] : boardMarks(board));
     this.mapView.setMarksVisible(this.highlightCovers);
+  }
+
+  /** The difficult cells of the state, read in the cells of the view the map is drawn from (ADR 0023 §4). */
+  private difficultCells(state: PublicState | null): Cell[] {
+    if (state === null) return [];
+    return state.difficultTerrain.map((cell) => this.viewCell(cell.position));
   }
 
   /**
@@ -1529,6 +1623,24 @@ export class MatchScene extends Phaser.Scene {
         break;
       }
 
+      // The three cues of the second active set are changes the next state confirms too; taking them
+      // off when the event arrives keeps the drawing from lagging behind the batch (ADR 0023).
+      case 'camouflage-ended':
+        this.sprites.get(cue.unitId)?.setCamouflage(false);
+        break;
+
+      case 'stand-up':
+        this.sprites.get(cue.unitId)?.setProne(false);
+        break;
+
+      case 'terrain-expired':
+        this.mapView?.removeDifficultTerrain(cue.cells.map((cell) => this.viewCell(cell)));
+        break;
+
+      // The revived figure is created by the state that follows the event; nothing to play before it.
+      case 'revive':
+        break;
+
       case 'defeat':
         this.sprites.get(cue.unitId)?.markDefeated();
         break;
@@ -1595,6 +1707,7 @@ export class MatchScene extends Phaser.Scene {
     // No board is being played any more, so nothing on it stays marked as hovered (D5): the result
     // screen and the battle report are read against nothing the mouse is over.
     this.setHoveredCell(null);
+    this.forgetHoveredUnit();
     this.syncAutoEndTurn();
     this.pushHud();
   }
@@ -1758,6 +1871,9 @@ export class MatchScene extends Phaser.Scene {
     this.drawHighlights(state);
     this.redrawUnits(state);
     this.drawCoveredBuildings(state);
+    // The overlay always answers with the whole set the state names: a recast replaces a cell, and a
+    // state that has dried a cell leaves it out (ADR 0023 §4).
+    this.mapView?.setDifficultTerrain(this.difficultCells(state));
     this.pushHud();
   }
 
@@ -1817,6 +1933,19 @@ export class MatchScene extends Phaser.Scene {
     mapView.setCovered(covered);
   }
 
+  /**
+   * The line the panel shows while a resurrection waits for a click (ADR 0023 §7): the body first, then
+   * the cell. Empty when no resurrection is armed, so every other status keeps the line it had.
+   */
+  private reviveHint(): string {
+    if (this.state === null || this.mode !== 'ability' || this.armedAbilityId === null) return '';
+
+    const ability = abilityById(this.state.catalog, this.armedAbilityId);
+    if (ability === undefined || ability.effect.kind !== 'revive') return '';
+
+    return t(this.reviveTargetId === null ? 'hud.revive.pickBody' : 'hud.revive.pickCell');
+  }
+
   /** Hands the HUD what it shows now, and keeps the model of its buttons for the clicks. */
   private pushHud(): void {
     // Remembered so `advanceInputLock` can tell a lock that cleared since this last render from one
@@ -1868,7 +1997,7 @@ export class MatchScene extends Phaser.Scene {
         canScrollDown: this.reportScroll + REPORT_LINES < reportTotal,
         canReopen: this.finished && !this.battleReportOpen,
       },
-      status: this.statusText,
+      status: this.statusText || this.reviveHint(),
       result: this.resultText,
       wayOutVisible: this.finished,
       settingsOpen: this.settingsOpen,
@@ -1889,6 +2018,10 @@ export class MatchScene extends Phaser.Scene {
         enabled: this.autoEndTurn.enabled,
       },
     });
+
+    // The label of what the mouse is over is refreshed on every redraw as well, so a round passing,
+    // a body revived or a mud tile drying under a still cursor never leaves a stale sentence behind.
+    this.refreshTooltip();
   }
 
   /**
@@ -2021,6 +2154,9 @@ export class MatchScene extends Phaser.Scene {
       // The reach of the ability the menu armed, so the wash answers the question the player asked and
       // not the one the unit carries by default (EA-16).
       abilityId: this.armedAbilityId,
+      // Once the body is named, the wash offers only the free cells the resurrection may bring it to
+      // (ADR 0023 §7).
+      reviveTargetId: this.reviveTargetId,
     });
 
     // The areas come from the state, which states them in the map's own coordinates; the wash is drawn
@@ -2076,6 +2212,9 @@ export class MatchScene extends Phaser.Scene {
       // The words over its head are read from the board's own sides (EA-15), so they say the same thing
       // the rule does — and a unit that has fallen is covered by nothing.
       sprite.setCoverBadge(unit.defeated ? null : coverSentence(state.board, unit.position));
+      // A body is a resource while a resurrection can still reach it, so its remaining rounds are
+      // drawn over it for either team (ADR 0023 §7).
+      sprite.setCorpseCountdown(corpseRoundsLeft(state.round, unit));
     }
 
     for (const id of [...this.sprites.keys()]) {

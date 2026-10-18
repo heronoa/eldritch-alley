@@ -6,6 +6,7 @@ import {
   IDLE_COLUMNS,
   chipFrameOf,
   classRow,
+  corpseRoundsLeft,
   frameBox,
   frameColumn,
   frameIndex,
@@ -95,6 +96,42 @@ describe('pipsFor', () => {
       filled: 0,
       resource: 'mana',
     });
+  });
+});
+
+describe('corpseRoundsLeft', () => {
+  const body = (expires: number | null) => ({
+    defeated: true,
+    permanentlyDead: false,
+    corpseExpiresAtRound: expires,
+  });
+
+  it('counts the rounds between the one now and the one the body is removed on', () => {
+    expect(corpseRoundsLeft(4, body(7))).toBe(3);
+    expect(corpseRoundsLeft(1, body(4))).toBe(3);
+  });
+
+  it('stops at zero rather than counting past the expiry', () => {
+    expect(corpseRoundsLeft(7, body(7))).toBe(0);
+    expect(corpseRoundsLeft(9, body(7))).toBe(0);
+  });
+
+  it('is null for a living unit, a permanent death, or a body with no expiry', () => {
+    expect(
+      corpseRoundsLeft(3, {
+        defeated: false,
+        permanentlyDead: false,
+        corpseExpiresAtRound: 6,
+      }),
+    ).toBeNull();
+    expect(
+      corpseRoundsLeft(3, {
+        defeated: true,
+        permanentlyDead: true,
+        corpseExpiresAtRound: 6,
+      }),
+    ).toBeNull();
+    expect(corpseRoundsLeft(3, body(null))).toBeNull();
   });
 });
 

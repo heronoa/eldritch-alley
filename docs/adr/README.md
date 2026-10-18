@@ -26,3 +26,4 @@ Short records of decisions that shape the game and the codebase. Each ADR has a 
 | [0020](0020-persistent-squad-and-starter-set.md) | A persistent squad with a starter set | Accepted |
 | [0021](0021-password-sign-in-with-a-verified-address.md) | Entering with an address and a password, once the address is verified | Accepted (supersedes 0018 § 1) |
 | [0022](0022-sso-through-keycloak.md) | Optional SSO through Keycloak, and self-service account deletion | Accepted (supersedes 0018 § 1) |
+| [0023](0023-statuses-terrain-and-resurrection.md) | Statuses, difficult terrain and resurrection | Accepted (amends 0016 §2 and §6) |

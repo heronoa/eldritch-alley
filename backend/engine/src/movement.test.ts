@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
+import { applyEvent } from './events';
 import { applyAction, applyEvents, hashState, newMatch } from './match';
-import { findPath, reachableCells } from './movement';
-import type { Board, MatchSetup, MatchState, Position, Team, Unit } from './types';
+import {
+  DEFAULT_MOVEMENT_PROFILE,
+  findPath,
+  isDifficult,
+  reachableCells,
+  stepCost,
+} from './movement';
+import type { Event, Board, MatchSetup, MatchState, Position, Team, Unit } from './types';
 
 function makeBoard(heights: Record<string, number> = {}): Board {
   const levels = new Array<number>(64).fill(0);
@@ -199,6 +206,110 @@ describe('findPath', () => {
   });
 });
 
+/** Writes difficult cells onto a match state, which is where the movement rules read them from. */
+function muddy(match: MatchState, cells: readonly Position[], expiresAtRound = 5): MatchState {
+  return {
+    ...match,
+    difficultTerrain: cells.map((position) => ({ position: { ...position }, expiresAtRound })),
+  };
+}
+
+describe('difficult terrain and the movement search', () => {
+  it('doubles the full step of the destination, climbs included', () => {
+    const flat = makeBoard();
+    const climb = makeBoard({ '1,0': 1 });
+    const high = makeBoard({ '1,0': 2 });
+    const climber = { maxStepUp: 2, maxStepDown: 1, climbCost: 1 };
+
+    expect(stepCost(DEFAULT_MOVEMENT_PROFILE, flat, { x: 0, y: 0 }, { x: 1, y: 0 }, true)).toBe(2);
+    expect(stepCost(DEFAULT_MOVEMENT_PROFILE, climb, { x: 0, y: 0 }, { x: 1, y: 0 }, true)).toBe(4);
+    expect(stepCost(climber, high, { x: 0, y: 0 }, { x: 1, y: 0 }, true)).toBe(6);
+    // The flag reads the destination: a step out of mud onto plain ground is an ordinary step.
+    expect(stepCost(DEFAULT_MOVEMENT_PROFILE, flat, { x: 1, y: 0 }, { x: 1, y: 1 }, false)).toBe(1);
+  });
+
+  it('reads the terrain from the state, so the search charges what the rule says', () => {
+    const match = muddy(state({ movement: 4 }), [{ x: 1, y: 0 }]);
+
+    expect(isDifficult(match, { x: 1, y: 0 })).toBe(true);
+    expect(isDifficult(match, { x: 0, y: 1 })).toBe(false);
+    expect(findPath(match, 'a1', { x: 1, y: 0 })).toEqual({
+      path: [{ x: 1, y: 0 }],
+      cost: 2,
+    });
+    expect(keysOf(reachableCells(state({ movement: 1 }), 'a1'))).toContain('1,0');
+    expect(keysOf(reachableCells(muddy(state({ movement: 1 }), [{ x: 1, y: 0 }]), 'a1'))).not.toContain(
+      '1,0',
+    );
+    expect(
+      keysOf(reachableCells(muddy(state({ movement: 2 }), [{ x: 1, y: 0 }]), 'a1')),
+    ).toContain('1,0');
+  });
+
+  it('doubles a climb, so the budget that carried the plain step no longer carries the muddy one', () => {
+    const plain = state({ movement: 2 }, [], { '1,0': 1 });
+    const wet = muddy(plain, [{ x: 1, y: 0 }]);
+
+    expect(findPath(plain, 'a1', { x: 1, y: 0 })).toEqual({
+      path: [{ x: 1, y: 0 }],
+      cost: 2,
+    });
+    expect(findPath(wet, 'a1', { x: 1, y: 0 })).toBeNull();
+  });
+
+  it('doubles a two-level climb for a profile that may take it', () => {
+    const climber = state(
+      { movement: 6, movementProfile: { maxStepUp: 2, maxStepDown: 1, climbCost: 1 } },
+      [],
+      { '1,0': 2 },
+    );
+    const wet = muddy(climber, [{ x: 1, y: 0 }]);
+
+    expect(findPath(climber, 'a1', { x: 1, y: 0 })).toEqual({
+      path: [{ x: 1, y: 0 }],
+      cost: 3,
+    });
+    expect(findPath(wet, 'a1', { x: 1, y: 0 })).toEqual({
+      path: [{ x: 1, y: 0 }],
+      cost: 6,
+    });
+  });
+
+  it('pays what the search found when the path is replayed, and refuses a path that pays less', () => {
+    const match = muddy(state({ movement: 4 }), [{ x: 1, y: 0 }]);
+    const event: Event = {
+      type: 'moved',
+      actor: 'a1',
+      from: { x: 0, y: 0 },
+      to: { x: 1, y: 0 },
+      path: [{ x: 1, y: 0 }],
+      rngState: match.rng.state,
+      prone: false,
+    };
+
+    expect(applyEvent(match, event).movementLeft).toBe(2);
+    // The same event against a budget of one: the doubled step no longer fits.
+    expect(() => applyEvent({ ...match, movementLeft: 1 }, event)).toThrow(
+      /the path costs more than the movement left/,
+    );
+
+    for (const cell of reachableCells(match, 'a1')) {
+      const walk = findPath(match, 'a1', cell);
+      if (walk === null) throw new Error(`reachable cell ${cell.x},${cell.y} has no path`);
+      const next = applyEvent(match, {
+        type: 'moved',
+        actor: 'a1',
+        from: { x: 0, y: 0 },
+        to: cell,
+        path: walk.path,
+        rngState: match.rng.state,
+        prone: false,
+      });
+      expect(next.movementLeft).toBe(4 - walk.cost);
+    }
+  });
+});
+
 describe('movement and replay', () => {
   it('rebuilds the same match from the moved event that carries the path', () => {
     const setup = makeSetup(
@@ -209,7 +320,8 @@ describe('movement and replay', () => {
       { '1,0': 5 },
     );
 
-    const result = applyAction(newMatch(setup), { type: 'move', actor: 'a1', to: { x: 2, y: 0 } });
+    const start = newMatch(setup);
+    const result = applyAction(start, { type: 'move', actor: 'a1', to: { x: 2, y: 0 } });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -223,6 +335,9 @@ describe('movement and replay', () => {
           { x: 1, y: 1 },
           { x: 2, y: 0 },
         ],
+        // Plain ground rolls nothing, so the random source the event carries is the one it started on.
+        rngState: start.rng.state,
+        prone: false,
       },
     ]);
     expect(unitAt(result.state, 'a1').position).toEqual({ x: 2, y: 0 });

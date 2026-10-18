@@ -25,6 +25,13 @@ function cueDurationMs(cue: Cue): number {
     case 'defeat':
     case 'remove':
       return 0;
+    // The cues of the second active set are state flips too: the camouflage is gone, the unit stands,
+    // the mud dries and the revived unit appears. The drawing itself is m4 (ADR 0023).
+    case 'camouflage-ended':
+    case 'stand-up':
+    case 'terrain-expired':
+    case 'revive':
+      return 0;
   }
 }
 

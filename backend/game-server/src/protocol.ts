@@ -25,8 +25,13 @@ import type { MapId } from './map';
  * their payloads arrive with this bump. The client sends `useAbility` naming a cell, the state carries
  * the match's `catalog`, the events `ability-used`, `damaged` and `healed` join the batch, and
  * `ability-unknown` joins the refusals.
+ * Version 11: the second active set and the three effects it brings (ADR 0023 §8). The state carries
+ * every unit's `camouflage` and `prone` plus the match's `difficultTerrain`, a `moved` names the
+ * `rngState` and `prone` its walks rolled, `ability-used` may name a `target` (the fallen ally of a
+ * revive), the events `camouflage-ended`, `stood-up`, `terrain-expired` and `revived` join the batch,
+ * and `target-hidden` joins the refusals.
  */
-export const PROTOCOL_VERSION = 10;
+export const PROTOCOL_VERSION = 11;
 
 /** The single room type of M2-a. One room is one match. */
 export const ROOM_NAME = 'battle';
@@ -54,9 +59,10 @@ export type ClientAction =
   /**
    * Uses an ability the unit on turn carries, aimed at a cell rather than at a unit (ADR 0016 §5). The
    * server fills the actor in like it does for every other action, so the client chooses the ability and
-   * the cell and never the caster.
+   * the cell and never the caster. `target` is read only by a `revive` effect, where it names the fallen
+   * ally; every other kind ignores it (ADR 0023 §7).
    */
-  | { type: 'useAbility'; abilityId: string; to: Position }
+  | { type: 'useAbility'; abilityId: string; to: Position; target?: UnitId }
   | { type: 'reload' }
   /** The round it was decided on, so one that arrives late ends nobody's turn (ADR 0010, EA-4). */
   | { type: 'endTurn'; round: number }

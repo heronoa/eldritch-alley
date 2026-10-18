@@ -6,7 +6,7 @@ import { COVER_HIT_PENALTY, coverFor } from './cover';
 import { DIRECTION_BONUS, attackDirection } from './facing';
 import { effectiveRange, heightBonus, heightDifference } from './height';
 import { currentUnitId, isAlive, unitById } from './initiative';
-import { findPath, movementProfile, reachableCells, stepAllowed } from './movement';
+import { findPath, isDifficult, movementProfile, reachableCells, stepAllowed } from './movement';
 import { nextInt } from './rng';
 import { hasLineOfSight } from './sight';
 import type {
@@ -29,6 +29,9 @@ type MoveAction = Extract<Action, { type: 'move' }>;
 type AttackAction = Extract<Action, { type: 'attack' }>;
 type UseAbilityAction = Extract<Action, { type: 'useAbility' }>;
 type ReloadAction = Extract<Action, { type: 'reload' }>;
+
+/** The chance, out of 100, that a step into a difficult cell puts the walker on the ground (ADR 0023 §4). */
+const PRONE_CHANCE = 20;
 
 /** Everything the board says about one shot, read once for the roll and for the event alike. */
 interface Shot {
@@ -106,6 +109,23 @@ function occupantAt(state: PublicState, position: Position): UnitState | undefin
     (unit) =>
       !unit.permanentlyDead && unit.position.x === position.x && unit.position.y === position.y,
   );
+}
+
+/**
+ * Every cell of the board within `range` of `from`, in the fixed row-major order. A resurrection
+ * looks for a free destination this way, because the cell it may use is not the caster's own and is
+ * not where the body lies (ADR 0023 §7).
+ */
+function cellsWithin(state: PublicState, from: Position, range: number): Position[] {
+  const cells: Position[] = [];
+  const firstY = Math.max(0, from.y - range);
+  const lastY = Math.min(state.board.height - 1, from.y + range);
+  const firstX = Math.max(0, from.x - range);
+  const lastX = Math.min(state.board.width - 1, from.x + range);
+  for (let y = firstY; y <= lastY; y += 1) {
+    for (let x = firstX; x <= lastX; x += 1) cells.push({ x, y });
+  }
+  return cells;
 }
 
 /**
@@ -194,6 +214,9 @@ function validateAttack(state: PublicState, action: AttackAction): RejectReason 
 
   if (!target || !isAlive(target)) return 'target-invalid';
   if (target.id === attacker.id || target.team === attacker.team) return 'target-invalid';
+  // Camouflage hides a living enemy from basic attacks only, and the answer comes before the pool and
+  // the reach so the player learns the real reason (ADR 0023 §3).
+  if (target.camouflage !== null) return 'target-hidden';
   // The pool is answered before the reach, so a strike nobody can pay for is refused the same way
   // whatever the distance (ADR 0011). The reach is the unit's own `range`: an empty pool no longer
   // turns the shot into a melee blow, and distance never changes the damage.
@@ -208,13 +231,12 @@ function validateAttack(state: PublicState, action: AttackAction): RejectReason 
 }
 
 /**
- * Whether the id is one the caster may use. Only the first active set is read: ADR 0016 leaves
- * `activeSets[1]`, `reaction`, `movement` and `support` unread, so the ability a unit may use is the one
- * its first set carries. An id that is not there is refused whether the catalog knows it or not — the
- * lookup answers "is this the caster's" before it answers "what does it do".
+ * Whether the id is one the caster may use. Both active sets are read: a class carries two abilities
+ * and either one may be used (ADR 0023 §1). An id that is not there is refused whether the catalog
+ * knows it or not — the lookup answers "is this the caster's" before it answers "what does it do".
  */
 function carriesAbility(caster: UnitState, abilityId: string): boolean {
-  return caster.abilities.activeSets[0] === abilityId;
+  return caster.abilities.activeSets.includes(abilityId);
 }
 
 /**
@@ -244,6 +266,24 @@ function validateUseAbility(state: PublicState, action: UseAbilityAction): Rejec
   // under the caster or under the aim blocks nothing.
   if (ability.needsSight && !hasLineOfSight(state.board, caster.position, action.to)) {
     return 'no-line-of-sight';
+  }
+  // A resurrection reads the fallen ally in `target` and the free cell in `to` (ADR 0023 §7). The
+  // body may be anywhere; what the range above measured is the destination. The cell has to hold no
+  // living unit and no body, which `occupantAt` answers for both.
+  if (ability.effect.kind === 'revive') {
+    const fallen =
+      action.target === undefined
+        ? undefined
+        : state.units.find((unit) => unit.id === action.target);
+    if (
+      !fallen ||
+      fallen.team !== caster.team ||
+      !fallen.defeated ||
+      fallen.permanentlyDead
+    ) {
+      return 'target-invalid';
+    }
+    if (occupantAt(state, action.to)) return 'cell-occupied';
   }
   return null;
 }
@@ -282,6 +322,30 @@ export function canStillAct(state: PublicState): boolean {
   // every reach covers it — so a spell that is affordable is never out of reach.
   for (const abilityId of actor.abilities.activeSets) {
     if (abilityId === null) continue;
+    const ability = abilityById(state.catalog, abilityId);
+    if (!ability) continue;
+
+    // A resurrection may not use the caster's own cell unless no unit holds it, which is never true
+    // of a living caster: it walks the fallen allies and the free cells in reach instead (ADR 0023 §7).
+    if (ability.effect.kind === 'revive') {
+      const bodies = state.units.filter(
+        (unit) => unit.team === actor.team && unit.defeated && !unit.permanentlyDead,
+      );
+      for (const body of bodies) {
+        for (const to of cellsWithin(state, actor.position, ability.range)) {
+          const cast: Action = {
+            type: 'useAbility',
+            actor: actor.id,
+            abilityId,
+            to,
+            target: body.id,
+          };
+          if (validateUseAbility(state, cast) === null) return true;
+        }
+      }
+      continue;
+    }
+
     const cast: Action = { type: 'useAbility', actor: actor.id, abilityId, to: actor.position };
     if (validateUseAbility(state, cast) === null) return true;
   }
@@ -292,6 +356,61 @@ export function canStillAct(state: PublicState): boolean {
 /** The unit that takes the turn after the current one, wrapping to the start of the queue. */
 function nextUnitId(state: MatchState): UnitId {
   return state.initiative[(state.currentIndex + 1) % state.initiative.length];
+}
+
+/** The round the match is in after the current unit hands the turn over. */
+function roundAfterTurn(state: MatchState): number {
+  return state.currentIndex + 1 >= state.initiative.length ? state.round + 1 : state.round;
+}
+
+/**
+ * The events of a turn ending, in the order ADR 0023 §4 fixes, shared by `endTurn` and by the walk that
+ * puts its unit on the ground: `turn-ended` → `stood-up` → `terrain-expired` → `camouflage-ended` →
+ * `regained` → `corpse-removed`. Every event is measured on the state the turn ended on, so the order of
+ * the list is the whole of what decides the result.
+ */
+function turnEndEvents(state: MatchState, actor: UnitId, next: UnitId, round: number): Event[] {
+  const events: Event[] = [{ type: 'turn-ended', actor, next, round }];
+  const incoming = unitById(state, next);
+
+  // The unit coming on turn was lying down, so it stands now and walks at half its movement.
+  if (incoming.prone) events.push({ type: 'stood-up', actor: next });
+
+  // Terrain dries up when the round rises, and the event names exactly the cells that did.
+  if (round > state.round) {
+    const cells = state.difficultTerrain
+      .filter((terrain) => terrain.expiresAtRound <= round)
+      .map((terrain) => ({ x: terrain.position.x, y: terrain.position.y }));
+    if (cells.length > 0) events.push({ type: 'terrain-expired', cells });
+  }
+
+  // The actor's own turn is the one that counts its camouflage down; the turn that takes it to zero is
+  // the one that ends the status (ADR 0023 §3).
+  const camouflage = unitById(state, actor).camouflage;
+  if (camouflage !== null && camouflage.turns <= 1) {
+    events.push({ type: 'camouflage-ended', target: actor, reason: 'expired' });
+  }
+
+  // The turn the unit receives opens with a point of mana (ADR 0017): one point, magic pools only,
+  // capped at the capacity. A unit that does not come on turn never regenerates, so this is read from
+  // the turn that was handed over and not from the one that passed.
+  if (incoming.resourceKind === 'mana' && incoming.ammo < (incoming.magazine ?? 0)) {
+    events.push({ type: 'regained', actor: next, resource: 'mana', amount: 1 });
+  }
+
+  // Bodies whose time is up are removed as the new round starts, in setup order.
+  for (const unit of state.units) {
+    if (
+      unit.defeated &&
+      !unit.permanentlyDead &&
+      unit.corpseExpiresAtRound !== null &&
+      unit.corpseExpiresAtRound <= round
+    ) {
+      events.push({ type: 'corpse-removed', target: unit.id });
+    }
+  }
+
+  return events;
 }
 
 /** One unit a use reaches, and what its effect did to it, read before the events are assembled. */
@@ -335,14 +454,26 @@ function abilityEvents(state: MatchState, action: UseAbilityAction, rng: Rng): E
   if (!ability) throw new RangeError(`no definition for the accepted ability: ${action.abilityId}`);
 
   const effect = ability.effect;
-  const affected: Affected[] = unitsOn(state, abilityCells(state, action.to, ability)).map((unit) => {
-    if (effect.kind === 'heal') return { unit, hit: true, damage: 0 };
-    const hit = resolveHit(state, caster, unit, rng, effect.ignoresCover);
-    // The amount of the definition is what lands: the effect is data and not a weapon, so neither the
-    // direction nor the relief adds to it (ADR 0016 §3 and §9). The cover the effect ignores is what it
-    // buys; the amount is the same in every direction.
-    return { unit, hit, damage: hit ? effect.amount : 0 };
-  });
+  // A camouflaged unit's damaging action rolls the break first, before the action's own rolls
+  // (ADR 0023 §3, I4). A heal, a recast, a terrain cast and a resurrection roll nothing.
+  const breaks =
+    effect.kind === 'damage' && caster.camouflage !== null
+      ? nextInt(rng, 1, 100) <= caster.camouflage.breakChance
+      : false;
+
+  // Only damage and healing read the units on the cells. Camouflage writes a status, terrain writes a
+  // layer and a revival brings one body back; none of them is a unit effect.
+  const reachesUnits = effect.kind === 'damage' || effect.kind === 'heal';
+  const affected: Affected[] = reachesUnits
+    ? unitsOn(state, abilityCells(state, action.to, ability)).map((unit) => {
+        if (effect.kind === 'heal') return { unit, hit: true, damage: 0 };
+        const hit = resolveHit(state, caster, unit, rng, effect.ignoresCover);
+        // The amount of the definition is what lands: the effect is data and not a weapon, so neither
+        // the direction nor the relief adds to it (ADR 0016 §3 and §9). The cover the effect ignores is
+        // what it buys; the amount is the same in every direction.
+        return { unit, hit, damage: hit ? effect.amount : 0 };
+      })
+    : [];
 
   const events: Event[] = [
     {
@@ -352,26 +483,44 @@ function abilityEvents(state: MatchState, action: UseAbilityAction, rng: Rng): E
       to: { x: action.to.x, y: action.to.y },
       rngState: rng.state,
       resource: caster.resourceKind,
+      // A revival names the fallen ally; the other kinds ignore the field (ADR 0023 §7).
+      ...(effect.kind === 'revive' && action.target !== undefined
+        ? { target: action.target }
+        : {}),
     },
   ];
 
-  for (const entry of affected) {
-    events.push(
-      effect.kind === 'heal'
-        ? { type: 'healed', target: entry.unit.id, amount: healedAmount(entry.unit, effect.amount) }
-        : { type: 'damaged', target: entry.unit.id, hit: entry.hit, damage: entry.damage },
-    );
-  }
-
-  // The defeats settle after every roll of the resolution, in the same setup order (§8.3), so the log
-  // reads the whole effect before it reads who fell to it.
-  if (effect.kind === 'damage') {
+  if (reachesUnits) {
     for (const entry of affected) {
-      if (entry.unit.health - entry.damage <= 0) {
-        events.push({ type: 'unit-defeated', target: entry.unit.id });
+      events.push(
+        effect.kind === 'heal'
+          ? { type: 'healed', target: entry.unit.id, amount: healedAmount(entry.unit, effect.amount) }
+          : { type: 'damaged', target: entry.unit.id, hit: entry.hit, damage: entry.damage },
+      );
+    }
+
+    // The defeats settle after every roll of the resolution, in the same setup order (§8.3), so the log
+    // reads the whole effect before it reads who fell to it.
+    if (effect.kind === 'damage') {
+      for (const entry of affected) {
+        if (entry.unit.health - entry.damage <= 0) {
+          events.push({ type: 'unit-defeated', target: entry.unit.id });
+        }
       }
     }
   }
+
+  // A resurrection is one use and one revival: the use paid the cost above, and this event consumes
+  // the body and puts the unit on its destination (ADR 0023 §7).
+  if (effect.kind === 'revive') {
+    if (action.target === undefined) {
+      throw new RangeError('revive: the accepted action names no fallen ally');
+    }
+    events.push({ type: 'revived', target: action.target, to: { x: action.to.x, y: action.to.y } });
+  }
+
+  // The status goes after the action it broke on, hit or miss and defeats included (ADR 0023 §3).
+  if (breaks) events.push({ type: 'camouflage-ended', target: caster.id, reason: 'broken' });
 
   return events;
 }
@@ -382,33 +531,8 @@ function abilityEvents(state: MatchState, action: UseAbilityAction, rng: Rng): E
  */
 export function buildEvents(state: MatchState, action: Action, rng: Rng): Event[] {
   if (action.type === 'endTurn') {
-    const next = nextUnitId(state);
     // The round rises when the order wraps back to the first unit.
-    const wraps = state.currentIndex + 1 >= state.initiative.length;
-    const round = wraps ? state.round + 1 : state.round;
-
-    const events: Event[] = [{ type: 'turn-ended', actor: action.actor, next, round }];
-
-    // The turn the unit receives opens with a point of mana (ADR 0017): one point, magic pools only,
-    // capped at the capacity. A unit that does not come on turn never regenerates, so this is read
-    // from the turn that was handed over and not from the one that passed.
-    const incoming = unitById(state, next);
-    if (incoming.resourceKind === 'mana' && incoming.ammo < (incoming.magazine ?? 0)) {
-      events.push({ type: 'regained', actor: next, resource: 'mana', amount: 1 });
-    }
-
-    // Bodies whose time is up are removed as the new round starts, in setup order.
-    for (const unit of state.units) {
-      if (
-        unit.defeated &&
-        !unit.permanentlyDead &&
-        unit.corpseExpiresAtRound !== null &&
-        unit.corpseExpiresAtRound <= round
-      ) {
-        events.push({ type: 'corpse-removed', target: unit.id });
-      }
-    }
-    return events;
+    return turnEndEvents(state, action.actor, nextUnitId(state), roundAfterTurn(state));
   }
 
   if (action.type === 'move') {
@@ -419,15 +543,36 @@ export function buildEvents(state: MatchState, action: Action, rng: Rng): Event[
       throw new RangeError(`no path to the destination of an accepted move: ${action.to.x},${action.to.y}`);
     }
 
-    return [
+    // Each step into a difficult cell may put the walker on the ground, and the walk stops there: the
+    // event carries the truncated path, so a replay never rolls again (ADR 0023 §4).
+    const path: Position[] = [];
+    let prone = false;
+    for (const step of walk.path) {
+      path.push(step);
+      if (isDifficult(state, step) && nextInt(rng, 1, 100) <= PRONE_CHANCE) {
+        prone = true;
+        break;
+      }
+    }
+    // The cell the walk stopped on: the destination, or the mud that put the unit down.
+    const stoppedAt = path[path.length - 1];
+
+    const events: Event[] = [
       {
         type: 'moved',
         actor: actor.id,
         from: { x: actor.position.x, y: actor.position.y },
-        to: { x: action.to.x, y: action.to.y },
-        path: walk.path,
+        to: { x: stoppedAt.x, y: stoppedAt.y },
+        path,
+        rngState: rng.state,
+        prone,
       },
     ];
+    // A walk that ends on the ground spends the turn: the unit cannot cancel or confirm the run.
+    if (prone) {
+      events.push(...turnEndEvents(state, actor.id, nextUnitId(state), roundAfterTurn(state)));
+    }
+    return events;
   }
 
   if (action.type === 'reload') {
@@ -453,6 +598,11 @@ export function buildEvents(state: MatchState, action: Action, rng: Rng): Event[
 
   const attacker = unitById(state, action.actor);
   const target = unitById(state, action.target);
+  // A camouflaged attacker's shot rolls the break first, before the shot's own roll (ADR 0023 §3, I4).
+  const breaks =
+    attacker.camouflage !== null
+      ? nextInt(rng, 1, 100) <= attacker.camouflage.breakChance
+      : false;
   // Read before the roll, so the event and the roll are the same answer and the log can explain it.
   const shot = shotBetween(state, attacker, target);
   const hit = resolveHit(state, attacker, target, rng);
@@ -477,5 +627,7 @@ export function buildEvents(state: MatchState, action: Action, rng: Rng): Event[
   ];
 
   if (target.health - damage <= 0) events.push({ type: 'unit-defeated', target: target.id });
+  // The status goes after the shot resolved, hit or miss and the defeat included (ADR 0023 §3).
+  if (breaks) events.push({ type: 'camouflage-ended', target: attacker.id, reason: 'broken' });
   return events;
 }

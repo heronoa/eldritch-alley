@@ -168,8 +168,10 @@ function emptyEquipment(): Equipment {
  * slots stay empty until a record gives them a rule.
  */
 function abilitiesFor(className: ClassName): Abilities {
+  const slots = CLASS_ABILITIES[className] ?? [null, null];
+
   return {
-    activeSets: [CLASS_ABILITIES[className] ?? null, null],
+    activeSets: [slots[0], slots[1]],
     reaction: null,
     movement: null,
     support: null,

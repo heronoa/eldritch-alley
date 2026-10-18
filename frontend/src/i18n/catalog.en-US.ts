@@ -212,6 +212,13 @@ export const enUS: Record<MessageKey, string> = {
   'log.event.ability-used-named': '{actor} used {ability} on {cell}',
   'log.event.damaged': '{target} took {damage} damage',
   'log.event.healed': '{target} recovered {amount} health',
+  // The four events of the second active set (ADR 0023 §4). A camouflage ends for one of two reasons,
+  // and the sentence says which: the turns ran out, or a blow broke it.
+  'log.event.camouflageExpired': "{target}'s camouflage faded",
+  'log.event.camouflageBroken': "{target}'s camouflage broke",
+  'log.event.stoodUp': '{actor} stood up',
+  'log.event.terrainExpired': 'The ground dried up',
+  'log.event.revived': '{target} is back on their feet',
   'log.event.unknown': 'unknown event',
 
   // One sentence per `RejectReason`, keyed by the code the server answers with. `unknown` is the
@@ -224,6 +231,8 @@ export const enUS: Record<MessageKey, string> = {
   'log.rejection.already-acted': 'Action already used',
   'log.rejection.target-out-of-range': 'Target out of range',
   'log.rejection.no-line-of-sight': 'No line of sight',
+  // A camouflaged enemy cannot be the target of a basic attack (ADR 0023).
+  'log.rejection.target-hidden': 'Target hidden',
   'log.rejection.target-invalid': 'Invalid target',
   'log.rejection.ability-unknown': 'Unknown ability',
   'log.rejection.no-magazine': 'No magazine',
@@ -268,11 +277,24 @@ export const enUS: Record<MessageKey, string> = {
   'ability.piercing-shot': 'Piercing Shot',
   'ability.fireball': 'Fireball',
   'ability.area-heal': 'Area Heal',
+  // The three abilities of the second active set (ADR 0023 §2).
+  'ability.camouflage': 'Camouflage',
+  'ability.mud': 'Mud',
+  'ability.resurrection': 'Resurrection',
   'ability.detail.damage': 'Damage {amount}',
   'ability.detail.heal': 'Heal {amount}',
   'ability.detail.radius': 'radius {radius}',
   'ability.detail.ignoresCover': 'ignores cover',
   'ability.detail.hitsAllies': 'hits everyone, allies included',
+  // The three new effects, each fragment read from the definition the match carries (ADR 0023 §2).
+  'ability.detail.camouflage': '{turns} turns',
+  'ability.detail.breakChance': '{chance}% break',
+  'ability.detail.terrain': '{rounds} rounds',
+  'ability.detail.difficultTerrain': 'difficult terrain',
+  'ability.detail.revive': 'Revive a fallen ally',
+  // The two clicks of the resurrection, said on the panel's status line as each step waits (ADR 0023 §7).
+  'hud.revive.pickBody': 'Resurrection: choose a fallen ally’s body',
+  'hud.revive.pickCell': 'Resurrection: choose the free cell the ally returns on',
 
   // The rest of the HUD, and the lines the match shows over it.
   'hud.legend':
@@ -315,6 +337,13 @@ export const enUS: Record<MessageKey, string> = {
   'hud.cover.southwest': 'Southwest',
   'hud.cover.west': 'West',
   'hud.cover.northwest': 'Northwest',
+  // The label the mouse carries while it rests over a tile or a figure (ADR 0023 §3, §4 and §7).
+  'hud.tooltip.difficultTerrain': 'Difficult terrain! Chance of falling.',
+  'hud.tooltip.camouflage': 'Camouflaged. Cannot be targeted directly.',
+  'hud.tooltip.corpse.ally.one': 'Fallen ally. Permanent death in 1 turn.',
+  'hud.tooltip.corpse.ally.other': 'Fallen ally. Permanent death in {rounds} turns.',
+  'hud.tooltip.corpse.enemy.one': 'Fallen enemy. Permanent death in 1 turn.',
+  'hud.tooltip.corpse.enemy.other': 'Fallen enemy. Permanent death in {rounds} turns.',
   // The camera panel (EA-12): the view the camera looks from, the zoom step it is on, and the letter
   // each direction is written as.
   'hud.camera': 'Camera',

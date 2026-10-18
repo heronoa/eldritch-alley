@@ -14,6 +14,12 @@ const BACKDROP_DEPTH = -1;
 const HIGHLIGHT_STEP = 0.1;
 
 /**
+ * Mud covers the whole cell (ADR 0023 §4): over the highlight that marks it, and still under the
+ * unit standing in it, so a figure or a body in the mud is never painted over by it.
+ */
+const MUD_STEP = 0.15;
+
+/**
  * The mark of the tile under the mouse sits over the highlight of that same cell, so its outline is
  * read over the wash it may be drawn on, and it is still under the unit standing there.
  */
@@ -35,6 +41,7 @@ export const LAYER = {
   backdrop: BACKDROP_DEPTH,
   board: depthOfCell,
   highlight: (cell: Cell): number => depthOfCell(cell) + HIGHLIGHT_STEP,
+  mud: (cell: Cell): number => depthOfCell(cell) + MUD_STEP,
   hover: (cell: Cell): number => depthOfCell(cell) + HOVER_STEP,
   unit: depthOfUnit,
   overlay: OVERLAY_DEPTH,

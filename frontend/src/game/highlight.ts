@@ -5,9 +5,10 @@
 // can never disagree with what the server would accept (EA-1 D1, EA-2). An inspection (EA-6) replaces
 // the question with its own: the area of the unit the secondary gesture named.
 import { abilityById, attackArea, hasLineOfSight, reachableCells } from '@eldritch-alley/engine';
-import type { AbilityDefinition, PublicState, Team, UnitState } from '../protocol';
+import type { PublicState, Team, UnitId, UnitState } from '../protocol';
 import type { Cell } from '../view/grid';
 import type { ActionMode } from './actions';
+import { carriedAbility } from './ability-menu';
 
 export interface HighlightInput {
   state: PublicState;
@@ -25,6 +26,11 @@ export interface HighlightInput {
    * absent reads the ability the unit's own first active set carries (ADR 0016 §6).
    */
   abilityId?: string | null;
+  /**
+   * The fallen ally chosen first, while a resurrection waits for its cell (ADR 0023 §7), or null
+   * before the choice. With it chosen, the cells a body or a living unit holds are left unpainted.
+   */
+  reviveTargetId?: UnitId | null;
 }
 
 /** The three tones an area is drawn in: the movement one, the attack one, and the ability's own. */
@@ -48,27 +54,33 @@ export function highlightTone({
   return 'attack';
 }
 
-/**
- * The ability the unit carries in its first active set, resolved in the match's own catalog, or undefined
- * when the slots name none and when the catalog defines none of them (ADR 0016 §6).
- */
-function carriedAbility(state: PublicState, unit: UnitState): AbilityDefinition | undefined {
-  const id = unit.abilities.activeSets[0];
-  if (id === null) return undefined;
-  return abilityById(state.catalog, id);
+/** Whether a cell holds a unit that stands in the way: a living one or a body (ADR 0023 §7). */
+function isOccupied(state: PublicState, cell: Cell): boolean {
+  return state.units.some(
+    (unit) =>
+      !unit.permanentlyDead && unit.position.x === cell.x && unit.position.y === cell.y,
+  );
 }
 
 /**
  * Every cell the unit may aim its ability at: the cells of the definition's own reach around it, clipped
  * at the board, and — when the definition needs sight — the ones it can see from where it stands. The
  * engine refuses an aim for either rule (ADR 0016 §7), so painting a cell past one of them would offer
- * the player an aim the server would answer with a refusal.
+ * the player an aim the server would answer with a refusal. A resurrection with its body chosen also
+ * leaves out every cell a unit or a body holds: the engine refuses one with `cell-occupied`
+ * (ADR 0023 §7).
  */
-function abilityReach(state: PublicState, unit: UnitState, abilityId: string | null): Cell[] {
+function abilityReach(
+  state: PublicState,
+  unit: UnitState,
+  abilityId: string | null,
+  reviveTargetId: UnitId | null,
+): Cell[] {
   const ability =
     abilityId === null ? carriedAbility(state, unit) : abilityById(state.catalog, abilityId);
   if (ability === undefined) return [];
 
+  const revived = ability.effect.kind === 'revive' && reviveTargetId !== null;
   const cells: Cell[] = [];
   for (let y = 0; y < state.board.height; y += 1) {
     for (let x = 0; x < state.board.width; x += 1) {
@@ -76,6 +88,7 @@ function abilityReach(state: PublicState, unit: UnitState, abilityId: string | n
       const distance = Math.max(Math.abs(cell.x - unit.position.x), Math.abs(cell.y - unit.position.y));
       if (distance > ability.range) continue;
       if (ability.needsSight && !hasLineOfSight(state.board, unit.position, cell)) continue;
+      if (revived && isOccupied(state, cell)) continue;
       cells.push(cell);
     }
   }
@@ -96,6 +109,7 @@ function computeHighlightedCells({
   mode,
   humanTeam,
   abilityId = null,
+  reviveTargetId = null,
 }: HighlightInput): Cell[] {
   if (inspectedId !== null) {
     const inspected = state.units.find((unit) => unit.id === inspectedId);
@@ -112,7 +126,7 @@ function computeHighlightedCells({
   if (highlightTone({ mode }) === 'move') return reachableCells(state, selected.id);
   // The reach is shown only while Atacar is armed: a pending move does not open it on its own.
   if (mode === 'attack') return attackArea(state, selected.position, selected);
-  if (mode === 'ability') return abilityReach(state, selected, abilityId);
+  if (mode === 'ability') return abilityReach(state, selected, abilityId, reviveTargetId);
   return [];
 }
 
@@ -128,8 +142,9 @@ const answered = new WeakMap<PublicState, Map<string, Cell[]>>();
  * same question: it must not be changed.
  */
 export function highlightedCells(input: HighlightInput): Cell[] {
-  // Two abilities on the same state are two reaches, so the id is part of the question (EA-16).
-  const key = `${input.selectedId}|${input.mode}|${input.humanTeam}|${input.inspectedId ?? null}|${input.abilityId ?? null}`;
+  // Two abilities on the same state are two reaches, so the id is part of the question (EA-16), and a
+  // resurrection paints a different area once its body is chosen (ADR 0023 §7).
+  const key = `${input.selectedId}|${input.mode}|${input.humanTeam}|${input.inspectedId ?? null}|${input.abilityId ?? null}|${input.reviveTargetId ?? null}`;
 
   let byQuestion = answered.get(input.state);
   if (byQuestion === undefined) {

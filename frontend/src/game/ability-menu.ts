@@ -4,10 +4,9 @@
 // browser and the scene that draws it decides nothing — the same split the unit sheet and the action
 // bar are built on.
 //
-// Only the first active set is offered. It is the only slot the engine reads (ADR 0016 §6), and a row
-// for a slot the server would answer with `ability-unknown` would be a button that never works. The
-// rows are built from the slots and not from the class, so the day the engine reads a second set the
-// menu grows with it and nothing else here changes.
+// Both active sets are offered, in slot order (ADR 0023 §2): the class's old ability first, the
+// secondary one second. The other three slots stay unread, as ADR 0016 §6 has them. The rows are built
+// from the slots and not from the class, so a class that carries one ability draws one row.
 import { abilityById } from '@eldritch-alley/engine';
 import { abilityName, t } from '../i18n';
 import type { AbilityDefinition, PublicState, UnitState } from '../protocol';
@@ -29,13 +28,30 @@ export interface AbilityOption {
 }
 
 /**
- * The slots the menu offers: the unit's first active set, and nothing else. ADR 0016 §6 keeps the second
- * set, the reaction, the movement and the support slots unread, and the engine refuses a use its own
- * slots do not name — so offering one would be a row the server turns down.
+ * The slots the menu offers: every non-null entry of `activeSets`, in slot order (ADR 0023 §2). The
+ * reaction, the movement and the support slots stay unread (ADR 0016 §6), and the engine refuses a use
+ * its own slots do not name — so offering one would be a row the server turns down.
  */
 function offeredIds(unit: UnitState): readonly string[] {
-  const id = unit.abilities.activeSets[0];
-  return id === null ? [] : [id];
+  return unit.abilities.activeSets.filter((id): id is string => id !== null);
+}
+
+/**
+ * The first ability the unit's active sets name that the match's own catalog defines, or undefined when
+ * none of them resolves (ADR 0016 §6, amended by ADR 0023 §2). The slots are read in order, so
+ * `activeSets[0]` stays the fallback for a caller that never opened the menu (I11). The aim, the
+ * highlight and the ability button all read the slots through here.
+ */
+export function carriedAbility(
+  state: PublicState,
+  unit: UnitState,
+): AbilityDefinition | undefined {
+  for (const id of unit.abilities.activeSets) {
+    if (id === null) continue;
+    const ability = abilityById(state.catalog, id);
+    if (ability !== undefined) return ability;
+  }
+  return undefined;
 }
 
 /**
@@ -51,20 +67,41 @@ function costLabel(unit: UnitState, cost: number): string {
  * The effect in words, as the fragments of the catalog joined in the order they read: what it does, how
  * wide it is, and the rules it carries. A heal never rolls, so cover means nothing to it (ADR 0016 §10);
  * a damage effect that covers more than one cell hurts every body inside it (ADR 0016 §12), which is the
- * one rule the player has to read before aiming.
+ * one rule the player has to read before aiming. The three effects of the second active set each say
+ * their own numbers, read from the definition the match carries (ADR 0023 §2).
  */
 function detailOf(effect: AbilityDefinition['effect']): string {
-  const parts = [
-    effect.kind === 'heal'
-      ? t('ability.detail.heal', { amount: effect.amount })
-      : t('ability.detail.damage', { amount: effect.amount }),
-  ];
+  switch (effect.kind) {
+    case 'damage':
+    case 'heal': {
+      const parts = [
+        effect.kind === 'heal'
+          ? t('ability.detail.heal', { amount: effect.amount })
+          : t('ability.detail.damage', { amount: effect.amount }),
+      ];
 
-  if (effect.radius > 0) parts.push(t('ability.detail.radius', { radius: effect.radius }));
-  if (effect.kind === 'damage' && effect.ignoresCover) parts.push(t('ability.detail.ignoresCover'));
-  if (effect.kind === 'damage' && effect.radius > 0) parts.push(t('ability.detail.hitsAllies'));
+      if (effect.radius > 0) parts.push(t('ability.detail.radius', { radius: effect.radius }));
+      if (effect.kind === 'damage' && effect.ignoresCover) {
+        parts.push(t('ability.detail.ignoresCover'));
+      }
+      if (effect.kind === 'damage' && effect.radius > 0) parts.push(t('ability.detail.hitsAllies'));
 
-  return parts.join(' · ');
+      return parts.join(' · ');
+    }
+    case 'camouflage':
+      return [
+        t('ability.detail.camouflage', { turns: effect.turns }),
+        t('ability.detail.breakChance', { chance: effect.breakChance }),
+      ].join(' · ');
+    case 'terrain':
+      return [
+        t('ability.detail.terrain', { rounds: effect.durationRounds }),
+        t('ability.detail.radius', { radius: effect.radius }),
+        t('ability.detail.difficultTerrain'),
+      ].join(' · ');
+    case 'revive':
+      return t('ability.detail.revive');
+  }
 }
 
 function option(unit: UnitState, definition: AbilityDefinition): AbilityOption {

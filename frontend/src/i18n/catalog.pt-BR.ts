@@ -239,6 +239,13 @@ export const ptBR = {
   'log.event.ability-used-named': '{actor} usou {ability} em {cell}',
   'log.event.damaged': '{target} sofreu {damage} de dano',
   'log.event.healed': '{target} recuperou {amount} de vida',
+  // The four events of the second active set (ADR 0023 §4). A camouflage ends for one of two reasons,
+  // and the sentence says which: the turns ran out, or a blow broke it.
+  'log.event.camouflageExpired': 'A camuflagem de {target} sumiu',
+  'log.event.camouflageBroken': 'A camuflagem de {target} quebrou',
+  'log.event.stoodUp': '{actor} se levantou',
+  'log.event.terrainExpired': 'O chão secou',
+  'log.event.revived': '{target} está de pé de novo',
   'log.event.unknown': 'evento desconhecido',
 
   // One sentence per `RejectReason`, keyed by the code the server answers with. `unknown` is the
@@ -251,6 +258,8 @@ export const ptBR = {
   'log.rejection.already-acted': 'Ação já usada',
   'log.rejection.target-out-of-range': 'Alvo fora de alcance',
   'log.rejection.no-line-of-sight': 'Sem linha de visão',
+  // A camouflaged enemy cannot be the target of a basic attack (ADR 0023).
+  'log.rejection.target-hidden': 'Alvo oculto',
   'log.rejection.target-invalid': 'Alvo inválido',
   // An ability the caster's own slots do not name, or the catalog has no definition for (ADR 0016 §7).
   'log.rejection.ability-unknown': 'Habilidade desconhecida',
@@ -302,6 +311,10 @@ export const ptBR = {
   'ability.piercing-shot': 'Tiro Perfurante',
   'ability.fireball': 'Bola de Fogo',
   'ability.area-heal': 'Cura em Área',
+  // The three abilities of the second active set (ADR 0023 §2).
+  'ability.camouflage': 'Camuflagem',
+  'ability.mud': 'Lama',
+  'ability.resurrection': 'Ressurreição',
   'ability.detail.damage': 'Dano {amount}',
   'ability.detail.heal': 'Cura {amount}',
   'ability.detail.radius': 'raio {radius}',
@@ -310,6 +323,15 @@ export const ptBR = {
   // A damage effect that covers more than one cell hurts every body in it, the caster's own side
   // included (ADR 0016 §12): the rule the player has to read before aiming.
   'ability.detail.hitsAllies': 'atinge todos, inclusive aliados',
+  // The three new effects, each fragment read from the definition the match carries (ADR 0023 §2).
+  'ability.detail.camouflage': '{turns} turnos',
+  'ability.detail.breakChance': 'quebra {chance}%',
+  'ability.detail.terrain': '{rounds} rodadas',
+  'ability.detail.difficultTerrain': 'terreno difícil',
+  'ability.detail.revive': 'Revive um aliado caído',
+  // The two clicks of the resurrection, said on the panel's status line as each step waits (ADR 0023 §7).
+  'hud.revive.pickBody': 'Ressurreição: escolha o corpo de um aliado caído',
+  'hud.revive.pickCell': 'Ressurreição: escolha a casa livre onde o aliado volta',
 
   // The rest of the HUD, and the lines the match shows over it: the two endings, the notice a
   // refused protocol version raises, and the two states of a dropped connection.
@@ -361,6 +383,16 @@ export const ptBR = {
   'hud.cover.southwest': 'sudoeste',
   'hud.cover.west': 'oeste',
   'hud.cover.northwest': 'noroeste',
+  // The label the mouse carries while it rests over a tile or a figure (ADR 0023 §3, §4 and §7): the
+  // mud under it, a unit in camouflage, or a body with the rounds it has left. The body counts in the
+  // singular and in the plural, one key each, because the catalog has no plural rule to lean on — and
+  // the side is the local player's, so each side gets a key of its own.
+  'hud.tooltip.difficultTerrain': 'Terreno difícil! Chance de queda.',
+  'hud.tooltip.camouflage': 'Em camuflagem. Não pode ser alvejado diretamente.',
+  'hud.tooltip.corpse.ally.one': 'Aliado caído. Morte permanente em 1 turno.',
+  'hud.tooltip.corpse.ally.other': 'Aliado caído. Morte permanente em {rounds} turnos.',
+  'hud.tooltip.corpse.enemy.one': 'Inimigo caído. Morte permanente em 1 turno.',
+  'hud.tooltip.corpse.enemy.other': 'Inimigo caído. Morte permanente em {rounds} turnos.',
   // The camera panel (EA-12): the view the camera looks from, the zoom step it is on, and the letter
   // each direction is written as — Norte, Leste, Sul, Oeste, as the prototype prints them.
   'hud.camera': 'Câmera',

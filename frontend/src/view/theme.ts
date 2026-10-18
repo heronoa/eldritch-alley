@@ -98,6 +98,20 @@ export const HIGHLIGHT_ATTACK_ALPHA = 0.48;
 export const GRID_STROKE_COLOR = 0x000000;
 
 /**
+ * The mark of difficult terrain (ADR 0023 §4): mud, read as a board mark and not as a tile. It clears
+ * 2.44:1 against the lightest tile the three maps draw (`q`, `#3f4152`) and 5.76:1 against the
+ * darkest, which is the floor `theme.contrast.test.ts` holds a fill that carries no letter to.
+ */
+export const MUD_COLOR = 0xa8834a;
+
+/**
+ * The silhouette of a camouflaged unit (ADR 0023 §3): white, drawn behind the figure at a pulsing
+ * alpha. White is the only colour that reads as "the unit is not really there" over every tile, and it
+ * clears 8.51:1 against the lightest of them — the outline floor the contrast test asks of it.
+ */
+export const CAMOUFLAGE_GLOW_COLOR = 0xffffff;
+
+/**
  * The outline of the tile under the mouse. It is the paper of the identity and it is a stroke only:
  * the wash of a move or of an attack is a fill, and the two are read together on one tile, so a fill
  * here would hide the answer the wash is already giving. `PAPER_COLOR` is measured at the AAA outline

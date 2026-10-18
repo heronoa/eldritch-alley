@@ -77,9 +77,10 @@ export interface Abilities {
 }
 
 /**
- * What an ability does to the units standing on the cells it covers (ADR 0016 §2). Two kinds and no
- * more: a damage effect that rolls through the shot rules, and a heal that never rolls. A third kind is
- * a new record, not a new branch, so every place that reads one switches on the union and the compiler
+ * What an ability does to the units standing on the cells it covers (ADR 0016 §2, ADR 0023 §2). A
+ * damage effect rolls through the shot rules, a heal never rolls, camouflage writes a status onto the
+ * caster, terrain writes a layer onto the match, and revive brings a fallen ally back. A new kind is a
+ * new record, not a new branch, so every place that reads one switches on the union and the compiler
  * names the places a new kind has to be taught to.
  */
 export type AbilityEffect =
@@ -90,7 +91,33 @@ export type AbilityEffect =
    */
   | { kind: 'damage'; amount: number; radius: number; ignoresCover: boolean }
   /** Every living unit on a cell of the effect gains `amount` health, capped at its `maxHealth`. */
-  | { kind: 'heal'; amount: number; radius: number };
+  | { kind: 'heal'; amount: number; radius: number }
+  /**
+   * The caster's own cell only, so `radius` is always 0 (ADR 0023 §3). It writes `turns` and
+   * `breakChance` onto the caster as a `Camouflage`.
+   */
+  | { kind: 'camouflage'; radius: 0; turns: number; breakChance: number }
+  /**
+   * One `DifficultCell` per cell of the cast, each drying up at the start of round `round + duration`.
+   * `radius` is the Chebyshev radius of the cast, so 1 is a 3×3 square.
+   */
+  | { kind: 'terrain'; radius: number; durationRounds: number }
+  /** The destination cell only, so `radius` is always 0 (ADR 0023 §7). The body may be anywhere. */
+  | { kind: 'revive'; radius: 0 };
+
+/** The status a camouflage cast writes onto its caster (ADR 0023 §3). */
+export interface Camouflage {
+  /** The caster's own turns the status lasts, the turn it was cast included. */
+  turns: number;
+  /** Integer percentage, 0..100, of the status ending on a damaging action. */
+  breakChance: number;
+}
+
+/** One cell of difficult terrain and the round in which it dries up (ADR 0023 §4). */
+export interface DifficultCell {
+  position: Position;
+  expiresAtRound: number;
+}
 
 /**
  * One ability, as plain data (ADR 0016 §1). The engine never learns a class or an ability name: the id
@@ -192,6 +219,16 @@ export interface UnitState extends Unit {
   permanentlyDead: boolean;
   /** The round in which the body is removed and the death becomes permanent. Null while alive. */
   corpseExpiresAtRound: number | null;
+  /**
+   * The status that keeps basic attacks away, or null (ADR 0023 §3). A cast sets it, the caster's own
+   * turns count it down, and a damaging action it uses rolls to break it.
+   */
+  camouflage: Camouflage | null;
+  /**
+   * Whether the last walk stopped on difficult terrain (ADR 0023 §4). It costs the turn it fell and
+   * the next one starts standing, with half the movement.
+   */
+  prone: boolean;
 }
 
 /**
@@ -248,6 +285,11 @@ export interface MatchState {
    * the way `movementLeft` and `hasActed` already do not.
    */
   pendingMove: PendingMove | null;
+  /**
+   * The terrain layer the rules read (ADR 0023 §4). It is state, not a mutation of the board: a cast
+   * adds cells, the round rise removes the dried ones, and the movement rules read the destination.
+   */
+  difficultTerrain: DifficultCell[];
   rng: Rng;
   eventCount: number;
 }
@@ -261,9 +303,10 @@ export type Action =
   /**
    * Uses an ability the actor carries, aimed at a cell rather than at a unit (ADR 0016 §5). A unit is
    * affected because it stands on a cell of the effect, which is what makes an area expressible with the
-   * same action as a single-target one.
+   * same action as a single-target one. `target` is read only by a `revive` effect, where it names the
+   * fallen ally and `to` names the free cell it comes back on (ADR 0023 §7); every other kind ignores it.
    */
-  | { type: 'useAbility'; actor: UnitId; abilityId: string; to: Position }
+  | { type: 'useAbility'; actor: UnitId; abilityId: string; to: Position; target?: UnitId }
   | { type: 'reload'; actor: UnitId }
   /**
    * Turns the unit on the cell it stands on. It spends no movement and no action and does not end the
@@ -290,8 +333,18 @@ export type Event =
   /**
    * The walk the engine found, from the first step to `to`, `to` included. An action names only its
    * destination; the path is the engine's answer, and replaying it must pay what the move paid.
+   * `rngState` is the random source after the walk's prone rolls and `prone` says whether one of them
+   * stopped the unit on a difficult cell (ADR 0023 §4). A truncated path is the event's path.
    */
-  | { type: 'moved'; actor: UnitId; from: Position; to: Position; path: Position[] }
+  | {
+      type: 'moved';
+      actor: UnitId;
+      from: Position;
+      to: Position;
+      path: Position[];
+      rngState: number;
+      prone: boolean;
+    }
   /**
    * `rngState` is the random source after the hit roll. Replay applies it instead of rolling again, so
    * a rebuilt match draws the same numbers as the live one, even when a roll takes several draws.
@@ -344,6 +397,8 @@ export type Event =
       rngState: number;
       /** The pool the use spent, or null for a unit that carries no pool at all. */
       resource: ResourceKind | null;
+      /** The fallen ally a `revive` effect names; absent for every other kind (ADR 0023 §7). */
+      target?: UnitId;
     }
   /**
    * A unit standing on a cell of a damage effect was hit (ADR 0016 §8.2). The effect rolls once per
@@ -372,6 +427,20 @@ export type Event =
   | { type: 'move-committed'; actor: UnitId }
   | { type: 'unit-defeated'; target: UnitId }
   | { type: 'corpse-removed'; target: UnitId }
+  /**
+   * The camouflage status is gone (ADR 0023 §3). `expired` is the end of the last turn it covered;
+   * `broken` is the damaging action the camouflaged unit took, resolved before this event.
+   */
+  | { type: 'camouflage-ended'; target: UnitId; reason: 'expired' | 'broken' }
+  /** A prone unit started its turn and is standing again, with the movement the turn gave it. */
+  | { type: 'stood-up'; actor: UnitId }
+  /** The difficult cells that dried up on the round rise, exactly them and no others. */
+  | { type: 'terrain-expired'; cells: Position[] }
+  /**
+   * A fallen ally is alive again on `to` (ADR 0023 §7). The body is consumed by the same event: there
+   * is no `corpse-removed` for it.
+   */
+  | { type: 'revived'; target: UnitId; to: Position }
   | { type: 'turn-ended'; actor: UnitId; next: UnitId; round: number }
   /**
    * The point a magic pool handed back as the turn passed to it (ADR 0017). Emitted right after the
@@ -392,6 +461,8 @@ export type RejectReason =
   | 'target-out-of-range'
   | 'no-line-of-sight'
   | 'target-invalid'
+  /** A basic attack against a living enemy is refused because its camouflage hides it (ADR 0023 §3). */
+  | 'target-hidden'
   /**
    * A use of an ability the actor does not carry, or one its slots name and no catalog defines
    * (ADR 0016 §6). The id is looked up in the caster's own slots first, so an ability the match knows

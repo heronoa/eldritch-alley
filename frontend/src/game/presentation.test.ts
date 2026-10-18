@@ -38,6 +38,8 @@ describe('presentationOf', () => {
       from: at(1, 1),
       to: at(2, 3),
       path: [at(1, 2), at(2, 2), at(2, 3)],
+      rngState: 0,
+      prone: false,
     };
 
     expect(presentationOf(event, snapshot({ a: unit() }))).toEqual([
@@ -140,7 +142,18 @@ describe('presentationOf', () => {
     const untouched = snapshot({ a: unit({ position: at(0, 0) }), b: unit({ position: at(1, 0) }) });
 
     presentationOf(attacked(), units);
-    presentationOf({ type: 'moved', actor: 'a', from: at(0, 0), to: at(1, 1), path: [at(1, 1)] }, units);
+    presentationOf(
+      {
+        type: 'moved',
+        actor: 'a',
+        from: at(0, 0),
+        to: at(1, 1),
+        path: [at(1, 1)],
+        rngState: 0,
+        prone: false,
+      },
+      units,
+    );
     presentationOf({ type: 'unit-defeated', target: 'b' }, units);
 
     expect(units).toEqual(untouched);
@@ -190,6 +203,7 @@ describe('the impact of an ability', () => {
       hasActed: false,
       eventCount: 0,
       pendingMove: null,
+      difficultTerrain: [],
     };
   }
 
@@ -294,5 +308,44 @@ describe('the impact of an ability', () => {
 
     expect(presentationOf(used('fireball', at(3, 3), 'a'), unknown, stateOf([FIREBALL]))).toEqual([]);
     expect(presentationOf(used('fireball', at(3, 3)), noArt, stateOf([FIREBALL]))).toEqual([]);
+  });
+});
+
+/**
+ * The four events of the second active set (ADR 0023). The scene consumes these cues in m4; here the
+ * mapping alone is fixed, so the drawing can be added without touching the rules.
+ */
+describe('the cues of the second active set', () => {
+  const units = snapshot({ a: unit(), b: unit() });
+
+  it('shows a camouflage fading and one that broke', () => {
+    expect(presentationOf({ type: 'camouflage-ended', target: 'a', reason: 'expired' }, units)).toEqual([
+      { kind: 'camouflage-ended', unitId: 'a', reason: 'expired' },
+    ]);
+    expect(presentationOf({ type: 'camouflage-ended', target: 'a', reason: 'broken' }, units)).toEqual([
+      { kind: 'camouflage-ended', unitId: 'a', reason: 'broken' },
+    ]);
+  });
+
+  it('shows a unit standing up at the start of its turn', () => {
+    expect(presentationOf({ type: 'stood-up', actor: 'a' }, units)).toEqual([
+      { kind: 'stand-up', unitId: 'a' },
+    ]);
+  });
+
+  it('shows the ground drying up over exactly the cells that dried', () => {
+    const cells = [at(2, 3), at(3, 3)];
+
+    expect(presentationOf({ type: 'terrain-expired', cells }, units)).toEqual([
+      { kind: 'terrain-expired', cells },
+    ]);
+  });
+
+  it('brings the revived unit back on the cell the event names', () => {
+    // The sprite is where the body was until the event says otherwise, so the destination travels with
+    // the cue and the scene can move it there (ADR 0023 §7).
+    expect(presentationOf({ type: 'revived', target: 'b', to: at(4, 4) }, units)).toEqual([
+      { kind: 'revive', unitId: 'b', to: at(4, 4) },
+    ]);
   });
 });

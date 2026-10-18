@@ -25,6 +25,11 @@ interface UnitSpec {
   resourceKind?: 'ammo' | 'mana';
   defeated?: boolean;
   permanentlyDead?: boolean;
+  /** The first active set (ADR 0016 §6). */
+  ability?: string | null;
+  /** The second active set (ADR 0023 §1). */
+  secondAbility?: string | null;
+  camouflage?: { turns: number; breakChance: number } | null;
 }
 
 function makeUnit(spec: UnitSpec): UnitState {
@@ -45,7 +50,12 @@ function makeUnit(spec: UnitSpec): UnitState {
     attunement: 50,
     primaryClass: 'sniper',
     equipment: { armor: null, helmet: null, mainHand: null, offHand: null, accessory1: null, accessory2: null },
-    abilities: { activeSets: [null, null], reaction: null, movement: null, support: null },
+    abilities: {
+      activeSets: [spec.ability ?? null, spec.secondAbility ?? null],
+      reaction: null,
+      movement: null,
+      support: null,
+    },
     movementProfile: { maxStepUp: 1, maxStepDown: 1, climbCost: 1 },
     facing: 'E',
     // Filled the way `newMatch` fills it: a pool that exists is always of one kind.
@@ -54,6 +64,8 @@ function makeUnit(spec: UnitSpec): UnitState {
     ammo: spec.ammo ?? (magazine === null ? 0 : magazine),
     permanentlyDead: spec.permanentlyDead ?? false,
     corpseExpiresAtRound: null,
+    camouflage: spec.camouflage ?? null,
+    prone: false,
   };
 }
 
@@ -75,6 +87,7 @@ function makeState(
     hasActed: false,
     eventCount: 0,
     pendingMove: null,
+    difficultTerrain: [],
   };
 }
 
@@ -462,6 +475,222 @@ describe('the aim of an armed ability', () => {
     expect(
       resolveClick({ state, selectedId: 'A-wizard', cell: { x: 2, y: 0 }, humanTeam: 'A', mode: 'ability' }),
     ).toEqual({ kind: 'refused', reason: 'no-mana' });
+  });
+});
+
+/**
+ * The second active set (ADR 0023 §1), the camouflage a basic attack cannot name (§3), and the
+ * resurrection played in two steps: the fallen body first, then the free cell (§7).
+ */
+describe('the second slot, camouflage and the two-step revival', () => {
+  const CAMOUFLAGE: AbilityDefinition = {
+    id: 'camouflage',
+    cost: 3,
+    range: 0,
+    needsSight: false,
+    effect: { kind: 'camouflage', radius: 0, turns: 3, breakChance: 30 },
+  };
+  const RESURRECTION: AbilityDefinition = {
+    id: 'resurrection',
+    cost: 3,
+    range: 3,
+    needsSight: false,
+    effect: { kind: 'revive', radius: 0 },
+  };
+  const PIERCING_SHOT: AbilityDefinition = {
+    id: 'piercing-shot',
+    cost: 1,
+    range: 4,
+    needsSight: true,
+    effect: { kind: 'damage', amount: 6, radius: 0, ignoresCover: true },
+  };
+  const CATALOG: readonly AbilityDefinition[] = [CAMOUFLAGE, RESURRECTION, PIERCING_SHOT];
+
+  function withCatalog(state: PublicState): PublicState {
+    return { ...state, catalog: CATALOG };
+  }
+
+  const FAR_ENEMY = makeUnit({ id: 'B-priest', team: 'B', at: { x: 7, y: 7 }, range: 1 });
+
+  it('refuses a basic attack on a camouflaged enemy with target-hidden, before the pool and the reach', () => {
+    // The engine answers `target-hidden` before the pool and the range (ADR 0023 §3), so the client
+    // says the same even when the shooter is out of ammunition and the enemy is out of reach.
+    const sniper = makeUnit({
+      id: 'A-sniper',
+      team: 'A',
+      at: { x: 0, y: 0 },
+      range: 3,
+      magazine: 3,
+      ammo: 0,
+    });
+    const hidden = makeUnit({
+      id: 'B-priest',
+      team: 'B',
+      at: { x: 2, y: 0 },
+      camouflage: { turns: 3, breakChance: 30 },
+    });
+    const hiddenFar = makeUnit({
+      id: 'B-wizard',
+      team: 'B',
+      at: { x: 7, y: 0 },
+      camouflage: { turns: 3, breakChance: 30 },
+    });
+    const state = makeState([sniper, hidden, hiddenFar]);
+
+    for (const cell of [{ x: 2, y: 0 }, { x: 7, y: 0 }]) {
+      const intent = resolveClick({ state, selectedId: 'A-sniper', cell, humanTeam: 'A' });
+
+      expect(intent, `${cell.x},${cell.y}`).toEqual({ kind: 'refused', reason: 'target-hidden' });
+      expect(intent).not.toHaveProperty('action');
+    }
+  });
+
+  it('lets the same attack through when the enemy is not hidden', () => {
+    const sniper = makeUnit({ id: 'A-sniper', team: 'A', at: { x: 0, y: 0 }, range: 3 });
+    const enemy = makeUnit({ id: 'B-priest', team: 'B', at: { x: 2, y: 0 } });
+    const state = makeState([sniper, enemy]);
+
+    expect(resolveClick({ state, selectedId: 'A-sniper', cell: { x: 2, y: 0 }, humanTeam: 'A' })).toEqual(
+      { kind: 'send', action: { type: 'attack', target: 'B-priest' } },
+    );
+  });
+
+  it('aims an armed camouflage at the caster own cell and nowhere else', () => {
+    // Range 0 and no sight: the only legal cell of the aim is the one the caster stands on (§3).
+    const caster = makeUnit({ id: 'A-sniper', team: 'A', at: { x: 1, y: 1 }, ammo: 3, ability: 'camouflage' });
+    const state = withCatalog(makeState([caster, FAR_ENEMY]));
+
+    expect(
+      resolveClick({
+        state,
+        selectedId: 'A-sniper',
+        cell: { x: 1, y: 1 },
+        humanTeam: 'A',
+        mode: 'ability',
+        abilityId: 'camouflage',
+      }),
+    ).toEqual({
+      kind: 'send',
+      action: { type: 'useAbility', abilityId: 'camouflage', to: { x: 1, y: 1 } },
+    });
+    expect(
+      resolveClick({
+        state,
+        selectedId: 'A-sniper',
+        cell: { x: 2, y: 1 },
+        humanTeam: 'A',
+        mode: 'ability',
+        abilityId: 'camouflage',
+      }),
+    ).toEqual({ kind: 'refused', reason: 'target-out-of-range' });
+  });
+
+  /** The priest on its own turn, a fallen ally at (1,3), and a living enemy at (5,3). */
+  const PRIEST = makeUnit({
+    id: 'A-priest',
+    team: 'A',
+    at: { x: 3, y: 3 },
+    ammo: 3,
+    resourceKind: 'mana',
+    ability: 'area-heal',
+    secondAbility: 'resurrection',
+  });
+  const BODY = makeUnit({ id: 'A-sniper', team: 'A', at: { x: 1, y: 3 }, defeated: true });
+  const LIVING_ENEMY = makeUnit({ id: 'B-wizard', team: 'B', at: { x: 5, y: 3 }, range: 1 });
+
+  function reviveClick(cell: { x: number; y: number }, reviveTargetId?: string): Intent {
+    return resolveClick({
+      state: withCatalog(makeState([PRIEST, BODY, LIVING_ENEMY])),
+      selectedId: 'A-priest',
+      cell,
+      humanTeam: 'A',
+      mode: 'ability',
+      abilityId: 'resurrection',
+      reviveTargetId,
+    });
+  }
+
+  it('arms the fallen body on the first click and sends nothing', () => {
+    const intent = reviveClick({ x: 1, y: 3 });
+
+    expect(intent).toEqual({ kind: 'revive-target', unitId: 'A-sniper' });
+    // The first step changes nothing on the server: it only arms the second (ADR 0023 §7).
+    expect(intent).not.toHaveProperty('action');
+  });
+
+  it('sends the resurrection to the free cell on the second click, naming the body', () => {
+    expect(reviveClick({ x: 4, y: 3 }, 'A-sniper')).toEqual({
+      kind: 'send',
+      action: {
+        type: 'useAbility',
+        abilityId: 'resurrection',
+        to: { x: 4, y: 3 },
+        target: 'A-sniper',
+      },
+    });
+  });
+
+  it('refuses the second click on a living unit, another body, a cell out of reach or off the board', () => {
+    const otherBody = makeUnit({ id: 'A-wizard', team: 'A', at: { x: 2, y: 3 }, defeated: true });
+    const state = withCatalog(makeState([PRIEST, BODY, otherBody, LIVING_ENEMY]));
+
+    function click(cell: { x: number; y: number }): Intent {
+      return resolveClick({
+        state,
+        selectedId: 'A-priest',
+        cell,
+        humanTeam: 'A',
+        mode: 'ability',
+        abilityId: 'resurrection',
+        reviveTargetId: 'A-sniper',
+      });
+    }
+
+    expect(click({ x: 5, y: 3 }), 'living unit').toEqual({ kind: 'refused', reason: 'cell-occupied' });
+    expect(click({ x: 2, y: 3 }), 'another body').toEqual({ kind: 'refused', reason: 'cell-occupied' });
+    expect(click({ x: 7, y: 7 }), 'out of reach').toEqual({
+      kind: 'refused',
+      reason: 'target-out-of-range',
+    });
+    expect(click({ x: -1, y: 3 }), 'off the board').toEqual({
+      kind: 'refused',
+      reason: 'out-of-bounds',
+    });
+  });
+
+  it('refuses an empty cell or a living unit while the body is still unchosen', () => {
+    expect(reviveClick({ x: 3, y: 5 })).toEqual({ kind: 'refused', reason: 'target-invalid' });
+    expect(reviveClick({ x: 5, y: 3 })).toEqual({ kind: 'refused', reason: 'target-invalid' });
+  });
+
+  it('cancels the choice when the chosen body is clicked again', () => {
+    expect(reviveClick({ x: 1, y: 3 }, 'A-sniper')).toEqual({ kind: 'none' });
+  });
+
+  it('falls back to the first active set when no row is armed, even with a second one defined', () => {
+    // The caller that never opened the menu keeps the behaviour it had (index I11).
+    const caster = makeUnit({
+      id: 'A-sniper',
+      team: 'A',
+      at: { x: 1, y: 1 },
+      ammo: 3,
+      ability: 'camouflage',
+      secondAbility: 'piercing-shot',
+    });
+    const state = withCatalog(makeState([caster, FAR_ENEMY]));
+
+    expect(
+      resolveClick({
+        state,
+        selectedId: 'A-sniper',
+        cell: { x: 1, y: 1 },
+        humanTeam: 'A',
+        mode: 'ability',
+      }),
+    ).toEqual({
+      kind: 'send',
+      action: { type: 'useAbility', abilityId: 'camouflage', to: { x: 1, y: 1 } },
+    });
   });
 });
 
