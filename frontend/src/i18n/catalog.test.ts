@@ -4,13 +4,16 @@
 //
 // M2 moved the strings of the game out of the code and in here. The last block is the record of that
 // move: it holds the text `develop` had, so a silent change to the Portuguese fails a test.
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { ActionButton } from '../game/actions';
+import { COVER_SIDES, type CoverSide } from '../game/coverBadge';
 import { describeRejection } from '../game/log';
 import type { PanelKey } from '../game/panel';
 import type { RejectReason } from '../protocol';
+import { abilityName } from './abilities';
 import { ptBR, type MessageKey } from './catalog.pt-BR';
 import { enUS } from './catalog.en-US';
+import { getLocale, setLocale } from './translate';
 import { message, missingKeys } from './messages';
 
 describe('the pt-BR catalog', () => {
@@ -54,11 +57,31 @@ describe('the en-US catalog', () => {
     }
   });
 
+  it('holds exactly the keys of the reference, neither less nor more', () => {
+    // The fallback keeps a missing translation readable, but a key only one side carries is a screen
+    // that reads differently in the two languages. m3 finishes the catalogs, so the sets match.
+    expect(Object.keys(enUS).sort()).toEqual(Object.keys(ptBR).sort());
+  });
+
   it('translates the whole title screen, which is what this feature ships', () => {
     // Decision 5: with M3 done, the title's keys are required. A gap here is a title line that would
     // show up in Portuguese inside an English screen.
     const untranslatedTitle = missingKeys('en-US').filter((key) => key.startsWith('title.'));
     expect(untranslatedTitle).toEqual([]);
+  });
+
+  it('translates the onboarding, which m1 ships in both languages', () => {
+    // The cards are read through `t()`, so a key en-US has not translated shows up as Portuguese inside
+    // an English screen — the same gap the title's own block above holds shut.
+    const untranslatedOnboarding = missingKeys('en-US').filter((key) => key.startsWith('onboarding.'));
+    expect(untranslatedOnboarding).toEqual([]);
+  });
+
+  it('translates the account screens and the mailed-link pages, which m4-04 ships', () => {
+    const untranslated = missingKeys('en-US').filter(
+      (key) => key.startsWith('account.') || key.startsWith('mail.'),
+    );
+    expect(untranslated).toEqual([]);
   });
 
   it('carries the English copy the owner reviews before this milestone closes', () => {
@@ -124,15 +147,143 @@ describe('message', () => {
  * extraction itself, area by area.
  */
 describe('the pt-BR the game shows', () => {
+  // What the game shows is read through `t`, so the locale is pinned here, not left to the runtime.
+  let previous = getLocale();
+  beforeEach(() => {
+    previous = getLocale();
+    setLocale('pt-BR');
+  });
+  afterEach(() => setLocale(previous));
+
   it('carries the sentences of the battle log, with their placeholders', () => {
     expect(ptBR['log.event.moved']).toBe('{actor} moveu de {from} para {to}');
+    // The two events that close a pending move (EA-5).
+    expect(ptBR['log.event.moveCancelled']).toBe('{actor} cancelou o movimento');
+    expect(enUS['log.event.moveCancelled']).toBe('{actor} cancelled the move');
+    expect(ptBR['log.event.moveCommitted']).toBe('{actor} confirmou o movimento');
+    expect(enUS['log.event.moveCommitted']).toBe('{actor} confirmed the move');
     expect(ptBR['log.event.attacked']).toBe('{actor} acertou {target} por {damage}');
-    expect(ptBR['log.event.missed']).toBe('{actor} errou');
+    expect(ptBR['log.event.missed']).toBe('{actor} errou {target}');
     expect(ptBR['log.event.reloaded']).toBe('{actor} recarregou');
+    // The refill of a magic class' pool, which the engine calls a reload all the same (ADR 0011 §3).
+    expect(ptBR['log.event.meditated']).toBe('{actor} meditou');
+    expect(enUS['log.event.meditated']).toBe('{actor} meditated');
     expect(ptBR['log.event.defeated']).toBe('{target} caiu');
     expect(ptBR['log.event.corpseRemoved']).toBe('Corpo de {target} removido');
     expect(ptBR['log.event.turnEnded']).toBe('Vez de {next}');
     expect(ptBR['log.event.unknown']).toBe('evento desconhecido');
+  });
+
+  it('carries the four cover sentences of an attack in both catalogs', () => {
+    // The engine's word for the effect is cover; the screen's word is the fiction's (ADR 0012 § D3).
+    // Which end of the shot the crate was on is the whole difference between the pairs.
+    expect(message('pt-BR', 'log.event.attackedCover')).toBe('{actor} acertou {target} por {damage} em cobertura');
+    expect(message('en-US', 'log.event.attackedCover')).toBe('{actor} hit {target} for {damage} in cover');
+    expect(message('pt-BR', 'log.event.missedCover')).toBe('{actor} errou {target} em cobertura');
+    expect(message('en-US', 'log.event.missedCover')).toBe('{actor} missed {target} in cover');
+    expect(message('pt-BR', 'log.event.attackedFromCover')).toBe('{actor}, em cobertura, acertou {target} por {damage}');
+    expect(message('en-US', 'log.event.attackedFromCover')).toBe('{actor}, in cover, hit {target} for {damage}');
+    expect(message('pt-BR', 'log.event.missedFromCover')).toBe('{actor}, em cobertura, errou {target}');
+    expect(message('en-US', 'log.event.missedFromCover')).toBe('{actor}, in cover, missed {target}');
+    expect(message('pt-BR', 'log.event.attackedBothCover')).toBe(
+      '{actor}, em cobertura, acertou {target} por {damage}, que também estava em cobertura',
+    );
+    expect(message('en-US', 'log.event.attackedBothCover')).toBe(
+      '{actor}, in cover, hit {target} for {damage}, who was in cover too',
+    );
+    expect(message('pt-BR', 'log.event.missedBothCover')).toBe(
+      '{actor}, em cobertura, errou {target}, que também estava em cobertura',
+    );
+    expect(message('en-US', 'log.event.missedBothCover')).toBe(
+      '{actor}, in cover, missed {target}, who was in cover too',
+    );
+  });
+
+  it('carries the badge of a unit in cover, one name per side, in both catalogs', () => {
+    // The sides are the board's own (m3-02 fixes east as +x), and the badge names them in the order
+    // the module reads them (ADR 0012 § D5 is what they mean).
+    const sides: Record<CoverSide, string> = {
+      north: 'norte',
+      northeast: 'nordeste',
+      east: 'leste',
+      southeast: 'sudeste',
+      south: 'sul',
+      southwest: 'sudoeste',
+      west: 'oeste',
+      northwest: 'noroeste',
+    };
+    const english: Record<CoverSide, string> = {
+      north: 'North',
+      northeast: 'Northeast',
+      east: 'East',
+      southeast: 'Southeast',
+      south: 'South',
+      southwest: 'Southwest',
+      west: 'West',
+      northwest: 'Northwest',
+    };
+
+    for (const side of COVER_SIDES) {
+      expect(message('pt-BR', `hud.cover.${side}`), side).toBe(sides[side]);
+      expect(message('en-US', `hud.cover.${side}`), side).toBe(english[side]);
+    }
+
+    expect(message('pt-BR', 'hud.cover.sides')).toBe('Cobertura: {sides}');
+    expect(message('en-US', 'hud.cover.sides')).toBe('Cover: {sides}');
+    expect(message('pt-BR', 'hud.cover.and')).toBe(' e ');
+    expect(message('en-US', 'hud.cover.and')).toBe(' and ');
+    // The label of the checkbox is the owner's own wording.
+    expect(ptBR['hud.settings.highlightCovers']).toBe('Realçar Coberturas');
+    expect(message('en-US', 'hud.settings.highlightCovers')).toBe('Highlight Covers');
+  });
+
+  it('carries the battle report in both catalogs (EA-17)', () => {
+    expect(message('pt-BR', 'hud.report.title')).toBe('Registro da partida');
+    expect(message('en-US', 'hud.report.title')).toBe('Battle log');
+    expect(message('pt-BR', 'hud.report.export')).toBe('Baixar .txt');
+    expect(message('en-US', 'hud.report.export')).toBe('Download .txt');
+    expect(message('pt-BR', 'hud.report.reopen')).toBe('Ver registro completo');
+    expect(message('en-US', 'hud.report.reopen')).toBe('View full log');
+    expect(message('pt-BR', 'hud.report.range')).toBe('{from}–{to} de {total}');
+    expect(message('en-US', 'hud.report.range')).toBe('{from}-{to} of {total}');
+  });
+
+  it('carries the hit-chance badge in both catalogs (EA-18)', () => {
+    expect(message('pt-BR', 'hud.target.chance')).toBe('Acerto {value}%');
+    expect(message('en-US', 'hud.target.chance')).toBe('Hit {value}%');
+  });
+
+  it('carries the hover tooltips, with the body counted in the singular and the plural', () => {
+    // The owner's copy, in the catalog's sentence case. The side is the local player's, so each side
+    // and each count is a key of its own: the catalog has no plural rule to lean on.
+    expect(message('pt-BR', 'hud.tooltip.difficultTerrain')).toBe('Terreno difícil! Chance de queda.');
+    expect(message('en-US', 'hud.tooltip.difficultTerrain')).toBe('Difficult terrain! Chance of falling.');
+    expect(message('pt-BR', 'hud.tooltip.camouflage')).toBe(
+      'Em camuflagem. Não pode ser alvejado diretamente.',
+    );
+    expect(message('en-US', 'hud.tooltip.camouflage')).toBe('Camouflaged. Cannot be targeted directly.');
+    expect(message('pt-BR', 'hud.tooltip.corpse.ally.one')).toBe(
+      'Aliado caído. Morte permanente em 1 turno.',
+    );
+    expect(message('en-US', 'hud.tooltip.corpse.ally.one')).toBe('Fallen ally. Permanent death in 1 turn.');
+    expect(message('pt-BR', 'hud.tooltip.corpse.ally.other')).toBe(
+      'Aliado caído. Morte permanente em {rounds} turnos.',
+    );
+    expect(message('en-US', 'hud.tooltip.corpse.ally.other')).toBe(
+      'Fallen ally. Permanent death in {rounds} turns.',
+    );
+    expect(message('pt-BR', 'hud.tooltip.corpse.enemy.one')).toBe(
+      'Inimigo caído. Morte permanente em 1 turno.',
+    );
+    expect(message('en-US', 'hud.tooltip.corpse.enemy.one')).toBe(
+      'Fallen enemy. Permanent death in 1 turn.',
+    );
+    expect(message('pt-BR', 'hud.tooltip.corpse.enemy.other')).toBe(
+      'Inimigo caído. Morte permanente em {rounds} turnos.',
+    );
+    expect(message('en-US', 'hud.tooltip.corpse.enemy.other')).toBe(
+      'Fallen enemy. Permanent death in {rounds} turns.',
+    );
   });
 
   it('answers every refusal code out of the catalog, keyed by the code itself', () => {
@@ -142,20 +293,45 @@ describe('the pt-BR the game shows', () => {
       'out-of-bounds',
       'cell-occupied',
       'height-step-too-high',
-      'not-enough-movement',
+      'no-path',
       'already-acted',
       'target-out-of-range',
       'target-invalid',
       'no-magazine',
+      'no-ammunition',
+      'no-mana',
       'magazine-full',
-      'not-adjacent',
       'game-over',
+      'stale-turn',
       'malformed-action',
+      'no-line-of-sight',
+      'no-pending-move',
+      'ability-unknown',
+      'target-hidden',
     ];
 
     for (const reason of reasons) {
       expect(describeRejection(reason), reason).toBe(message('pt-BR', `log.rejection.${reason}`));
     }
+  });
+
+  it('carries the line-of-sight refusal in both catalogs', () => {
+    expect(message('pt-BR', 'log.rejection.no-line-of-sight')).toBe('Sem linha de visão');
+    expect(message('en-US', 'log.rejection.no-line-of-sight')).toBe('No line of sight');
+  });
+
+  it('carries the no-path refusal in both catalogs', () => {
+    expect(message('pt-BR', 'log.rejection.no-path')).toBe('Sem caminho');
+    expect(message('en-US', 'log.rejection.no-path')).toBe('No path');
+  });
+
+  it('carries the two empty-resource refusals in both catalogs', () => {
+    expect(message('pt-BR', 'log.rejection.no-ammunition')).toBe('Sem munição, recarregue');
+    expect(message('en-US', 'log.rejection.no-ammunition')).toBe('No ammunition — reload');
+    // The pool of a magic class is energy on the screen; the engine's own name for it is mana, which
+    // is the code the key is spelled with (ADR 0011).
+    expect(message('pt-BR', 'log.rejection.no-mana')).toBe('Sem energia, medite');
+    expect(message('en-US', 'log.rejection.no-mana')).toBe('No energy — meditate');
   });
 
   it('carries the unit panel labels, keyed by the row they belong to', () => {
@@ -165,7 +341,7 @@ describe('the pt-BR the game shows', () => {
       action: 'Ação',
       ammo: 'Munição',
       reaction: 'Reação',
-      mana: 'Mana',
+      energy: 'Energia',
     };
 
     for (const key of Object.keys(labels) as PanelKey[]) {
@@ -176,10 +352,11 @@ describe('the pt-BR the game shows', () => {
     expect(ptBR['panel.value.available']).toBe('Disponível');
   });
 
-  it('carries the four action buttons, keyed by the action each sends', () => {
+  it('carries the five action buttons, keyed by the action each sends', () => {
     const labels: Record<ActionButton['id'], string> = {
       move: 'Mover',
       attack: 'Atacar',
+      ability: 'Habilidade',
       reload: 'Recarregar',
       endTurn: 'Terminar turno',
     };
@@ -189,13 +366,85 @@ describe('the pt-BR the game shows', () => {
     }
   });
 
+  it('carries the sentences of an ability, in the reference catalog', () => {
+    // The three events of a use (ADR 0016 §8), one sentence each, with the placeholders the log fills.
+    expect(ptBR['log.event.ability-used']).toBe('{actor} usou uma habilidade em {cell}');
+    expect(ptBR['log.event.damaged']).toBe('{target} sofreu {damage} de dano');
+    expect(ptBR['log.event.healed']).toBe('{target} recuperou {amount} de vida');
+  });
+
+  it('carries the ability button and its unknown-ability refusal in both catalogs', () => {
+    expect(message('pt-BR', 'action.ability')).toBe('Habilidade');
+    expect(message('en-US', 'action.ability')).toBe('Ability');
+    // The actor names an id its slots do not carry, or the catalog does not define (ADR 0016 §7).
+    expect(message('pt-BR', 'log.rejection.ability-unknown')).toBe('Habilidade desconhecida');
+    expect(message('en-US', 'log.rejection.ability-unknown')).toBe('Unknown ability');
+  });
+
+  it('carries the three names of the second active set in both catalogs', () => {
+    // ADR 0023 §2: the three classes of the milestone carry one more ability, and the menu reads it by
+    // these three words.
+    expect(message('pt-BR', 'ability.camouflage')).toBe('Camuflagem');
+    expect(message('en-US', 'ability.camouflage')).toBe('Camouflage');
+    expect(message('pt-BR', 'ability.mud')).toBe('Lama');
+    expect(message('en-US', 'ability.mud')).toBe('Mud');
+    expect(message('pt-BR', 'ability.resurrection')).toBe('Ressurreição');
+    expect(message('en-US', 'ability.resurrection')).toBe('Resurrection');
+  });
+
+  it('carries the details of the three new effects in both catalogs', () => {
+    expect(message('pt-BR', 'ability.detail.camouflage')).toBe('{turns} turnos');
+    expect(message('en-US', 'ability.detail.camouflage')).toBe('{turns} turns');
+    expect(message('pt-BR', 'ability.detail.breakChance')).toBe('quebra {chance}%');
+    expect(message('en-US', 'ability.detail.breakChance')).toBe('{chance}% break');
+    expect(message('pt-BR', 'ability.detail.terrain')).toBe('{rounds} rodadas');
+    expect(message('en-US', 'ability.detail.terrain')).toBe('{rounds} rounds');
+    expect(message('pt-BR', 'ability.detail.difficultTerrain')).toBe('terreno difícil');
+    expect(message('en-US', 'ability.detail.difficultTerrain')).toBe('difficult terrain');
+    expect(message('pt-BR', 'ability.detail.revive')).toBe('Revive um aliado caído');
+    expect(message('en-US', 'ability.detail.revive')).toBe('Revive a fallen ally');
+  });
+
+  it('carries the four events of the second active set in both catalogs', () => {
+    // The camouflage names why it ended; the other three are one sentence each (ADR 0023 §4).
+    expect(message('pt-BR', 'log.event.camouflageExpired')).toBe('A camuflagem de {target} sumiu');
+    expect(message('en-US', 'log.event.camouflageExpired')).toBe("{target}'s camouflage faded");
+    expect(message('pt-BR', 'log.event.camouflageBroken')).toBe('A camuflagem de {target} quebrou');
+    expect(message('en-US', 'log.event.camouflageBroken')).toBe("{target}'s camouflage broke");
+    expect(message('pt-BR', 'log.event.stoodUp')).toBe('{actor} se levantou');
+    expect(message('en-US', 'log.event.stoodUp')).toBe('{actor} stood up');
+    expect(message('pt-BR', 'log.event.terrainExpired')).toBe('O chão secou');
+    expect(message('en-US', 'log.event.terrainExpired')).toBe('The ground dried up');
+    expect(message('pt-BR', 'log.event.revived')).toBe('{target} está de pé de novo');
+    expect(message('en-US', 'log.event.revived')).toBe('{target} is back on their feet');
+  });
+
+  it('carries the hidden-target refusal in both catalogs', () => {
+    // A camouflaged enemy cannot be named by a basic attack (ADR 0023 §3).
+    expect(message('pt-BR', 'log.rejection.target-hidden')).toBe('Alvo oculto');
+    expect(message('en-US', 'log.rejection.target-hidden')).toBe('Target hidden');
+  });
+
+  it('names the three new abilities and answers null for an id it does not know', () => {
+    expect(abilityName('camouflage')).toBe('Camuflagem');
+    expect(abilityName('mud')).toBe('Lama');
+    expect(abilityName('resurrection')).toBe('Ressurreição');
+    expect(abilityName('time-stop')).toBeNull();
+  });
+
   it('carries the HUD lines', () => {
     expect(ptBR['hud.legend']).toBe(
       'Azul-tinta: você · Vermelho: bot · Papel: selecionado\nRealce azul: movimento · Realce vermelho: ataque',
     );
-    expect(ptBR['hud.panel.unit']).toBe('Unidade');
     expect(ptBR['hud.panel.log']).toBe('Registro');
     expect(ptBR['hud.back']).toBe('Voltar ao início');
+  });
+
+  it('carries the turn banner in both catalogs, one line per side', () => {
+    expect(message('pt-BR', 'hud.banner.yourTurn')).toBe('Sua vez');
+    expect(message('pt-BR', 'hud.banner.enemyTurn')).toBe('Vez do inimigo');
+    expect(message('en-US', 'hud.banner.yourTurn')).toBe('Your turn');
+    expect(message('en-US', 'hud.banner.enemyTurn')).toBe('Enemy turn');
   });
 
   it('carries the match status lines', () => {

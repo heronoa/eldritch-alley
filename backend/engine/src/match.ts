@@ -4,16 +4,22 @@ import { buildEvents, validateAction } from './actions';
 import { applyEvent } from './events';
 import { canonicalize, fnv1a } from './hash';
 import { buildInitiativeQueue } from './initiative';
+import { DEFAULT_MOVEMENT_PROFILE } from './movement';
 import { createRng } from './rng';
 import type {
   Abilities,
+  AbilityDefinition,
   Action,
   ActionResult,
   Board,
+  BoardState,
   Equipment,
   Event,
+  Facing,
   MatchSetup,
   MatchState,
+  Position,
+  MovementProfile,
   PublicState,
   Rng,
   Unit,
@@ -46,6 +52,23 @@ function validateBoard(board: Board): void {
   }
   board.levels.forEach((level, index) => {
     requireIntegerInRange(level, `map.levels[${index}]`, 0, 255);
+  });
+
+  // A prop is read by the rules as the cell it stands on, so the board must be able to answer "what
+  // stands here" without a second guess: one prop per cell, inside the board, of a known kind.
+  const occupied = new Set<number>();
+  (board.props ?? []).forEach((prop, index) => {
+    requireIntegerInRange(prop.position.x, `map.props[${index}].position.x`, 0, board.width - 1);
+    requireIntegerInRange(prop.position.y, `map.props[${index}].position.y`, 0, board.height - 1);
+    if (prop.kind !== 'wall' && prop.kind !== 'cover') {
+      throw new RangeError(`map.props[${index}].kind must be wall or cover`);
+    }
+
+    const cell = prop.position.y * board.width + prop.position.x;
+    if (occupied.has(cell)) {
+      throw new RangeError(`map.props[${index}] stands on a cell another prop already occupies`);
+    }
+    occupied.add(cell);
   });
 }
 
@@ -83,6 +106,16 @@ function validateAbilities(abilities: Abilities, unitId: string): void {
   }
 }
 
+/** A profile is authored data, so a malformed one is a programming error like the rest of the setup. */
+function validateMovementProfile(profile: MovementProfile, unitId: string): void {
+  if (!profile || typeof profile !== 'object') {
+    throw new RangeError(`${unitId}.movementProfile must be an object`);
+  }
+  requireNonNegativeInteger(profile.maxStepUp, `${unitId}.movementProfile.maxStepUp`);
+  requireNonNegativeInteger(profile.maxStepDown, `${unitId}.movementProfile.maxStepDown`);
+  requireNonNegativeInteger(profile.climbCost, `${unitId}.movementProfile.climbCost`);
+}
+
 function validateUnit(unit: Unit, board: Board): void {
   if (typeof unit.id !== 'string' || unit.id.length === 0) {
     throw new RangeError('every unit needs a non-empty string id');
@@ -110,8 +143,89 @@ function validateUnit(unit: Unit, board: Board): void {
     throw new RangeError(`${unit.id}.primaryClass must be a non-empty string`);
   }
 
+  if (unit.movementProfile !== undefined) validateMovementProfile(unit.movementProfile, unit.id);
   validateEquipment(unit.equipment, unit.id);
   validateAbilities(unit.abilities, unit.id);
+}
+
+/**
+ * The catalog is authored data too, so a broken one is a programming error and fails at the door rather
+ * than mid-match (ADR 0016 §4): an empty id, a repeated id, a negative cost or radius, a range below
+ * zero, an unknown effect kind and an effect that is missing a field it needs are all refused here.
+ *
+ * A slot that names an id the catalog does not define is not refused: that is a rule violation read at
+ * the action that tries to use it, which answers `ability-unknown` and leaves the match playable.
+ */
+function validateCatalog(catalog: readonly AbilityDefinition[]): void {
+  if (!Array.isArray(catalog)) {
+    throw new RangeError('catalog must be a list of ability definitions');
+  }
+
+  const seen = new Set<string>();
+  catalog.forEach((ability, index) => {
+    if (!ability || typeof ability !== 'object') {
+      throw new RangeError(`catalog[${index}] must be an ability definition`);
+    }
+    if (typeof ability.id !== 'string' || ability.id.length === 0) {
+      throw new RangeError(`catalog[${index}].id must be a non-empty string`);
+    }
+    if (seen.has(ability.id)) throw new RangeError(`two definitions share the id ${ability.id}`);
+    seen.add(ability.id);
+
+    requireNonNegativeInteger(ability.cost, `catalog[${index}].cost`);
+    requireNonNegativeInteger(ability.range, `catalog[${index}].range`);
+    if (typeof ability.needsSight !== 'boolean') {
+      throw new RangeError(`catalog[${index}].needsSight must be a boolean`);
+    }
+
+    const effect = ability.effect;
+    if (!effect || typeof effect !== 'object') {
+      throw new RangeError(`catalog[${index}].effect must be an effect`);
+    }
+
+    switch (effect.kind) {
+      case 'damage':
+        requireNonNegativeInteger(effect.amount, `catalog[${index}].effect.amount`);
+        requireNonNegativeInteger(effect.radius, `catalog[${index}].effect.radius`);
+        if (typeof effect.ignoresCover !== 'boolean') {
+          throw new RangeError(`catalog[${index}].effect.ignoresCover must be a boolean`);
+        }
+        break;
+      case 'heal':
+        requireNonNegativeInteger(effect.amount, `catalog[${index}].effect.amount`);
+        requireNonNegativeInteger(effect.radius, `catalog[${index}].effect.radius`);
+        break;
+      case 'camouflage':
+        if (effect.radius !== 0) {
+          throw new RangeError(`catalog[${index}].effect.radius must be 0 for camouflage`);
+        }
+        if (!Number.isInteger(effect.turns) || effect.turns <= 0) {
+          throw new RangeError(`catalog[${index}].effect.turns must be a positive integer`);
+        }
+        requireIntegerInRange(
+          effect.breakChance,
+          `catalog[${index}].effect.breakChance`,
+          0,
+          100,
+        );
+        break;
+      case 'terrain':
+        requireNonNegativeInteger(effect.radius, `catalog[${index}].effect.radius`);
+        if (!Number.isInteger(effect.durationRounds) || effect.durationRounds <= 0) {
+          throw new RangeError(`catalog[${index}].effect.durationRounds must be a positive integer`);
+        }
+        break;
+      case 'revive':
+        if (effect.radius !== 0) {
+          throw new RangeError(`catalog[${index}].effect.radius must be 0 for revive`);
+        }
+        break;
+      default:
+        throw new RangeError(
+          `catalog[${index}].effect.kind must be damage, heal, camouflage, terrain or revive`,
+        );
+    }
+  });
 }
 
 /**
@@ -124,6 +238,7 @@ function validateSetup(setup: MatchSetup): void {
   }
 
   validateBoard(setup.map);
+  validateCatalog(setup.catalog ?? []);
 
   if (!Array.isArray(setup.teams) || setup.teams.length !== 2) {
     throw new RangeError('teams must hold exactly two squads');
@@ -144,7 +259,16 @@ function validateSetup(setup: MatchSetup): void {
   }
 }
 
-function toUnitState(unit: Unit): UnitState {
+/**
+ * A unit opens facing its own side of the map (ADR 0014, decision D1): the left half looks east,
+ * towards the middle, and the right half looks west. It is a pure function of the spawn, so a replay
+ * rebuilds it from the seed without carrying it in the setup.
+ */
+function openingFacing(board: Board, spawn: Position): Facing {
+  return spawn.x * 2 < board.width ? 'E' : 'W';
+}
+
+function toUnitState(unit: Unit, board: Board): UnitState {
   const activeSets: [string | null, string | null] = [
     unit.abilities.activeSets[0],
     unit.abilities.activeSets[1],
@@ -152,38 +276,68 @@ function toUnitState(unit: Unit): UnitState {
   return {
     ...unit,
     position: { x: unit.position.x, y: unit.position.y },
+    facing: openingFacing(board, unit.position),
+    // The setup may author the profile; a unit that carries none plays by the default rule, which is
+    // the rule the game had before the profile existed.
+    movementProfile: { ...(unit.movementProfile ?? DEFAULT_MOVEMENT_PROFILE) },
     equipment: { ...unit.equipment },
     abilities: { ...unit.abilities, activeSets },
     // The setup authors the starting health, and nothing starts a unit wounded, so it is the ceiling.
     maxHealth: unit.health,
     defeated: false,
     ammo: unit.magazine ?? 0,
+    // The pool a basic attack spends (ADR 0011). A unit that carries a magazine and names no kind is
+    // an ammunition class, which is every class of the roster before the magic ones; a unit with no
+    // magazine has no pool at all.
+    resourceKind: unit.magazine === null ? null : (unit.resourceKind ?? 'ammo'),
     permanentlyDead: false,
     corpseExpiresAtRound: null,
+    // Every unit opens with no status: the cast is what writes one (ADR 0023 §3 and §4).
+    camouflage: null,
+    prone: false,
   };
 }
 
 export function newMatch(setup: MatchSetup): MatchState {
   validateSetup(setup);
 
-  const board: Board = {
+  const board: BoardState = {
     width: setup.map.width,
     height: setup.map.height,
     levels: [...setup.map.levels],
+    // A setup may leave the props out, the way it may leave a unit's movement profile out; a board
+    // inside a match always carries them, so no rule has to ask whether they are there.
+    props: (setup.map.props ?? []).map((prop) => ({
+      position: { x: prop.position.x, y: prop.position.y },
+      kind: prop.kind,
+    })),
   };
-  const units = [...setup.teams[0], ...setup.teams[1]].map(toUnitState);
+  // The opening facing is read from the setup board, which is the one the spawns were authored on.
+  const units = [...setup.teams[0], ...setup.teams[1]].map((unit) => toUnitState(unit, board));
   const initiative = buildInitiativeQueue(units);
   const first = units.find((unit) => unit.id === initiative[0]);
 
   return {
     seed: setup.seed,
     board,
+    // A setup may leave the catalog out, the way it may leave the props out; a match always carries one,
+    // so no rule has to ask whether the abilities are there (ADR 0016 §3).
+    catalog: (setup.catalog ?? []).map((ability) => ({
+      id: ability.id,
+      cost: ability.cost,
+      range: ability.range,
+      needsSight: ability.needsSight,
+      effect: { ...ability.effect },
+    })),
     units,
     initiative,
     currentIndex: 0,
     movementLeft: first ? first.movement : 0,
     round: 1,
     hasActed: false,
+    pendingMove: null,
+    // No cast has poured anything onto the ground yet; the layer is state the casts write (ADR 0023 §4).
+    difficultTerrain: [],
     rng: createRng(setup.seed),
     eventCount: 0,
   };

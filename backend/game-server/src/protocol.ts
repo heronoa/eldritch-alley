@@ -9,8 +9,29 @@ import type { MapId } from './map';
  *
  * Version 3: the state message carries `mapId`, because the client draws the terrain of the map it is
  * told the match is on rather than a board it is sent cell by cell.
+ * Version 4: a move action names only its destination and the `moved` event carries the `path` the
+ * engine walked, which the client needs to animate the walk (ADR 0010). The same decision makes an
+ * `endTurn` name its round, which the client sends on its own once the turn has nothing left (EA-4),
+ * and adds `stale-turn` to the refusal codes: one version covers both payloads.
+ * Version 5: a move stays pending until an action that is not another move commits it, so the state
+ * carries `pendingMove`, the client may send `cancelMove` and `commitMove` (EA-5), the events
+ * `move-cancelled` and `move-committed` close the run, and `no-pending-move` joins the refusals.
+ * Version 6: a basic attack spends its class's pool at every distance, so the state carries the
+ * unit's `resourceKind` and the `attacked` event carries `resource` where it carried `ammoSpent`,
+ * and `no-ammunition` and `no-mana` join the refusals (EA-14, ADR 0011).
+ * Version 10: abilities as data (ADR 0016). The number is the record's, not the next one after 6:
+ * versions 8 and 9 belong to the records that landed between this constant and it — facing and height
+ * (ADR 0014, ADR 0015) and mana regeneration (ADR 0017) — and none of them reached this constant, so
+ * their payloads arrive with this bump. The client sends `useAbility` naming a cell, the state carries
+ * the match's `catalog`, the events `ability-used`, `damaged` and `healed` join the batch, and
+ * `ability-unknown` joins the refusals.
+ * Version 11: the second active set and the three effects it brings (ADR 0023 §8). The state carries
+ * every unit's `camouflage` and `prone` plus the match's `difficultTerrain`, a `moved` names the
+ * `rngState` and `prone` its walks rolled, `ability-used` may name a `target` (the fallen ally of a
+ * revive), the events `camouflage-ended`, `stood-up`, `terrain-expired` and `revived` join the batch,
+ * and `target-hidden` joins the refusals.
  */
-export const PROTOCOL_VERSION = 3;
+export const PROTOCOL_VERSION = 11;
 
 /** The single room type of M2-a. One room is one match. */
 export const ROOM_NAME = 'battle';
@@ -35,8 +56,19 @@ export const MESSAGE = {
 export type ClientAction =
   | { type: 'move'; to: Position }
   | { type: 'attack'; target: UnitId }
+  /**
+   * Uses an ability the unit on turn carries, aimed at a cell rather than at a unit (ADR 0016 §5). The
+   * server fills the actor in like it does for every other action, so the client chooses the ability and
+   * the cell and never the caster. `target` is read only by a `revive` effect, where it names the fallen
+   * ally; every other kind ignores it (ADR 0023 §7).
+   */
+  | { type: 'useAbility'; abilityId: string; to: Position; target?: UnitId }
   | { type: 'reload' }
-  | { type: 'endTurn' };
+  /** The round it was decided on, so one that arrives late ends nobody's turn (ADR 0010, EA-4). */
+  | { type: 'endTurn'; round: number }
+  /** The two controls of a pending move, which carry no field: the run lives in the state (EA-5). */
+  | { type: 'cancelMove' }
+  | { type: 'commitMove' };
 
 export interface StateMessage {
   version: number;

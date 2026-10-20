@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest';
-import type { Event, RejectReason } from '../protocol';
-import { describeEvent, describeRejection } from './log';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { getLocale, setLocale } from '../i18n/translate';
+import type { Event, Position, Prop, RejectReason, UnitId } from '../protocol';
+import { describeEvent, describeRejection, type Battlefield } from './log';
 
 const NAMES: Record<string, string> = {
   'A-sniper': 'Sniper',
@@ -8,11 +9,78 @@ const NAMES: Record<string, string> = {
   'A-priest': 'Priest',
 };
 
+function coverAt(x: number, y: number): Prop {
+  return { position: { x, y }, kind: 'cover' };
+}
+
+/** The board and the positions of one moment, handed in the way the scene hands them to `describeEvent`. */
+function battlefieldWith(
+  props: readonly Prop[],
+  positions: Readonly<Record<UnitId, Position>>,
+): Battlefield {
+  return {
+    board: {
+      width: 8,
+      height: 8,
+      levels: new Array<number>(64).fill(0),
+      props,
+    },
+    positions,
+  };
+}
+
+/** The shot of the cases: the sniper at the priest, landing unless the case says otherwise. */
+function attacked(overrides: Partial<Extract<Event, { type: 'attacked' }>> = {}): Event {
+  return {
+    type: 'attacked',
+    actor: 'A-sniper',
+    target: 'A-priest',
+    hit: true,
+    damage: 4,
+    rngState: 1,
+    resource: 'ammo',
+    cover: false,
+    ...overrides,
+  };
+}
+
+/** The same shot, missing. */
+function missed(overrides: Partial<Extract<Event, { type: 'attacked' }>> = {}): Event {
+  return attacked({ hit: false, damage: 0, ...overrides });
+}
+
 describe('describeEvent', () => {
+  // The sentences are the pt-BR ones, so the locale is pinned, as it is for the refusals below.
+  let previous = getLocale();
+  beforeEach(() => {
+    previous = getLocale();
+    setLocale('pt-BR');
+  });
+  afterEach(() => setLocale(previous));
+
   it('describes a move with both cells', () => {
-    const event: Event = { type: 'moved', actor: 'A-sniper', from: { x: 0, y: 0 }, to: { x: 1, y: 0 } };
+    const event: Event = {
+      type: 'moved',
+      actor: 'A-sniper',
+      from: { x: 0, y: 0 },
+      to: { x: 1, y: 0 },
+      path: [{ x: 1, y: 0 }],
+      rngState: 0,
+      prone: false,
+    };
 
     expect(describeEvent(event, NAMES)).toBe('Sniper moveu de (0,0) para (1,0)');
+  });
+
+  it('describes a pending move taken back or confirmed', () => {
+    // The two events close the run a move opens (EA-5); without their cases the log read them as
+    // unknown events.
+    expect(describeEvent({ type: 'move-cancelled', actor: 'A-sniper' }, NAMES)).toBe(
+      'Sniper cancelou o movimento',
+    );
+    expect(describeEvent({ type: 'move-committed', actor: 'A-sniper' }, NAMES)).toBe(
+      'Sniper confirmou o movimento',
+    );
   });
 
   it('describes a hit with the damage', () => {
@@ -23,24 +91,60 @@ describe('describeEvent', () => {
       hit: true,
       damage: 4,
       rngState: 1,
-      ammoSpent: true,
+      resource: 'ammo',
+      cover: false,
     };
 
     expect(describeEvent(event, NAMES)).toBe('Sniper acertou Priest por 4');
   });
 
-  it('describes a miss without a target', () => {
-    const event: Event = {
-      type: 'attacked',
-      actor: 'A-priest',
-      target: 'A-sniper',
-      hit: false,
-      damage: 0,
-      rngState: 1,
-      ammoSpent: false,
-    };
+  it('describes a miss with its target', () => {
+    expect(describeEvent(missed(), NAMES)).toBe('Sniper errou Priest');
+  });
 
-    expect(describeEvent(event, NAMES)).toBe('Priest errou');
+  it('says when the target was in cover, so the missed chance is not left unexplained', () => {
+    // The engine carries `cover` on the event (ADR 0012), and the sentence says which end of the shot
+    // the crate was on: the target's, here, on the shot that landed and on the one that did not.
+    expect(describeEvent(attacked({ cover: true }), NAMES)).toBe(
+      'Sniper acertou Priest por 4 em cobertura',
+    );
+    expect(describeEvent(missed({ cover: true }), NAMES)).toBe('Sniper errou Priest em cobertura');
+  });
+
+  it('says when the shooter itself was in cover', () => {
+    // The engine answers for the target alone, because that is what the shot costs. The other end is
+    // read on the board the scene hands in, with the same rule (ADR 0012 § D4).
+    const battlefield = battlefieldWith([coverAt(1, 0)], { 'A-sniper': { x: 0, y: 0 }, 'A-priest': { x: 4, y: 0 } });
+
+    expect(describeEvent(attacked({ actor: 'A-sniper' }), NAMES, battlefield)).toBe(
+      'Sniper, em cobertura, acertou Priest por 4',
+    );
+    expect(describeEvent(missed({ actor: 'A-sniper' }), NAMES, battlefield)).toBe(
+      'Sniper, em cobertura, errou Priest',
+    );
+  });
+
+  it('says both ends when both were in cover', () => {
+    const battlefield = battlefieldWith([coverAt(1, 0), coverAt(3, 0)], {
+      'A-sniper': { x: 0, y: 0 },
+      'A-priest': { x: 4, y: 0 },
+    });
+
+    expect(describeEvent(attacked({ cover: true }), NAMES, battlefield)).toBe(
+      'Sniper, em cobertura, acertou Priest por 4, que também estava em cobertura',
+    );
+    expect(describeEvent(missed({ cover: true }), NAMES, battlefield)).toBe(
+      'Sniper, em cobertura, errou Priest, que também estava em cobertura',
+    );
+  });
+
+  it('names no cover at all when it is handed no battlefield and the target had none', () => {
+    // The scene hands the board and the positions of the events it is playing; without them the
+    // sentence is the one the event alone can carry.
+    expect(describeEvent(attacked(), NAMES)).toBe('Sniper acertou Priest por 4');
+    expect(describeEvent(attacked(), NAMES, battlefieldWith([coverAt(1, 0)], {}))).toBe(
+      'Sniper acertou Priest por 4',
+    );
   });
 
   it('describes a defeat', () => {
@@ -55,8 +159,21 @@ describe('describeEvent', () => {
     expect(describeEvent(event, NAMES)).toBe('Corpo de Priest removido');
   });
 
-  it('describes a reload', () => {
-    const event: Event = { type: 'reloaded', actor: 'A-sniper' };
+  it('describes a reload of a magazine', () => {
+    const event: Event = { type: 'reloaded', actor: 'A-sniper', resource: 'ammo' };
+
+    expect(describeEvent(event, NAMES)).toBe('Sniper recarregou');
+  });
+
+  it('describes the refill of a magic class as a meditation, not as a reload', () => {
+    // One action in the engine, two words on the screen (ADR 0011): the pool says which one.
+    const event: Event = { type: 'reloaded', actor: 'A-wizard', resource: 'mana' };
+
+    expect(describeEvent(event, NAMES)).toBe('Wizard meditou');
+  });
+
+  it('describes the refill of a unit with no pool with the engine own word, a reload', () => {
+    const event: Event = { type: 'reloaded', actor: 'A-sniper', resource: null };
 
     expect(describeEvent(event, NAMES)).toBe('Sniper recarregou');
   });
@@ -67,6 +184,90 @@ describe('describeEvent', () => {
     expect(describeEvent(event, NAMES)).toBe('Vez de Wizard');
   });
 
+  it('describes the point a magic pool hands back at the start of the turn', () => {
+    // ADR 0017: one point, magic pools only, so the sentence names the pool it came from.
+    const event: Event = { type: 'regained', actor: 'A-wizard', resource: 'mana', amount: 1 };
+
+    expect(describeEvent(event, NAMES)).toBe('Wizard recuperou 1 de mana');
+  });
+
+  it('describes a use of an ability with the cell it named', () => {
+    // The action names a cell, never a unit (ADR 0016 §5), so the sentence shows the board position
+    // with the same `(x,y)` text every other event that names a cell carries. The ability is named
+    // too (EA-16): the player has to be able to read which one was used.
+    const event: Event = {
+      type: 'ability-used',
+      actor: 'A-wizard',
+      abilityId: 'fireball',
+      to: { x: 2, y: 3 },
+      rngState: 7,
+      resource: 'mana',
+    };
+
+    expect(describeEvent(event, NAMES)).toBe('Wizard usou Bola de Fogo em (2,3)');
+  });
+
+  it('falls back to the generic sentence for an ability this build cannot name', () => {
+    // The catalog is the server's, and it may carry an ability a later milestone added: the sentence
+    // loses the name, and the event is still described rather than swallowed (EA-16).
+    const event: Event = {
+      type: 'ability-used',
+      actor: 'A-wizard',
+      abilityId: 'time-stop',
+      to: { x: 2, y: 3 },
+      rngState: 7,
+      resource: 'mana',
+    };
+
+    expect(describeEvent(event, NAMES)).toBe('Wizard usou uma habilidade em (2,3)');
+  });
+
+  it('describes the damage an ability dealt, hit or not', () => {
+    // The engine emits a `damaged` for every living unit standing on the area, a miss included: the
+    // roll that did not land still tells the player a body was in the blast, at a cost of zero.
+    const hit: Event = { type: 'damaged', target: 'A-priest', hit: true, damage: 3 };
+
+    expect(describeEvent(hit, NAMES)).toBe('Priest sofreu 3 de dano');
+
+    const missed: Event = { type: 'damaged', target: 'A-priest', hit: false, damage: 0 };
+
+    expect(describeEvent(missed, NAMES)).toBe('Priest sofreu 0 de dano');
+  });
+
+  it('describes the health a heal gave back', () => {
+    const event: Event = { type: 'healed', target: 'A-priest', amount: 3 };
+
+    expect(describeEvent(event, NAMES)).toBe('Priest recuperou 3 de vida');
+  });
+
+  it('tells the fade of a camouflage from its break (ADR 0023 §3)', () => {
+    // The two endings read the same on the board — the silhouette is gone — but the log says why: one
+    // ran its course, the other was broken by a blow.
+    const expired: Event = { type: 'camouflage-ended', target: 'A-priest', reason: 'expired' };
+    const broken: Event = { type: 'camouflage-ended', target: 'A-priest', reason: 'broken' };
+
+    expect(describeEvent(expired, NAMES)).toBe('A camuflagem de Priest sumiu');
+    expect(describeEvent(broken, NAMES)).toBe('A camuflagem de Priest quebrou');
+  });
+
+  it('describes a unit standing up at the start of its turn', () => {
+    const event: Event = { type: 'stood-up', actor: 'A-sniper' };
+
+    expect(describeEvent(event, NAMES)).toBe('Sniper se levantou');
+  });
+
+  it('describes the difficult terrain drying up', () => {
+    const event: Event = { type: 'terrain-expired', cells: [{ x: 2, y: 3 }, { x: 3, y: 3 }] };
+
+    expect(describeEvent(event, NAMES)).toBe('O chão secou');
+  });
+
+  it('describes a fallen ally back on their feet, on the cell they were brought to', () => {
+    const event: Event = { type: 'revived', target: 'A-priest', to: { x: 2, y: 3 } };
+
+    expect(describeEvent(event, NAMES)).toBe('Priest está de pé de novo');
+  });
+
   it('falls back for an unknown type', () => {
     const event = { type: 'something-else' } as unknown as Event;
 
@@ -75,21 +276,35 @@ describe('describeEvent', () => {
 });
 
 describe('describeRejection', () => {
+  // The sentences are the pt-BR ones, so the locale is pinned: the test must not depend on the runtime.
+  let previous = getLocale();
+  beforeEach(() => {
+    previous = getLocale();
+    setLocale('pt-BR');
+  });
+  afterEach(() => setLocale(previous));
+
   // Every reason the engine can answer with, so a new one is a compile error here.
   const SENTENCES: Record<RejectReason, string> = {
     'not-your-turn': 'Não é a sua vez',
     'out-of-bounds': 'Fora do tabuleiro',
     'cell-occupied': 'Casa ocupada',
     'height-step-too-high': 'Desnível alto demais',
-    'not-enough-movement': 'Movimento insuficiente',
+    'no-path': 'Sem caminho',
     'already-acted': 'Ação já usada',
     'target-out-of-range': 'Alvo fora de alcance',
+    'no-line-of-sight': 'Sem linha de visão',
+    'target-hidden': 'Alvo oculto',
     'target-invalid': 'Alvo inválido',
     'no-magazine': 'Sem carregador',
+    'no-ammunition': 'Sem munição, recarregue',
+    'no-mana': 'Sem energia, medite',
     'magazine-full': 'Carregador cheio',
-    'not-adjacent': 'Casa não adjacente',
     'game-over': 'Partida encerrada',
+    'stale-turn': 'Ordem atrasada',
     'malformed-action': 'Ação inválida',
+    'no-pending-move': 'Nenhum movimento pendente',
+    'ability-unknown': 'Habilidade desconhecida',
   };
 
   it('answers a sentence in the player language for every reason', () => {
@@ -102,5 +317,11 @@ describe('describeRejection', () => {
     const sentences = Object.keys(SENTENCES).map((reason) => describeRejection(reason as RejectReason));
 
     expect(new Set(sentences).size).toBe(sentences.length);
+  });
+
+  it('falls back for a reason this build does not know', () => {
+    // A server newer than this build can refuse with a reason this catalog has no word for; the player
+    // still reads that the action was refused rather than an empty line.
+    expect(describeRejection('teleported' as RejectReason)).toBe('Ação recusada');
   });
 });

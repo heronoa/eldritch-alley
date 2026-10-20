@@ -1,8 +1,9 @@
 import Phaser from 'phaser';
 import type { Session } from '../net/session';
+import { FRAME } from '../view/unit-look';
 
-/** Frame size of both sheets: one column is one pose, one row is one class. */
-const FRAME = { frameWidth: 16, frameHeight: 24 };
+/** How the sheets are cut up: one column is one pose, one row is one class. */
+const SHEET_FRAME = { frameWidth: FRAME.width, frameHeight: FRAME.height };
 
 /**
  * How long the boot waits for the typefaces before showing what it has. The game never blocks on a
@@ -24,8 +25,8 @@ export class BootScene extends Phaser.Scene {
   }
 
   preload(): void {
-    this.load.spritesheet('unit-ally', 'sprites/spritesheet-ally.png', FRAME);
-    this.load.spritesheet('unit-enemy', 'sprites/spritesheet-enemy.png', FRAME);
+    this.load.spritesheet('unit-ally', 'sprites/spritesheet-ally.png', SHEET_FRAME);
+    this.load.spritesheet('unit-enemy', 'sprites/spritesheet-enemy.png', SHEET_FRAME);
   }
 
   create(): void {

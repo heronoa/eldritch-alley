@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import type { Board, PublicState, Team, UnitId, UnitState } from '../protocol';
+import type { BoardState, PublicState, Team, UnitId, UnitState } from '../protocol';
 import { unitPanel, type PanelRow } from './panel';
+import { setLocale } from '../i18n/translate';
 
-const BOARD: Board = { width: 8, height: 8, levels: new Array<number>(64).fill(0) };
+// The cases below assert the Portuguese copy the game shipped with, so they read it on purpose.
+setLocale('pt-BR');
+
+const BOARD: BoardState = { width: 8, height: 8, levels: new Array<number>(64).fill(0), props: [] };
 
 interface UnitSpec {
   id: UnitId;
@@ -12,6 +16,7 @@ interface UnitSpec {
   movement?: number;
   magazine?: number | null;
   ammo?: number;
+  resourceKind?: 'ammo' | 'mana';
 }
 
 function makeUnit(spec: UnitSpec): UnitState {
@@ -33,10 +38,16 @@ function makeUnit(spec: UnitSpec): UnitState {
     primaryClass: 'sniper',
     equipment: { armor: null, helmet: null, mainHand: null, offHand: null, accessory1: null, accessory2: null },
     abilities: { activeSets: [null, null], reaction: null, movement: null, support: null },
+    movementProfile: { maxStepUp: 1, maxStepDown: 1, climbCost: 1 },
+    facing: 'E',
+    // The pool a basic attack spends, filled the way `newMatch` fills it: a magazine implies a kind.
+    resourceKind: magazine === null ? null : (spec.resourceKind ?? 'ammo'),
     defeated: false,
     ammo: spec.ammo ?? (magazine === null ? 0 : magazine),
     permanentlyDead: false,
     corpseExpiresAtRound: null,
+    camouflage: null,
+    prone: false,
   };
 }
 
@@ -48,6 +59,7 @@ function makeState(
   return {
     seed: 1,
     board: BOARD,
+    catalog: [],
     units: [...units],
     initiative: units.map((unit) => unit.id),
     currentIndex,
@@ -55,6 +67,8 @@ function makeState(
     round: 1,
     hasActed: false,
     eventCount: 0,
+    pendingMove: null,
+    difficultTerrain: [],
     ...overrides,
   };
 }
@@ -66,7 +80,8 @@ function rowOf(state: PublicState, key: PanelRow['key'], unitId = 'A-sniper'): P
 }
 
 const SNIPER = makeUnit({ id: 'A-sniper', team: 'A' });
-const WIZARD = makeUnit({ id: 'A-wizard', team: 'A', magazine: null });
+const WIZARD = makeUnit({ id: 'A-wizard', team: 'A', magazine: 3, resourceKind: 'mana' });
+const POOL_LESS = makeUnit({ id: 'A-nobody', team: 'A', magazine: null });
 
 describe('unitPanel', () => {
   it('shows nothing when no unit is selected', () => {
@@ -77,10 +92,21 @@ describe('unitPanel', () => {
     expect(unitPanel(makeState([SNIPER]), 'A-nobody')).toEqual([]);
   });
 
-  it('lists the rows in order', () => {
-    const keys = unitPanel(makeState([SNIPER]), 'A-sniper').map((row) => row.key);
-
-    expect(keys).toEqual(['hp', 'movement', 'action', 'ammo', 'reaction', 'mana']);
+  it('lists the rows in order, with the resource row of the class it is showing', () => {
+    expect(unitPanel(makeState([SNIPER]), 'A-sniper').map((row) => row.key)).toEqual([
+      'hp',
+      'movement',
+      'action',
+      'ammo',
+      'reaction',
+    ]);
+    expect(unitPanel(makeState([WIZARD]), 'A-wizard').map((row) => row.key)).toEqual([
+      'hp',
+      'movement',
+      'action',
+      'energy',
+      'reaction',
+    ]);
   });
 
   it('shows the health against the maximum, with the matching fill', () => {
@@ -121,7 +147,7 @@ describe('unitPanel', () => {
     expect(action.fill).toBeNull();
   });
 
-  it('shows the rounds left in the magazine', () => {
+  it('shows the rounds of a weapon class, under the name of the round', () => {
     const state = makeState([makeUnit({ id: 'A-sniper', team: 'A', ammo: 2 })]);
 
     const ammo = rowOf(state, 'ammo');
@@ -130,33 +156,40 @@ describe('unitPanel', () => {
     expect(ammo.value).toBe('2/3');
   });
 
-  it('shows no ammunition for a class that carries no magazine', () => {
-    const ammo = rowOf(makeState([WIZARD]), 'ammo', 'A-wizard');
+  it('shows the pool of a magic class as energy, under that name', () => {
+    const state = makeState([makeUnit({ id: 'A-wizard', team: 'A', ammo: 2, resourceKind: 'mana' })]);
 
-    expect(ammo.value).toBe('—');
-    expect(ammo.fill).toBeNull();
+    const energy = rowOf(state, 'energy', 'A-wizard');
+
+    expect(energy.label).toBe('Energia');
+    expect(energy.value).toBe('2/3');
+    expect(energy.fill).toBeCloseTo(2 / 3);
+    expect(energy.enabled).toBe(true);
   });
 
-  it('keeps the reaction and the mana, dimmed and without a value', () => {
-    const state = makeState([SNIPER]);
+  it('keeps the row of a unit that carries no pool at all, without a value', () => {
+    const resource = rowOf(makeState([POOL_LESS]), 'ammo', 'A-nobody');
 
-    const reaction = rowOf(state, 'reaction');
-    const mana = rowOf(state, 'mana');
+    expect(resource.value).toBe('—');
+    expect(resource.fill).toBeNull();
+  });
+
+  it('keeps the reaction, dimmed and without a value', () => {
+    const reaction = rowOf(makeState([SNIPER]), 'reaction');
 
     expect(reaction.label).toBe('Reação');
-    expect(mana.label).toBe('Mana');
-    for (const row of [reaction, mana]) {
-      expect(row.value).toBe('—');
-      expect(row.fill).toBeNull();
-      expect(row.enabled).toBe(false);
-    }
+    expect(reaction.value).toBe('—');
+    expect(reaction.fill).toBeNull();
+    expect(reaction.enabled).toBe(false);
   });
 
   it('marks as enabled exactly the rows the engine can answer', () => {
-    const enabled = unitPanel(makeState([SNIPER]), 'A-sniper')
-      .filter((row) => row.enabled)
-      .map((row) => row.key);
+    const enabled = (unitId: string, units: readonly UnitState[]) =>
+      unitPanel(makeState([...units]), unitId)
+        .filter((row) => row.enabled)
+        .map((row) => row.key);
 
-    expect(enabled).toEqual(['hp', 'movement', 'action', 'ammo']);
+    expect(enabled('A-sniper', [SNIPER])).toEqual(['hp', 'movement', 'action', 'ammo']);
+    expect(enabled('A-wizard', [WIZARD])).toEqual(['hp', 'movement', 'action', 'energy']);
   });
 });

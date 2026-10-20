@@ -5,14 +5,18 @@
   "description": "Browser client (Phaser, isometric 2D)",
   "type": "module",
   "scripts": {
+    "predev": "npm run build -w @eldritch-alley/engine",
     "dev": "vite",
+    "prebuild": "npm run build -w @eldritch-alley/engine",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "deploy": "wrangler deploy",
+    "pretest": "npm run build -w @eldritch-alley/engine",
     "test": "vitest run"
   },
   "dependencies": {
     "@colyseus/sdk": "^0.18.1",
+    "@eldritch-alley/engine": "*",
     "phaser": "^3.90.0"
   },
   "devDependencies": {

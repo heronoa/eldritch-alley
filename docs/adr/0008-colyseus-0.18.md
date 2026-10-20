@@ -21,7 +21,7 @@ DT-08 tracks the advisories `npm audit` reports on the server path. The blocking
 
 **`client.id` is gone.** A client is identified by `client.sessionId`. The room stores that string, not a `Client` and not an id of its own: the session *is* the identity, so a reconnecting client is recognised without a lookup table.
 
-**`setMetadata` replaces the metadata object.** A room no longer assigns `this.metadata = {...}`; it calls `this.setMetadata({...})`, which merges into the existing metadata. Assigning the field would desync the room from the matchmaker.
+**`setMetadata` replaces the metadata object.** A room no longer assigns `this.metadata = {...}`; it calls `this.setMetadata({...})`, which replaces the whole metadata object, as assignment does, and also tells the matchmaker about the change. Assigning the field would desync the room from the matchmaker.
 
 **Reconnection goes through `allowReconnection`.** `onDrop` calls `this.allowReconnection(client, seconds)`, which returns a `Deferred<Client>` that resolves on reconnect and rejects when the window expires. `onLeave` therefore runs *after* the window, not at the drop, which is what makes "the human forfeits when the window expires" a rule the room can express in one place. `onReconnect` is where the client is sent the state it missed.
 

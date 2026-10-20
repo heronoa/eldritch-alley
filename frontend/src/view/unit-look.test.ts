@@ -1,6 +1,24 @@
 import type { UnitState } from '../protocol';
 import { describe, expect, it } from 'vitest';
-import { chipFrameOf, classRow, frameIndex, healthFraction, markerStyle, pipsFor, spriteSheetOf } from './unit-look';
+import {
+  DIM_ALPHA,
+  FRAME,
+  IDLE_COLUMNS,
+  chipFrameOf,
+  classRow,
+  corpseRoundsLeft,
+  frameBox,
+  frameColumn,
+  frameIndex,
+  frameRow,
+  healthFraction,
+  idleFrameOf,
+  markerStyle,
+  pipsFor,
+  rowIdleFrame,
+  spriteSheetOf,
+  turnLook,
+} from './unit-look';
 
 describe('spriteSheetOf', () => {
   it('gives the human side the ally sheet and the bot the enemy sheet', () => {
@@ -46,17 +64,74 @@ describe('healthFraction', () => {
 });
 
 describe('pipsFor', () => {
-  it('is null for a class with no magazine', () => {
-    expect(pipsFor({ magazine: null, ammo: 0 })).toBeNull();
+  it('is null for a class with no magazine, whatever its resource', () => {
+    expect(pipsFor({ magazine: null, ammo: 0, resourceKind: 'ammo' })).toBeNull();
+    expect(pipsFor({ magazine: null, ammo: 0, resourceKind: 'mana' })).toBeNull();
   });
 
-  it('is the magazine with as many filled as there is ammunition', () => {
-    expect(pipsFor({ magazine: 3, ammo: 1 })).toEqual({ total: 3, filled: 1 });
+  it('is the magazine with as many filled as there is ammunition, warm', () => {
+    expect(pipsFor({ magazine: 3, ammo: 1, resourceKind: 'ammo' })).toEqual({
+      total: 3,
+      filled: 1,
+      resource: 'ammo',
+    });
+  });
+
+  it('counts mana for a magic class, so the pool reads as pips too', () => {
+    expect(pipsFor({ magazine: 3, ammo: 3, resourceKind: 'mana' })).toEqual({
+      total: 3,
+      filled: 3,
+      resource: 'mana',
+    });
   });
 
   it('clamps the filled count to the magazine', () => {
-    expect(pipsFor({ magazine: 3, ammo: 9 })).toEqual({ total: 3, filled: 3 });
-    expect(pipsFor({ magazine: 3, ammo: -1 })).toEqual({ total: 3, filled: 0 });
+    expect(pipsFor({ magazine: 3, ammo: 9, resourceKind: 'ammo' })).toEqual({
+      total: 3,
+      filled: 3,
+      resource: 'ammo',
+    });
+    expect(pipsFor({ magazine: 3, ammo: -1, resourceKind: 'mana' })).toEqual({
+      total: 3,
+      filled: 0,
+      resource: 'mana',
+    });
+  });
+});
+
+describe('corpseRoundsLeft', () => {
+  const body = (expires: number | null) => ({
+    defeated: true,
+    permanentlyDead: false,
+    corpseExpiresAtRound: expires,
+  });
+
+  it('counts the rounds between the one now and the one the body is removed on', () => {
+    expect(corpseRoundsLeft(4, body(7))).toBe(3);
+    expect(corpseRoundsLeft(1, body(4))).toBe(3);
+  });
+
+  it('stops at zero rather than counting past the expiry', () => {
+    expect(corpseRoundsLeft(7, body(7))).toBe(0);
+    expect(corpseRoundsLeft(9, body(7))).toBe(0);
+  });
+
+  it('is null for a living unit, a permanent death, or a body with no expiry', () => {
+    expect(
+      corpseRoundsLeft(3, {
+        defeated: false,
+        permanentlyDead: false,
+        corpseExpiresAtRound: 6,
+      }),
+    ).toBeNull();
+    expect(
+      corpseRoundsLeft(3, {
+        defeated: true,
+        permanentlyDead: true,
+        corpseExpiresAtRound: 6,
+      }),
+    ).toBeNull();
+    expect(corpseRoundsLeft(3, body(null))).toBeNull();
   });
 });
 
@@ -78,5 +153,76 @@ describe('chipFrameOf', () => {
     const unknown = { primaryClass: 'soldier' } as UnitState;
 
     expect(chipFrameOf(unknown)).toBe(frameIndex(0, 0));
+  });
+});
+
+describe('rowIdleFrame', () => {
+  it('is one of the two idle columns of the row, and nothing else', () => {
+    expect(IDLE_COLUMNS).toEqual([0, 1]);
+    expect(frameColumn(rowIdleFrame(3, 0))).toBe(IDLE_COLUMNS[0]);
+    expect(frameColumn(rowIdleFrame(3, 1))).toBe(IDLE_COLUMNS[1]);
+  });
+
+  it('stays in the row it was given', () => {
+    for (const phase of [0, 1]) expect(frameRow(rowIdleFrame(5, phase))).toBe(5);
+  });
+
+  it('reads a phase of any size as one of the two poses', () => {
+    expect(rowIdleFrame(3, 2)).toBe(rowIdleFrame(3, 0));
+    expect(rowIdleFrame(3, 97)).toBe(rowIdleFrame(3, 1));
+  });
+});
+
+describe('idleFrameOf', () => {
+  const CLASSES = ['sniper', 'wizard', 'priest', 'soldier'];
+
+  it('is the idle pose of the class, in the class’s own row', () => {
+    expect(idleFrameOf({ primaryClass: 'sniper' })).toBe(frameIndex(3, 0));
+    expect(idleFrameOf({ primaryClass: 'wizard' })).toBe(frameIndex(4, 0));
+    expect(idleFrameOf({ primaryClass: 'priest' })).toBe(frameIndex(5, 0));
+  });
+
+  it('falls back to the first row for a class the sheet does not carry', () => {
+    expect(idleFrameOf({ primaryClass: 'soldier' })).toBe(frameIndex(0, 0));
+    expect(idleFrameOf({ primaryClass: '' })).toBe(frameIndex(0, 0));
+  });
+
+  it('takes the second pose on an odd phase', () => {
+    expect(idleFrameOf({ primaryClass: 'priest' }, 1)).toBe(frameIndex(5, 1));
+  });
+
+  it('is the frame the turn-order chip shows, for every class and both teams', () => {
+    // Slice A's rule: the figure the rotation draws is the figure the unit is drawn with at rest, so
+    // the two have to come out of one function. The chip is the only other caller of the same choice.
+    for (const primaryClass of CLASSES) {
+      for (const team of ['A', 'B'] as const) {
+        const unit = { primaryClass, team } as UnitState;
+        expect(idleFrameOf(unit)).toBe(chipFrameOf(unit));
+      }
+    }
+  });
+});
+
+describe('frameBox', () => {
+  it('cuts a frame out of the sheet where the index says it is', () => {
+    expect(frameBox(frameIndex(3, 5))).toEqual({ column: 5, row: 3, width: FRAME.width, height: FRAME.height });
+  });
+
+  it('gives the first frame of the sheet for the first index', () => {
+    expect(frameBox(0)).toEqual({ column: 0, row: 0, width: FRAME.width, height: FRAME.height });
+  });
+});
+
+describe('turnLook', () => {
+  it('gives the unit on turn the arrow and steps nothing back', () => {
+    expect(turnLook(true)).toEqual({ arrow: true, alpha: 1 });
+  });
+
+  it('steps back the units that are not acting, and gives them no arrow', () => {
+    expect(turnLook(false)).toEqual({ arrow: false, alpha: DIM_ALPHA });
+  });
+
+  it('dims to the alpha the plan assumed until the phone test says otherwise', () => {
+    expect(DIM_ALPHA).toBe(0.6);
   });
 });

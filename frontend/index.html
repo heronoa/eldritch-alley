@@ -1,7 +1,7 @@
 <!doctype html>
-<!-- `lang` is the markup's own: the title's text below is Portuguese, which is what a page whose
-     script never runs shows. The script writes the language it resolved — the player's saved choice,
-     or the browser's — over this one as it loads. -->
+<!-- `lang` is the markup's own: the text below is Portuguese, which is what a page whose script never
+     runs shows. The script writes the language it resolved — the player's saved choice, or the
+     browser's — over this one as it loads. -->
 <html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
@@ -44,50 +44,286 @@
       }
     </style>
     <link rel="stylesheet" href="/src/title/title.css" />
+    <link rel="stylesheet" href="/src/onboarding/onboarding.css" />
+    <link rel="stylesheet" href="/src/account/account.css" />
+    <link rel="stylesheet" href="/src/contact/contact.css" />
   </head>
   <body>
-    <canvas id="title-city" aria-hidden="true"></canvas>
-    <div class="shade"></div>
-    <!-- The text below is what the page shows before its script runs. Every line carries an id and is
-         written again from the catalog of the client's language on load, so the catalog is the one
-         source once the script is up and the markup is only the fallback. -->
-    <main class="title">
-      <div class="block">
-        <p class="meta" id="meta">SECRETARIA DE ASSUNTOS OCULTOS · OCORRÊNCIA Nº 2026/0001</p>
-        <h1 id="name">Eldritch Alley</h1>
-        <span class="stamp" id="stamp">TACTICS</span>
-        <p class="tagline" id="tagline">Agentes licenciados, magia sem licença e uma cidade inteira de becos. Monte o seu esquadrão e responda à ocorrência.</p>
-        <button class="cta" id="cta" type="button">Iniciar partida</button>
-        <p class="hint" id="hint">ou pressione Enter</p>
-      </div>
+    <!-- Everything the title screen owns. A mailed link lands on the same document, and `boot.ts`
+         hides this box instead of loading the title's modules: the canvas, the keys and the city are
+         not a mail page's. -->
+    <div id="title-screen">
+      <canvas id="title-city" aria-hidden="true"></canvas>
+      <div class="shade"></div>
+      <!-- The text below is what the page shows before its script runs. Every line carries an id and is
+           written again from the catalog of the client's language on load, so the catalog is the one
+           source once the script is up and the markup is only the fallback. -->
+      <main class="title">
+        <div class="block">
+          <p class="meta" id="meta">SECRETARIA DE ASSUNTOS OCULTOS · OCORRÊNCIA Nº 2026/0001</p>
+          <h1 id="name">Eldritch Alley</h1>
+          <span class="stamp" id="stamp">TACTICS</span>
+          <p class="tagline" id="tagline">Agentes licenciados, magia sem licença e uma cidade inteira de becos. Monte o seu esquadrão e responda à ocorrência.</p>
+          <button class="cta" id="cta" type="button">Iniciar partida</button>
+          <p class="hint" id="hint">ou pressione Enter</p>
+        </div>
+      </main>
       <!-- The language switcher, in the corner the title block leaves free. Only the box is here: the
-           script draws one button per locale the client ships, so a page whose script never runs has
-           no dead control, and the box draws nothing while it is empty. `aria-label` is the markup's
-           fallback, rewritten from the catalog with the rest of the screen. -->
+           script draws one button per locale the client ships, so a page whose script never runs has no
+           dead control, and the box draws nothing while it is empty. It stands outside the title's own
+           layer on purpose: that layer is a fixed box, and a fixed box opens a stacking context. -->
       <div class="lang" id="lang" role="group" aria-label="Idioma"></div>
-    </main>
-    <div class="granted" id="granted" aria-live="polite">PARTIDA AUTORIZADA</div>
-    <footer><span id="footer-version">v0.1</span><span id="footer-place">Belém · madrugada</span></footer>
-    <!-- Why the player is not in a match, over the title and over the city. It opens only when the
-         client has something to say, and its three lines are written from the catalog — the empty
-         paragraphs here are what a page whose script never runs shows, which is nothing, because
-         the whole card is hidden until a failure opens it. -->
-    <div
-      class="notice"
-      id="notice"
-      role="alertdialog"
-      aria-modal="true"
-      aria-labelledby="notice-heading"
-      aria-describedby="notice-body"
-      hidden
-    >
-      <div class="notice-card">
-        <p class="notice-heading" id="notice-heading"></p>
-        <p class="notice-body" id="notice-body"></p>
-        <button class="cta notice-close" id="notice-close" type="button"></button>
+      <!-- The account control, the other corner. A guest sees the word for signing in; a signed-in
+           player sees their own name. The card the press opens is one of the three below. -->
+      <div class="account" id="account">
+        <button class="account-control" id="account-control" type="button" aria-label="Conta">Entrar</button>
+      </div>
+      <div class="granted" id="granted" aria-live="polite">PARTIDA AUTORIZADA</div>
+      <footer><button class="how-to-play" id="how-to-play" type="button">Como jogar</button><button class="footer-link" id="contact-open" type="button">Contato</button><a class="footer-link" id="privacy-link" href="/privacidade.html" target="_blank" rel="noopener noreferrer">Privacidade</a><span id="footer-version">v0.1</span><span id="footer-place">Belém · madrugada</span></footer>
+      <!-- Why the player is not in a match, over the title and over the city. It opens only when the
+           client has something to say, and its three lines are written from the catalog — the empty
+           paragraphs here are what a page whose script never runs shows, which is nothing, because
+           the whole card is hidden until a failure opens it. -->
+      <div
+        class="notice"
+        id="notice"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="notice-heading"
+        aria-describedby="notice-body"
+        hidden
+      >
+        <div class="notice-card">
+          <p class="notice-heading" id="notice-heading"></p>
+          <p class="notice-body" id="notice-body"></p>
+          <button class="cta notice-close" id="notice-close" type="button"></button>
+        </div>
+      </div>
+      <div id="game" hidden></div>
+      <!-- The onboarding, over the title and over the notice: the sequence of cards a player reads once,
+           before the first match, and can open again from the footer at any time. The text below is the
+           Portuguese a page whose script never runs shows, written again from the catalog on load, and the
+           empty box holds the step dots the script draws — one per card, so a card cannot arrive without
+           its dot. It starts hidden: only a browser that has never been shown the sequence takes the
+           attribute away. -->
+      <div
+        class="onboarding"
+        id="onboarding"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="onboarding-heading"
+        aria-describedby="onboarding-body"
+        hidden
+      >
+        <div class="onboarding-card">
+          <p class="onboarding-heading" id="onboarding-heading">Ocorrência aberta</p>
+          <p class="onboarding-body" id="onboarding-body">A Secretaria de Assuntos Ocultos abriu uma ocorrência no beco atrás do mercado: magia sem licença, três testemunhas e nenhuma explicação que fique de pé.</p>
+          <div class="onboarding-dots" id="onboarding-dots"></div>
+          <div class="onboarding-controls">
+            <button class="onboarding-back" id="onboarding-back" type="button">Voltar</button>
+            <button class="onboarding-forward cta" id="onboarding-forward" type="button">Continuar</button>
+            <button class="onboarding-skip" id="onboarding-skip" type="button">Pular</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- The sign-in dialog: the providers this deployment has, then the form of the step the tab
+           names. The provider buttons are built in code from `GET /auth/providers`; the markup holds
+           only the boxes, so a page whose script never runs shows no dead button. The fields carry the
+           Portuguese fallback; the catalog writes them again on load. -->
+      <div class="account-card" id="auth" role="dialog" aria-modal="true" aria-labelledby="auth-title" hidden>
+        <div class="account-card-body">
+          <div class="account-card-head">
+            <p class="account-card-title" id="auth-title">Conta</p>
+            <button class="account-close" id="auth-close" type="button" aria-label="Fechar">Fechar</button>
+          </div>
+          <div class="account-tabs" id="auth-tabs" role="tablist">
+            <button class="account-tab" id="auth-tab-sign-in" type="button" role="tab" aria-selected="true">Entrar</button>
+            <button class="account-tab" id="auth-tab-sign-up" type="button" role="tab" aria-selected="false">Criar conta</button>
+            <button class="account-tab" id="auth-tab-forgot" type="button" role="tab" aria-selected="false">Esqueci a senha</button>
+          </div>
+          <p class="account-hint" id="auth-providers-label" hidden>Entrar com</p>
+          <div class="account-providers" id="auth-providers"></div>
+          <form class="account-form" id="auth-form" novalidate>
+            <label class="account-field" id="auth-email-field">
+              <span id="auth-email-label">Endereço de e-mail</span>
+              <input id="auth-email" type="email" autocomplete="username" />
+            </label>
+            <label class="account-field" id="auth-password-field">
+              <span id="auth-password-label">Senha</span>
+              <input id="auth-password" type="password" autocomplete="current-password" />
+            </label>
+            <p class="account-hint" id="auth-password-hint" hidden>De 12 a 128 caracteres</p>
+            <label class="account-field" id="auth-display-name-field" hidden>
+              <span id="auth-display-name-label">Nome de agente</span>
+              <input id="auth-display-name" type="text" autocomplete="nickname" />
+            </label>
+            <p class="account-problem" id="auth-problem" role="alert" hidden></p>
+            <button class="cta" id="auth-submit" type="submit">Entrar</button>
+          </form>
+          <!-- The one answer a sign-up, a resend and a forgotten password give. -->
+          <div class="account-check-mail" id="auth-check-mail" hidden>
+            <p class="account-card-title" id="auth-check-mail-heading"></p>
+            <p class="account-hint" id="auth-check-mail-body"></p>
+            <button class="account-link" id="auth-check-mail-back" type="button">Voltar</button>
+          </div>
+          <!-- The policy, where the sign-up consent is asked for (m4-05, D4). -->
+          <p class="account-hint account-privacy"><a class="account-link" id="auth-privacy" href="/privacidade.html" target="_blank" rel="noopener noreferrer">Política de privacidade</a></p>
+        </div>
+      </div>
+
+      <!-- The profile: who is playing, the persistent squad, and the three ways out — the history, the
+           security card and the sign-out. -->
+      <div class="account-card" id="profile" role="dialog" aria-modal="true" aria-labelledby="profile-title" hidden>
+        <div class="account-card-body">
+          <div class="account-card-head">
+            <p class="account-card-title" id="profile-title">Perfil</p>
+            <button class="account-close" id="profile-close" type="button" aria-label="Fechar">Fechar</button>
+          </div>
+          <div class="account-identity">
+            <img class="account-avatar" id="profile-avatar" alt="" hidden />
+            <div>
+              <p class="account-name" id="profile-name"></p>
+              <p class="account-email" id="profile-email" hidden></p>
+            </div>
+          </div>
+          <p class="account-section" id="profile-agents-heading">Esquadrão</p>
+          <ul class="account-agents" id="profile-agents"></ul>
+          <p class="account-hint" id="profile-no-agents" hidden>Nenhum agente registrado</p>
+          <p class="account-problem" id="profile-problem" role="alert" hidden></p>
+          <!-- The release e-mails are the player's own choice, so the box starts unchecked and only a
+               deliberate press turns it on (m4-05, D6). The label is written from the catalog. -->
+          <label class="account-consent">
+            <input id="profile-release-emails" type="checkbox" />
+            <span id="profile-release-emails-label">Receber novidades e novas versões por e-mail</span>
+          </label>
+          <div class="account-actions">
+            <button class="account-link" id="profile-history" type="button">Histórico</button>
+            <button class="account-link" id="profile-security" type="button">Segurança</button>
+            <button class="account-link" id="profile-sign-out" type="button">Sair</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- The battle history: a page at a time, and a word when there is no match to list. -->
+      <div class="account-card account-card-wide" id="history" role="dialog" aria-modal="true" aria-labelledby="history-title" hidden>
+        <div class="account-card-body">
+          <div class="account-card-head">
+            <p class="account-card-title" id="history-title">Histórico de batalhas</p>
+            <button class="account-close" id="history-close" type="button" aria-label="Fechar">Fechar</button>
+          </div>
+          <ul class="history-rows" id="history-rows"></ul>
+          <p class="account-hint" id="history-empty" hidden>Nenhuma batalha registrada ainda</p>
+          <p class="account-problem" id="history-failure" role="alert" hidden></p>
+          <button class="cta account-more" id="history-more" type="button" hidden>Carregar mais</button>
+        </div>
+      </div>
+
+      <!-- The security card: how the account signs in, and the exit. The method line is one of the two
+           the catalog carries, chosen by the only fact the platform gives — whether a password exists.
+           The Portuguese below is the fallback a page whose script never runs shows. -->
+      <div class="account-card" id="security" role="dialog" aria-modal="true" aria-labelledby="security-title" hidden>
+        <div class="account-card-body">
+          <div class="account-card-head">
+            <p class="account-card-title" id="security-title">Segurança</p>
+            <button class="account-close" id="security-close" type="button" aria-label="Fechar">Fechar</button>
+          </div>
+          <p class="account-hint account-security-methods" id="security-methods">Entra com e-mail e senha</p>
+          <div class="account-actions">
+            <button class="account-danger" id="security-delete" type="button">Excluir conta</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- The deletion confirmation: the exact word and, only for an account that has one, the password.
+           The word is a token the platform checks, so it is spelled `DELETE` in both languages and is
+           not written again from the catalog. A form, so Enter does what the card's own button does. -->
+      <div class="account-card" id="delete-account" role="dialog" aria-modal="true" aria-labelledby="delete-title" hidden>
+        <div class="account-card-body">
+          <div class="account-card-head">
+            <p class="account-card-title" id="delete-title">Excluir conta</p>
+            <button class="account-close" id="delete-close" type="button" aria-label="Fechar">Fechar</button>
+          </div>
+          <p class="account-hint" id="delete-warning">A conta, o esquadrão e o histórico de batalhas serão apagados. Não é possível desfazer.</p>
+          <form class="account-form" id="delete-form" novalidate>
+            <label class="account-field">
+              <span id="delete-confirm-label">Digite DELETE para confirmar</span>
+              <input id="delete-confirmation" type="text" autocomplete="off" spellcheck="false" />
+            </label>
+            <label class="account-field" id="delete-password-field">
+              <span id="delete-password-label">Senha</span>
+              <input id="delete-password" type="password" autocomplete="current-password" />
+            </label>
+            <p class="account-problem" id="delete-problem" role="alert" hidden></p>
+            <div class="account-actions">
+              <button class="cta" id="delete-submit" type="submit" disabled>Excluir conta</button>
+              <button class="account-link" id="delete-cancel" type="button">Cancelar</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- The contact form: three fields, the challenge's own box and the link to the policy. The
+           Portuguese below is what a page whose script never runs shows; `contact-panel.ts` writes every
+           line from the catalog and draws Cloudflare's widget into the empty box. -->
+      <div class="account-card" id="contact" role="dialog" aria-modal="true" aria-labelledby="contact-title" hidden>
+        <div class="account-card-body">
+          <div class="account-card-head">
+            <p class="account-card-title" id="contact-title">Contato</p>
+            <button class="account-close" id="contact-close" type="button" aria-label="Fechar">Fechar</button>
+          </div>
+          <form class="account-form" id="contact-form" novalidate>
+            <label class="account-field" id="contact-name-field">
+              <span id="contact-name-label">Seu nome</span>
+              <input id="contact-name" type="text" autocomplete="name" maxlength="120" />
+            </label>
+            <label class="account-field" id="contact-email-field">
+              <span id="contact-email-label">Endereço de e-mail</span>
+              <input id="contact-email" type="email" autocomplete="email" />
+            </label>
+            <label class="account-field" id="contact-message-field">
+              <span id="contact-message-label">Mensagem</span>
+              <textarea id="contact-message" rows="6" maxlength="5000"></textarea>
+            </label>
+            <div class="contact-turnstile" id="contact-turnstile"></div>
+            <p class="account-problem" id="contact-problem" role="alert" hidden></p>
+            <button class="cta" id="contact-submit" type="submit">Enviar</button>
+            <a class="account-link" id="contact-privacy" href="/privacidade.html" target="_blank" rel="noopener noreferrer">Política de privacidade</a>
+          </form>
+          <!-- The answer a stored message gets, whether or not the notification reached the owner. -->
+          <div class="contact-success" id="contact-success" hidden>
+            <p class="account-card-title" id="contact-success-heading">Mensagem enviada</p>
+            <p class="account-hint" id="contact-success-body">Obrigado. Vamos responder pelo endereço que você deixou.</p>
+            <button class="account-link" id="contact-success-close" type="button">Fechar</button>
+          </div>
+        </div>
       </div>
     </div>
-    <div id="game" hidden></div>
-    <script type="module" src="/src/title/title.ts"></script>
+
+    <!-- The page a mailed link lands on. It is the same document — the static host answers every path
+         with this file — and `boot.ts` shows this box instead of the title's. The token is read from
+         the address and spent on the press, never by opening the page (ADR 0021 § D12). -->
+    <main class="mail" id="mail" hidden>
+      <div class="mail-card">
+        <p class="account-card-title" id="mail-heading"></p>
+        <p class="mail-body" id="mail-body"></p>
+        <form class="account-form" id="mail-form">
+          <label class="account-field" id="mail-password-field">
+            <span id="mail-password-label">Senha</span>
+            <input id="mail-password" type="password" autocomplete="new-password" />
+          </label>
+          <p class="account-hint" id="mail-password-hint" hidden>De 12 a 128 caracteres</p>
+          <label class="account-field" id="mail-confirmation-field">
+            <span id="mail-confirmation-label">Repita a senha</span>
+            <input id="mail-confirmation" type="password" autocomplete="new-password" />
+          </label>
+          <p class="account-problem" id="mail-problem" role="alert" hidden></p>
+          <button class="cta" id="mail-submit" type="submit"></button>
+        </form>
+        <a class="account-link" id="mail-back" href="/">Voltar ao início</a>
+      </div>
+    </main>
+
+    <script type="module" src="/src/boot.ts"></script>
   </body>
 </html>

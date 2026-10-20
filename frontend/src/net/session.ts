@@ -69,6 +69,11 @@ function isRefusal(error: unknown): boolean {
 /** Wires one subscription onto a room and answers how to take it off again. */
 type Attach = (room: Room) => () => void;
 
+/** What a join carries. A guest sends none; a signed-in player sends the ticket the platform issued. */
+export interface JoinOptions {
+  ticket?: string;
+}
+
 export class Session {
   private readonly client: Client;
   private room: Room | null = null;
@@ -89,17 +94,19 @@ export class Session {
    * Puts the session in a room: the one the stored token names when the browser kept one, a new one
    * otherwise. A reload during a match therefore resumes it instead of opening a second room. A token
    * the server refuses costs one request and nothing else — `connect()` follows and overwrites it.
+   *
+   * The options belong to a new join; a resume already holds its seat and ignores them.
    */
-  async open(): Promise<void> {
+  async open(options: JoinOptions = {}): Promise<void> {
     if (await this.reconnect()) return;
-    await this.connect();
+    await this.connect(options);
   }
 
-  /** Joins a match. The reconnection token is stored when the browser lets it be. */
-  async connect(): Promise<void> {
+  /** Joins a match with the options the caller has, and stores the reconnection token if it may. */
+  async connect(options: JoinOptions = {}): Promise<void> {
     // A new match brings a new board: the previous room's state must not be handed to anyone.
     this.lastState = null;
-    this.attachRoom(await this.client.joinOrCreate(ROOM_NAME));
+    this.attachRoom(await this.client.joinOrCreate(ROOM_NAME, options));
   }
 
   /**

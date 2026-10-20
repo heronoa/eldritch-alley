@@ -9,6 +9,10 @@ import { t } from '../i18n';
 import { luminance } from '../view/contrast';
 import { PROTOTYPE_MAPS } from './prototype-maps';
 import { MAP_COLORS, TILE_PALETTE, shadeHex } from './prototype-palette';
+import { setLocale } from '../i18n/translate';
+
+// The cases below assert the Portuguese copy the game shipped with, so they read it on purpose.
+setLocale('pt-BR');
 
 /** The `TILE` table of `data.js`, verbatim, with the duplicate keys already resolved. */
 const PROTOTYPE_TILE: Record<string, { name: string; top: string; left: string; right: string }> = {

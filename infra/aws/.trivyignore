@@ -1,0 +1,16 @@
+# S3 buckets (Terraform state bucket in bootstrap/, assets bucket in
+# modules/assets-bucket) use SSE-S3 (AES256) on purpose. A customer-managed
+# KMS key adds cost and key-rotation/IAM overhead with no meaningful gain at
+# this project's current stage.
+AVD-AWS-0132
+
+# modules/network: the instance security group allows unrestricted egress
+# (0.0.0.0/0). The small stg EC2 instance has no NAT gateway or VPC
+# endpoints, so it needs direct outbound access for package installs, ECR
+# pulls and third-party API calls.
+AVD-AWS-0104
+
+# modules/network: the public subnet assigns public IPs by design. There is
+# no NAT gateway in this environment, so the instance needs a public IP for
+# inbound/outbound traffic.
+AVD-AWS-0164

@@ -1,14 +1,22 @@
 import { describe, expect, it } from 'vitest';
 import { newMatch, publicState } from './match';
-import type { Board, MatchSetup, MatchState, Team, Unit } from './types';
+import type { AbilityDefinition, Board, MatchSetup, MatchState, Prop, Team, Unit } from './types';
 
-function makeBoard(heights: Record<string, number> = {}): Board {
+function makeBoard(heights: Record<string, number> = {}, props: readonly Prop[] = []): Board {
   const levels = new Array<number>(64).fill(0);
   for (const [key, level] of Object.entries(heights)) {
     const [x, y] = key.split(',').map(Number);
     levels[y * 8 + x] = level;
   }
-  return { width: 8, height: 8, levels };
+  return { width: 8, height: 8, levels, props };
+}
+
+function coverAt(x: number, y: number): Prop {
+  return { position: { x, y }, kind: 'cover' };
+}
+
+function wallAt(x: number, y: number): Prop {
+  return { position: { x, y }, kind: 'wall' };
 }
 
 function makeUnit(overrides: Partial<Unit> & Pick<Unit, 'id' | 'team' | 'position'>): Unit {
@@ -59,6 +67,9 @@ describe('newMatch', () => {
     expect(state.hasActed).toBe(false);
     expect(state.movementLeft).toBe(4);
     expect(state.board.levels).toHaveLength(64);
+    // A fresh match carries the statuses and the terrain layer the rules read, even when none is set.
+    expect(state.units.every((unit) => unit.camouflage === null && unit.prone === false)).toBe(true);
+    expect(state.difficultTerrain).toEqual([]);
   });
 
   it('starts the turn with the movement budget of the current unit', () => {
@@ -118,6 +129,59 @@ describe('newMatch', () => {
     const state = newMatch(setup);
     expect(state.board.levels).toEqual(setup.map.levels);
     expect(state.board.levels).not.toBe(setup.map.levels);
+  });
+
+  it('carries the props of the board, and answers an empty list when the setup left them out', () => {
+    // The setup may leave `props` out, the way it may leave `movementProfile` out of a unit; the board
+    // inside a match always carries one, the way `UnitState` always carries a profile.
+    const bare: Board = { width: 8, height: 8, levels: new Array<number>(64).fill(0) };
+    expect(newMatch(makeSetup({ map: bare })).board.props).toEqual([]);
+
+    const props = [coverAt(3, 3), wallAt(5, 5)];
+    expect(newMatch(makeSetup({ map: makeBoard({}, props) })).board.props).toEqual(props);
+  });
+
+  it('copies the props instead of aliasing the setup', () => {
+    const setup = makeSetup({ map: makeBoard({}, [coverAt(3, 3)]) });
+    const state = newMatch(setup);
+
+    expect(state.board.props).toEqual(setup.map.props);
+    expect(state.board.props).not.toBe(setup.map.props);
+  });
+
+  it('accepts a wall on the cell a unit stands on, which is the limit of the blocking rule', () => {
+    // Only the cells strictly between the two ends block (`sight.ts`), so a wall under a unit is a
+    // wall it stands on. That is a board the engine plays rather than a board it refuses.
+    const setup = makeSetup({ map: makeBoard({}, [wallAt(0, 0)]) });
+
+    expect(() => newMatch(setup)).not.toThrow();
+    expect(newMatch(setup).board.props).toEqual([wallAt(0, 0)]);
+  });
+
+  it('opens every unit facing its own side of the map (decision D1)', () => {
+    const state = newMatch(
+      makeSetup({}, [
+        makeUnit({ id: 'a1', team: 'A', position: { x: 0, y: 0 }, speed: 9 }),
+        makeUnit({ id: 'a2', team: 'A', position: { x: 3, y: 5 }, speed: 7 }),
+        makeUnit({ id: 'b1', team: 'B', position: { x: 4, y: 0 }, speed: 5 }),
+        makeUnit({ id: 'b2', team: 'B', position: { x: 7, y: 5 }, speed: 3 }),
+      ]),
+    );
+
+    // The left half of the board looks east, towards the middle, and the right half looks west.
+    expect(state.units.map((unit) => unit.facing)).toEqual(['E', 'E', 'W', 'W']);
+  });
+
+  it('reads the opening facing from the spawn alone, so the seed does not move it', () => {
+    const units = [
+      makeUnit({ id: 'a1', team: 'A', position: { x: 1, y: 4 }, speed: 9 }),
+      makeUnit({ id: 'b1', team: 'B', position: { x: 6, y: 4 }, speed: 5 }),
+    ];
+    const openings = (seed: number) =>
+      newMatch(makeSetup({ seed }, units)).units.map((unit) => unit.facing);
+
+    expect(openings(1)).toEqual(['E', 'W']);
+    expect(openings(999)).toEqual(openings(1));
   });
 });
 
@@ -185,11 +249,178 @@ describe('newMatch validation', () => {
       name: 'a seed above the unsigned 32-bit range',
       setup: makeSetup({ seed: 0x100000000 }),
     },
+    {
+      name: 'a prop outside the board',
+      setup: makeSetup({ map: makeBoard({}, [coverAt(8, 0)]) }),
+    },
+    {
+      name: 'a prop on a cell that is not whole',
+      setup: makeSetup({ map: makeBoard({}, [coverAt(1.5, 0)]) }),
+    },
+    {
+      name: 'two props on the same cell',
+      setup: makeSetup({ map: makeBoard({}, [coverAt(3, 3), wallAt(3, 3)]) }),
+    },
   ];
 
   for (const testCase of cases) {
     it(`throws a RangeError for ${testCase.name}`, () => {
       expect(() => newMatch(testCase.setup)).toThrow(RangeError);
+    });
+  }
+});
+
+describe('newMatch catalog validation and the new effect kinds', () => {
+  const CATALOG: readonly AbilityDefinition[] = [
+    {
+      id: 'piercing-shot',
+      cost: 2,
+      range: 5,
+      needsSight: true,
+      effect: { kind: 'damage', amount: 4, radius: 0, ignoresCover: true },
+    },
+    {
+      id: 'area-heal',
+      cost: 3,
+      range: 3,
+      needsSight: true,
+      effect: { kind: 'heal', amount: 5, radius: 1 },
+    },
+    {
+      id: 'camouflage',
+      cost: 3,
+      range: 0,
+      needsSight: false,
+      effect: { kind: 'camouflage', radius: 0, turns: 3, breakChance: 30 },
+    },
+    {
+      id: 'mud',
+      cost: 1,
+      range: 3,
+      needsSight: true,
+      effect: { kind: 'terrain', radius: 1, durationRounds: 3 },
+    },
+    {
+      id: 'resurrection',
+      cost: 3,
+      range: 3,
+      needsSight: false,
+      effect: { kind: 'revive', radius: 0 },
+    },
+  ];
+
+  const withCatalog = (catalog: readonly AbilityDefinition[]): MatchSetup =>
+    makeSetup({ catalog });
+
+  it('accepts all five effect kinds and copies them into the match', () => {
+    const setup = withCatalog(CATALOG);
+    const state = newMatch(setup);
+
+    expect(state.catalog.map((ability) => ability.effect.kind)).toEqual([
+      'damage',
+      'heal',
+      'camouflage',
+      'terrain',
+      'revive',
+    ]);
+    expect(state.catalog[2].effect).toEqual({
+      kind: 'camouflage',
+      radius: 0,
+      turns: 3,
+      breakChance: 30,
+    });
+    expect(state.catalog[3].effect).toEqual({ kind: 'terrain', radius: 1, durationRounds: 3 });
+    // The match owns its copy, so changing the authored catalog cannot change the match.
+    state.catalog[3].effect = { kind: 'terrain', radius: 2, durationRounds: 1 };
+    expect(setup.catalog?.[3].effect).toEqual({ kind: 'terrain', radius: 1, durationRounds: 3 });
+  });
+
+  const broken: { name: string; ability: AbilityDefinition }[] = [
+    {
+      name: 'a camouflage the caster cannot place off its own cell',
+      ability: {
+        id: 'camouflage',
+        cost: 3,
+        range: 0,
+        needsSight: false,
+        effect: { kind: 'camouflage', radius: 1, turns: 3, breakChance: 30 },
+      },
+    },
+    {
+      name: 'a camouflage that lasts no turn',
+      ability: {
+        id: 'camouflage',
+        cost: 3,
+        range: 0,
+        needsSight: false,
+        effect: { kind: 'camouflage', radius: 0, turns: 0, breakChance: 30 },
+      },
+    },
+    {
+      name: 'a break chance below zero',
+      ability: {
+        id: 'camouflage',
+        cost: 3,
+        range: 0,
+        needsSight: false,
+        effect: { kind: 'camouflage', radius: 0, turns: 3, breakChance: -1 },
+      },
+    },
+    {
+      name: 'a break chance above one hundred',
+      ability: {
+        id: 'camouflage',
+        cost: 3,
+        range: 0,
+        needsSight: false,
+        effect: { kind: 'camouflage', radius: 0, turns: 3, breakChance: 101 },
+      },
+    },
+    {
+      name: 'a break chance that is not whole',
+      ability: {
+        id: 'camouflage',
+        cost: 3,
+        range: 0,
+        needsSight: false,
+        effect: { kind: 'camouflage', radius: 0, turns: 3, breakChance: 30.5 },
+      },
+    },
+    {
+      name: 'a terrain that dries up before it exists',
+      ability: {
+        id: 'mud',
+        cost: 1,
+        range: 3,
+        needsSight: true,
+        effect: { kind: 'terrain', radius: 1, durationRounds: 0 },
+      },
+    },
+    {
+      name: 'a terrain with a negative radius',
+      ability: {
+        id: 'mud',
+        cost: 1,
+        range: 3,
+        needsSight: true,
+        effect: { kind: 'terrain', radius: -1, durationRounds: 3 },
+      },
+    },
+    {
+      name: 'a revival that reaches more than the chosen cell',
+      ability: {
+        id: 'resurrection',
+        cost: 3,
+        range: 3,
+        needsSight: false,
+        effect: { kind: 'revive', radius: 1 },
+      },
+    },
+  ];
+
+  for (const testCase of broken) {
+    it(`throws a RangeError for ${testCase.name}`, () => {
+      expect(() => newMatch(withCatalog([testCase.ability]))).toThrow(RangeError);
     });
   }
 });

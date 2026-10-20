@@ -6,16 +6,22 @@
 // `stamp.ts`, the state of the call to action in `connect-flow.ts`, the wording in `copy.ts`, what a
 // failure says in `notice.ts`, which languages the switcher offers in `language.ts`, and what may
 // move in `motion.ts`. What is left here is the DOM.
-import { gameServerEndpoint } from '../config';
-import { getLocale, saveLocale, setLocale, type Locale } from '../i18n';
+import { buildEnv, gameServerEndpoint } from '../config';
+import { getLocale, saveLocale, setLocale, t, type Locale } from '../i18n';
+import { privacyPath } from '../privacy/version';
+import { cardIsOpen } from '../account/modal';
+import { api } from '../account/live';
+import { currentAccount, loadAccount, setAccount } from '../account/session';
 import { joinFailure } from '../net/join-failure';
+import { joinWithTicket } from '../net/join-with-ticket';
 import { Session } from '../net/session';
+import { claim, HEARTBEAT_MS, release, tryClaim } from '../net/tab-lock';
 import { createCity, type CityView } from './city-render';
 import { canTransition, failureReason, next, type Flow } from './connect-flow';
 import { titleCopy, type TitleCopy } from './copy';
 import { LANGUAGE_OPTIONS, switchesTo } from './language';
 import { motionPolicy, type MotionPolicy } from './motion';
-import { noticeFor } from './notice';
+import { noticeFor, type FailureReason } from './notice';
 import { loadSheets } from './sheet';
 import { stampAt } from './stamp';
 
@@ -43,6 +49,8 @@ const noticeBody = byId<HTMLParagraphElement>('notice-body');
 const noticeClose = byId<HTMLButtonElement>('notice-close');
 const footerVersion = byId<HTMLSpanElement>('footer-version');
 const footerPlace = byId<HTMLSpanElement>('footer-place');
+const footerContact = byId<HTMLButtonElement>('contact-open');
+const footerPrivacy = byId<HTMLAnchorElement>('privacy-link');
 const switcher = byId<HTMLDivElement>('lang');
 
 /**
@@ -64,6 +72,10 @@ function render(): void {
   granted.textContent = copy.granted;
   footerVersion.textContent = copy.footerVersion;
   footerPlace.textContent = copy.footerPlace;
+  // The two footer links follow the language on screen: the policy page exists in both.
+  footerContact.textContent = t('contact.open');
+  footerPrivacy.textContent = t('privacy.link');
+  footerPrivacy.href = privacyPath(getLocale());
 
   renderFlow(copy);
   renderNotice(copy);
@@ -148,6 +160,18 @@ const languageButtons = LANGUAGE_OPTIONS.map((option) => {
   return { locale: option.locale, element };
 });
 
+/**
+ * The screens over the title that rewrite themselves when the language changes. They are written by
+ * their own file and the title cannot reach into them, so they are told instead: the onboarding layer is
+ * the one that registers today, and it needs this to rewrite the card it has open.
+ */
+const localeHandlers: ((locale: Locale) => void)[] = [];
+
+/** Registers a handler for a change of language. Called after the title has written itself again. */
+export function onLocaleChange(handler: (locale: Locale) => void): void {
+  localeHandlers.push(handler);
+}
+
 /** What a press on the switcher does: the language changes, the page is written again, and it is kept. */
 function switchLanguage(locale: Locale): void {
   if (!switchesTo(getLocale(), locale)) return;
@@ -155,10 +179,19 @@ function switchLanguage(locale: Locale): void {
   setLocale(locale);
   saveLocale(locale);
   render();
+
+  // Told after the title is written, so a handler that reads the catalog reads the new language.
+  for (const handler of localeHandlers) handler(locale);
 }
 
 /** The server to join. Resolved here, at load: a build without a valid endpoint never shows the title. */
-const endpoint = gameServerEndpoint(import.meta.env);
+const endpoint = gameServerEndpoint(buildEnv());
+
+/**
+ * This page load's own identity for the same-tab lock. One per load: a reload gets a new id, which
+ * is fine because the old page's `pagehide` already released its claim before the new one can ask.
+ */
+const tabId = crypto.randomUUID();
 
 /**
  * The call to action as the page loads it: nothing pressed, nothing announced. Kept as one value so
@@ -172,6 +205,11 @@ let flow: Flow = IDLE;
 // The page opens in the language the player picked last time, or the one the browser asks for, which
 // is what `getLocale` resolves. Every line below the title is written from here.
 render();
+
+// Who is signed in, asked once as the page loads. Nothing polls: the account control and the panels
+// follow the store, and a sign-in or a sign-out in them writes it back. A platform that does not answer
+// leaves the title as a guest, which is the state a guest can play in.
+void loadAccount(api).then(({ state }) => setAccount(state));
 
 /**
  * Whether the title owns the screen. While the match is on it does not: the page's keys are the
@@ -187,6 +225,9 @@ let city: CityView | null = null;
 
 /** The stamp's own frame loop, running only while there is a stamp to place. */
 let stampLoop = 0;
+
+/** The same-tab lock's heartbeat, running only while this tab holds the lock. */
+let heartbeat = 0;
 
 const reducedMotion = window.matchMedia(REDUCED_MOTION);
 
@@ -221,6 +262,27 @@ function stopStamp(): void {
   if (stampLoop === 0) return;
   cancelAnimationFrame(stampLoop);
   stampLoop = 0;
+}
+
+/** Starts refreshing this tab's lock. Calling it twice is the same as calling it once. */
+function startHeartbeat(): void {
+  if (heartbeat !== 0) return;
+  // `window.setInterval`, not the bare global: Node's ambient types shadow it with one that
+  // returns a `Timeout` instead of the browser's `number`, which is what `heartbeat` holds.
+  heartbeat = window.setInterval(() => claim(tabId, Date.now()), HEARTBEAT_MS);
+}
+
+/** Stops refreshing the lock. Does not release it: a release says the match is over, not just quiet. */
+function stopHeartbeat(): void {
+  if (heartbeat === 0) return;
+  window.clearInterval(heartbeat);
+  heartbeat = 0;
+}
+
+/** The lock is this tab's business alone from here: stop the heartbeat and give it up. */
+function endLock(): void {
+  stopHeartbeat();
+  release(tabId);
 }
 
 /**
@@ -262,6 +324,7 @@ function handOver(): void {
       // The match could not be downloaded: the session is released and the title is usable again.
       // The flow is set by hand, because `next` answers nothing from `ready`.
       confirmed.close();
+      endLock();
       // The seat was granted — the server answered — so this is the download's own failure and not a
       // refusal. Naming it is what keeps the card from blaming a server that did its part.
       flow = { state: 'failed', stampStartedAt: null, failure: 'load-failed' };
@@ -273,14 +336,20 @@ function handOver(): void {
 }
 
 /**
- * The session did not open: the stamp goes, the reason shows, and the button comes back. The reason
- * is read from the error, so a seat another tab holds is told apart from a server that did not
- * answer.
+ * The flow fails with a known reason: the stamp goes, the card shows it, and the button comes back.
  */
-function fail(error: unknown): void {
-  flow = next(flow, 'failed', performance.now(), joinFailure(error));
+function failWith(reason: FailureReason): void {
+  flow = next(flow, 'failed', performance.now(), reason);
   stopStamp();
   renderControls();
+}
+
+/**
+ * The session did not open: the reason is read from the error, so a seat another tab holds is told
+ * apart from a server that did not answer.
+ */
+function fail(error: unknown): void {
+  failWith(joinFailure(error));
 }
 
 /**
@@ -301,16 +370,17 @@ function renderControls(): void {
 function resume(): void {
   onScreen = true;
   flow = IDLE;
+  endLock();
   renderControls();
   city?.start();
 }
 
 /** What a press does: the stamp goes up, the session is opened, and the flow follows both. */
 async function press(): Promise<void> {
-  // A press belongs to the title only while the title is on screen and the notice is down: during a
-  // match, Enter is the match's key, and with the card up it belongs to the card's close button, which
-  // has the focus and gets the browser's own click.
-  if (!onScreen || failureReason(flow) !== null) return;
+  // A press belongs to the title only while the title is on screen, the notice is down and no card of
+  // the account is over it: during a match, Enter is the match's key, with the card up it belongs to
+  // the card's close button, and inside a form it belongs to the form.
+  if (!onScreen || cardIsOpen() || failureReason(flow) !== null) return;
 
   const before = flow;
   flow = next(flow, 'press', performance.now());
@@ -322,13 +392,28 @@ async function press(): Promise<void> {
   renderControls();
   startStamp();
 
-  const opening = new Session(endpoint);
+  // Checked client-side, before the server is ever asked: another tab of this same browser, not
+  // another player, is what this guards against (see `net/tab-lock.ts`).
+  if (!tryClaim(tabId, Date.now())) {
+    failWith('occupied');
+    return;
+  }
+  startHeartbeat();
+
+  let opening: Session;
   try {
-    // Resumes the match this page was in before a reload, when there is one to resume.
-    await opening.open();
+    opening = await joinWithTicket({
+      // A guest never asks the platform anything; a signed-in player sends the ticket, and a ticket
+      // the room refuses costs one guest join instead (D1–D3 of the milestone).
+      signedIn: currentAccount().status === 'signed-in',
+      create: () => new Session(endpoint),
+      // Asked at press time, not at load: a ticket has minutes, and the press is the only moment it is
+      // worth anything. A request that fails is the same as no ticket, and the player still plays.
+      ticket: async () => (await api.gameTicket()).ticket,
+    });
   } catch (error) {
-    // A session that never reached a room is worth dropping, so a retry starts from nothing.
-    opening.close();
+    // The session that failed is already closed by `joinWithTicket`; the seat this tab claimed is not.
+    endLock();
     fail(error);
     return;
   }
@@ -336,6 +421,7 @@ async function press(): Promise<void> {
   // The screen may have been given up while the server was answering; then this session is spare.
   if (flow.state !== 'connecting') {
     opening.close();
+    endLock();
     return;
   }
 
@@ -379,8 +465,13 @@ window.addEventListener('keydown', (event) => {
   void press();
 });
 
-// A reload, a closed tab or a navigation: a session nobody has taken over is released.
-window.addEventListener('pagehide', () => session?.close());
+// A reload, a closed tab or a navigation: a session nobody has taken over is released, and so is
+// this tab's claim on the lock, so the next page (this one reloading, or another tab) is not kept
+// waiting for staleness.
+window.addEventListener('pagehide', () => {
+  session?.close();
+  endLock();
+});
 
 // The setting can change while the page is open, and the city follows it.
 reducedMotion.addEventListener('change', (event) => {

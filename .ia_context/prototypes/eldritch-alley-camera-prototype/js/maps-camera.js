@@ -997,14 +997,18 @@
     cam.z = cam.zt = newZ;
   }
   const pointers = new Map(); let gesture = null;
+  let rdrag = null;
+  cvs.addEventListener('contextmenu', (e) => e.preventDefault());
   cvs.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'mouse' && e.button === 2) { rdrag = { x: e.clientX }; cvs.setPointerCapture(e.pointerId); return; }
     cvs.setPointerCapture(e.pointerId); pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY });
     if (pointers.size === 2) {
       const [p, q] = [...pointers.values()];
-      gesture = { d: Math.hypot(p.x - q.x, p.y - q.y), z: cam.zt }; cam.pinch = true;
+      gesture = { d: Math.hypot(p.x - q.x, p.y - q.y), z: cam.zt, a: Math.atan2(q.y - p.y, q.x - p.x) }; cam.pinch = true;
     }
   });
   cvs.addEventListener('pointermove', (e) => {
+    if (rdrag) { const dx = e.clientX - rdrag.x; if (Math.abs(dx) > 80 && !rotAnim) { rotate(dx > 0 ? 1 : -1); rdrag.x = e.clientX; } return; }
     const p = pointers.get(e.pointerId);
     if (!p) { if (e.pointerType === 'mouse') showCell(pick(e.clientX, e.clientY)); return; }
     const dx = (e.clientX - p.x) * view.dpr, dy = (e.clientY - p.y) * view.dpr;
@@ -1014,9 +1018,13 @@
       const [a, b] = [...pointers.values()];
       const d = Math.hypot(a.x - b.x, a.y - b.y), r = cvs.getBoundingClientRect();
       zoomAt(gesture.z * d / gesture.d, ((a.x + b.x) / 2 - r.left) * view.dpr, ((a.y + b.y) / 2 - r.top) * view.dpr);
+      let da = Math.atan2(b.y - a.y, b.x - a.x) - gesture.a;
+      if (da > Math.PI) da -= 2 * Math.PI; if (da < -Math.PI) da += 2 * Math.PI;
+      if (Math.abs(da) > 35 * Math.PI / 180 && !rotAnim) { rotate(da > 0 ? 1 : -1); gesture.a = Math.atan2(b.y - a.y, b.x - a.x); }
     }
   });
   function endPointer(e) {
+    if (rdrag && e.pointerType === 'mouse') { rdrag = null; return; }
     const p = pointers.get(e.pointerId); pointers.delete(e.pointerId);
     if (p && pointers.size === 0 && !gesture && Math.hypot(p.x - p.sx, p.y - p.sy) <= 6) showCell(pick(e.clientX, e.clientY));
     if (pointers.size < 2 && gesture) { gesture = null; cam.pinch = false; const r = cvs.getBoundingClientRect(); zoomAt(Math.round(cam.zt), view.CW / 2, view.CH / 2); }

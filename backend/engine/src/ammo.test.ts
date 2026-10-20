@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { DIRECTION_BONUS } from './facing';
 import { currentUnitId } from './initiative';
 import { applyAction, applyEvents, newMatch } from './match';
 import type { Action, ActionResult, Board, MatchSetup, MatchState, Unit } from './types';
@@ -90,8 +91,15 @@ describe('magazine', () => {
     const state = newMatch(sniperSetup());
     const result = play(state, { type: 'attack', actor: 'sniper', target: 'target' });
 
+    // The sniper stands beside its target rather than in front of it, so the strike carries the bonus
+    // of a flank shot on top of the weapon's own (ADR 0014).
     expect(result.events).toEqual([
-      expect.objectContaining({ type: 'attacked', hit: true, damage: 4, ammoSpent: true }),
+      expect.objectContaining({
+        type: 'attacked',
+        hit: true,
+        damage: 4 + DIRECTION_BONUS.flank.damage,
+        resource: 'ammo',
+      }),
     ]);
     expect(unitAt(result.state, 'sniper').ammo).toBe(2);
   });
@@ -101,35 +109,33 @@ describe('magazine', () => {
     const result = play(state, { type: 'attack', actor: 'sniper', target: 'target' });
 
     expect(result.events).toEqual([
-      expect.objectContaining({ type: 'attacked', hit: false, damage: 0, ammoSpent: true }),
+      expect.objectContaining({ type: 'attacked', hit: false, damage: 0, resource: 'ammo' }),
     ]);
     expect(unitAt(result.state, 'sniper').ammo).toBe(2);
   });
 
-  it('with an empty magazine, the attack is melee: range 1 only', () => {
+  it('with an empty magazine, the attack is refused: no-ammunition', () => {
     const state = newMatch(sniperSetup({ magazine: 3 }));
-    const empty = { ...state, units: state.units.map((unit) => (unit.id === 'sniper' ? { ...unit, ammo: 0 } : unit)) };
+    const empty = withEmptyMagazine(state, 'sniper');
 
     expect(rejectedReason(empty, { type: 'attack', actor: 'sniper', target: 'target' })).toBe(
-      'target-out-of-range',
+      'no-ammunition',
     );
   });
 
-  it('a melee attack deals half the attack, rounded down, and spends no round', () => {
-    const cases = [
-      { attack: 5, damage: 2 },
-      { attack: 4, damage: 2 },
-      { attack: 1, damage: 0 },
-    ];
-    for (const { attack, damage } of cases) {
+  it('an adjacent shot with ammunition deals the full attack, with no halving', () => {
+    for (const attack of [5, 4, 1]) {
       const state = newMatch(sniperSetup({ attack, magazine: 3 }, { position: { x: 0, y: 1 } }));
-      const empty = { ...state, units: state.units.map((unit) => (unit.id === 'sniper' ? { ...unit, ammo: 0 } : unit)) };
-      const result = play(empty, { type: 'attack', actor: 'sniper', target: 'target' });
+      const result = play(state, { type: 'attack', actor: 'sniper', target: 'target' });
 
       expect(result.events[0]).toEqual(
-        expect.objectContaining({ type: 'attacked', damage, ammoSpent: false }),
+        expect.objectContaining({
+          type: 'attacked',
+          damage: attack + DIRECTION_BONUS.flank.damage,
+          resource: 'ammo',
+        }),
       );
-      expect(unitAt(result.state, 'sniper').ammo).toBe(0);
+      expect(unitAt(result.state, 'sniper').ammo).toBe(2);
     }
   });
 
@@ -138,7 +144,7 @@ describe('magazine', () => {
     const empty = { ...state, units: state.units.map((unit) => (unit.id === 'sniper' ? { ...unit, ammo: 0 } : unit)) };
     const result = play(empty, { type: 'reload', actor: 'sniper' });
 
-    expect(result.events).toEqual([{ type: 'reloaded', actor: 'sniper' }]);
+    expect(result.events).toEqual([{ type: 'reloaded', actor: 'sniper', resource: 'ammo' }]);
     expect(unitAt(result.state, 'sniper').ammo).toBe(3);
     expect(result.state.hasActed).toBe(true);
     expect(result.state.movementLeft).toBe(empty.movementLeft);
@@ -182,7 +188,7 @@ describe('magazine', () => {
     );
     const result = play(state, { type: 'attack', actor: 'sniper', target: 'target' });
 
-    expect(result.events[0]).toEqual(expect.objectContaining({ ammoSpent: false }));
+    expect(result.events[0]).toEqual(expect.objectContaining({ resource: null }));
     expect(unitAt(result.state, 'sniper').ammo).toBe(0);
   });
 
@@ -190,8 +196,9 @@ describe('magazine', () => {
     const setup = sniperSetup();
     const steps: Action[] = [
       { type: 'attack', actor: 'sniper', target: 'target' },
-      { type: 'endTurn', actor: 'sniper' },
-      { type: 'endTurn', actor: 'target' },
+      // Two units, so the queue never wraps: both turns happen in round 1.
+      { type: 'endTurn', actor: 'sniper', round: 1 },
+      { type: 'endTurn', actor: 'target', round: 1 },
     ];
     let state = newMatch(setup);
     const events = [];

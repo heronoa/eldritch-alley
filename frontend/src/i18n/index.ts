@@ -5,6 +5,7 @@
 
 export { LOCALES, FALLBACK_LOCALE, isLocale, resolveLocale, type Locale } from './locale';
 export { LOCALE_STORAGE_KEY, readSavedLocale, saveLocale, type LocaleStorage } from './storage';
+export { abilityName } from './abilities';
 export { ptBR, type MessageKey } from './catalog.pt-BR';
 export { enUS } from './catalog.en-US';
 export { message, missingKeys } from './messages';

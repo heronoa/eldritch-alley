@@ -47,6 +47,14 @@ export const BUTTON_FILL = 0x23283a;
 export const BUTTON_FILL_DISABLED = 0x171b28;
 export const BUTTON_FILL_SELECTED = PAPER_COLOR;
 
+/**
+ * The pulse the "End turn" button runs once nothing else can be done and the automatic end of turn
+ * is off (EA-4). It breathes between full and faded, so it reads as "press me" without moving; the
+ * two values are the whole of it.
+ */
+export const BUTTON_PULSE_MS = 600;
+export const BUTTON_PULSE_ALPHA = 0.45;
+
 /** The stroke around the unit the player has selected, and the ring of the one on turn. */
 export const SELECTED_COLOR = PAPER_COLOR;
 export const CURRENT_TURN_COLOR = PAPER_COLOR;
@@ -57,8 +65,29 @@ export const CORPSE_COLOR = 0x4a4a4a;
 /** The outline of a fallen unit, so its silhouette reads on every height. */
 export const CORPSE_OUTLINE_COLOR = PAPER_COLOR;
 
-/** Ammunition pips. */
+/**
+ * The badge a unit in cover wears over its head (EA-15): the paper of the identity, on the ink that
+ * carries every other line of the game. It is the first text drawn on the board itself, so it is
+ * measured against the tiles by the contrast test the paper marker already passes.
+ */
+export const COVER_BADGE_FILL = PAPER_COLOR;
+export const COVER_BADGE_STROKE = INK_COLOR;
+
+/**
+ * The odds a unit is shown while it is being aimed at (EA-18): a vivid spring green, on ink — the
+ * owner's own request for a colour that reads as "the number that matters right now" rather than as
+ * ambient information. Chosen at HSL(140°, 85%, 70%) and nudged to a round hex: it clears the same
+ * outline floor the cover badge is held to (7.8:1 against the lightest tile the three maps actually
+ * draw, `q`, `#3f4152`) with more margin than the paper-on-ink pair it replaces, and 15:1 against ink.
+ * The attack highlight's red was tried first and measured under 4:1 against both paper and ink — a
+ * warning nobody could actually read — which is why this is a colour of its own rather than a reuse.
+ */
+export const HIT_CHANCE_BADGE_FILL = 0x66ff99;
+export const HIT_CHANCE_BADGE_STROKE = INK_COLOR;
+
+/** The pips of a basic attack: warm for the rounds of a magazine, cyan for mana (ADR 0011). */
 export const WARM_COLOR = 0xf0d9a0;
+export const MANA_COLOR = 0x3de9ff;
 
 /** The cells the armed mode would act on. A move and an attack never look alike. */
 export const HIGHLIGHT_MOVE_COLOR = TEAM_COLOR.A;
@@ -67,6 +96,31 @@ export const HIGHLIGHT_ATTACK_COLOR = ACCENT_COLOR;
 export const HIGHLIGHT_ATTACK_ALPHA = 0.48;
 
 export const GRID_STROKE_COLOR = 0x000000;
+
+/**
+ * The mark of difficult terrain (ADR 0023 §4): mud, read as a board mark and not as a tile. It clears
+ * 2.44:1 against the lightest tile the three maps draw (`q`, `#3f4152`) and 5.76:1 against the
+ * darkest, which is the floor `theme.contrast.test.ts` holds a fill that carries no letter to.
+ */
+export const MUD_COLOR = 0xa8834a;
+
+/**
+ * The silhouette of a camouflaged unit (ADR 0023 §3): white, drawn behind the figure at a pulsing
+ * alpha. White is the only colour that reads as "the unit is not really there" over every tile, and it
+ * clears 8.51:1 against the lightest of them — the outline floor the contrast test asks of it.
+ */
+export const CAMOUFLAGE_GLOW_COLOR = 0xffffff;
+
+/**
+ * The outline of the tile under the mouse. It is the paper of the identity and it is a stroke only:
+ * the wash of a move or of an attack is a fill, and the two are read together on one tile, so a fill
+ * here would hide the answer the wash is already giving. `PAPER_COLOR` is measured at the AAA outline
+ * floor against every tile the three maps draw (`theme.contrast.test.ts`, "keeps the paper marker
+ * legible on every tile"), which is the floor an outline over the board is held to — so this pair
+ * needs no contrast case of its own.
+ */
+export const HOVER_HIGHLIGHT_COLOR = PAPER_COLOR;
+export const HOVER_HIGHLIGHT_ALPHA = 0.9;
 
 /** The frame stamped around the result of a finished match. Decoration: it carries no information. */
 export const STAMP_COLOR = ACCENT_COLOR;

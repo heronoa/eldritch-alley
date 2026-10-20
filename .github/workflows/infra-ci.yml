@@ -84,12 +84,13 @@ jobs:
       # Every suppression (.trivyignore) needs a comment with the reason,
       # reviewed like any other change under infra/**.
       - name: Trivy config scan
-        uses: aquasecurity/trivy-action@18f2510ee396bbf400402947b394f2dd8c87dbb0 # v0.29.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: "config"
           scan-ref: "infra/aws"
           exit-code: "1"
           severity: "CRITICAL,HIGH"
+          trivyignores: "infra/aws/.trivyignore"
 
   secret-grep:
     runs-on: ubuntu-latest

@@ -16,30 +16,48 @@ import {
   walkFrame,
 } from '../view/animation';
 import type { Cell, Pixel } from '../view/grid';
+import { nextHealthDisplay, revealHealth, type HealthDisplay } from '../view/healthHold';
 import { TILE_H, TILE_W, depthOfUnit } from '../view/iso';
+import { PANEL_ALPHA, TURN_ARROW, TURN_ARROW_POINT } from '../view/layout';
 import {
+  CAMOUFLAGE_GLOW_COLOR,
+  COVER_BADGE_FILL,
+  COVER_BADGE_STROKE,
+  HIT_CHANCE_BADGE_FILL,
+  HIT_CHANCE_BADGE_STROKE,
   CORPSE_COLOR,
   CORPSE_OUTLINE_COLOR,
+  FONT_BODY,
+  FONT_SIZE,
+  INK_COLOR,
+  MANA_COLOR,
+  PANEL_FILL,
   PANEL_STROKE,
   PAPER_COLOR,
   SELECTED_COLOR,
   TEAM_COLOR,
   WARM_COLOR,
+  cssColor,
 } from '../view/theme';
 import {
+  BODY_HEIGHT,
+  BODY_SCALE,
   classRow,
   frameIndex,
   healthFraction,
   markerStyle,
   pipsFor,
+  rowIdleFrame,
   spriteSheetOf,
+  turnLook,
   type Pips,
 } from '../view/unit-look';
 
-/** Columns of the sheet, in the order the characters README lists them. */
+/**
+ * Columns of the sheet, in the order the characters README lists them. The two idle poses are not
+ * here: which one is drawn is `rowIdleFrame`'s answer, shared with the turn (slice A).
+ */
 const COLUMN = {
-  idle1: 0,
-  idle2: 1,
   walk1: 2,
   walk2: 3,
   melee1: 4,
@@ -64,15 +82,6 @@ const DIAMOND = [
   { x: -1, y: 0 },
 ];
 
-/**
- * Geometry of a drawn unit, in pixels. The body is a 16x24 frame drawn at twice its size, which is
- * the size the prototype's own figures take at its scale: the tile of the map is 64 by 32.
- */
-const BODY_SCALE = 2;
-
-/** How tall the figure stands above its feet, which is what the bars and the shot leave from. */
-export const BODY_HEIGHT = 24 * BODY_SCALE;
-
 /** The ground marker lies flat on the tile, so its two axes follow the two axes of the top face. */
 const MARKER_HALF_WIDTH = TILE_W * 0.22;
 const MARKER_HALF_HEIGHT = TILE_H * 0.22;
@@ -81,10 +90,71 @@ const RING_GAP = 3;
 const HEALTH_BAR = { width: 32, height: 4, gapAboveBody: 6 };
 const PIP = { size: 4, gap: 3, gapAboveBar: 6 };
 
+/**
+ * The odds a unit is shown while it is being aimed at (EA-18): the first line above the head, closest
+ * of the two badges, because it is the one the player is actively reading while aiming — bigger and
+ * bolder than the cover badge, so it reads as the answer to the question being asked right now.
+ */
+const HIT_CHANCE_BADGE = { gapAboveArrow: 6, strokeThickness: 5 };
+
+/**
+ * The badge a unit in cover wears (EA-15), over the odds badge: it is ambient information, true
+ * whether or not anyone is aiming, so it takes the second line rather than the closer one.
+ */
+const COVER_BADGE = { gapAboveHitChance: 18, strokeThickness: 4 };
+
+/**
+ * The tag behind each badge (owner's request, M5 playtest polish): the panel's own carbon fill and
+ * frame, floated in miniature over the board, so the words read against a controlled backing instead
+ * of whatever the tile under the unit happens to be. Sized to the text it backs plus this padding.
+ */
+const BADGE_TAG = { paddingX: 5, paddingY: 2 };
+
+/**
+ * The silhouette of a camouflaged unit (ADR 0023 §3): the figure's own frame, painted white behind it
+ * and pulsing between these alphas. It is a drawing of the status, so it fades in and out for as long
+ * as the state carries one.
+ */
+const CAMOUFLAGE_GLOW = { alphaLow: 0.15, alphaHigh: 0.45, pulseMs: 900 } as const;
+
+/** How far the body is moved so a prone figure lies over the middle of its cell, not off to one side. */
+const PRONE_OFFSET = -BODY_HEIGHT / 2;
+
+/**
+ * The countdown over a body (ADR 0023 §7): a small speech bubble whose tail points down at the fallen
+ * figure's head, carrying a skull and the rounds left before the body is removed. The skull sits
+ * behind the number and a little to its left, tilted 15 degrees counterclockwise — Phaser rotates
+ * clockwise for positive angles, so the sign is negative.
+ */
+const CORPSE_COUNTDOWN = {
+  width: 40,
+  height: 28,
+  radius: 6,
+  /** The bottom edge, above the head at -BODY_HEIGHT; the tail reaches down from here. */
+  bottom: -BODY_HEIGHT - 10,
+  tailWidth: 8,
+  tailHeight: 8,
+  /** The centre of the bubble, where the skull and the number sit. */
+  centreY: -BODY_HEIGHT - 24,
+  skullX: -4,
+  numberX: 4,
+  skullRotation: -Math.PI / 12,
+  strokeThickness: 3,
+} as const;
+
 /** What the sprite is busy with, and when it started. Only one action runs at a time. */
 type Action =
   | { kind: 'attack'; style: 'melee' | 'ranged'; hit: boolean; start: number; impactAt: number; impactUntil: number }
   | { kind: 'reload'; from: number; to: number; start: number };
+
+/**
+ * The two marks the scene puts on a unit: the one the player picked, and the one the turn is on.
+ * They are not the same thing — the player may have picked anybody while somebody else acts.
+ */
+export interface UnitMarks {
+  selected: boolean;
+  active: boolean;
+}
 
 /** What the scene tells the sprite about an attack it has to play. */
 export interface AttackPlan {
@@ -111,9 +181,25 @@ function impactDelay(style: 'melee' | 'ranged', travelMs: number): number {
 export class UnitSprite extends Phaser.GameObjects.Container {
   private readonly marker: Phaser.GameObjects.Graphics;
   private readonly corpse: Phaser.GameObjects.Graphics;
+  /** The white silhouette of a camouflaged unit, drawn behind the figure (ADR 0023 §3). */
+  private readonly glow: Phaser.GameObjects.Sprite;
   private readonly figure: Phaser.GameObjects.Sprite;
   private readonly bars: Phaser.GameObjects.Graphics;
   private readonly ring: Phaser.GameObjects.Graphics;
+  private readonly arrow: Phaser.GameObjects.Graphics;
+  /** The words over the head of a unit in cover, or nothing at all (EA-15). */
+  private readonly coverBadge: Phaser.GameObjects.Text;
+  /** The tag the cover badge sits on, resized to the words it backs each time they change. */
+  private readonly coverTag: Phaser.GameObjects.Rectangle;
+  /** The odds over the head of a unit being aimed at, or nothing while none is armed (EA-18). */
+  private readonly hitChanceBadge: Phaser.GameObjects.Text;
+  /** The tag the hit-chance badge sits on, resized to the words it backs each time they change. */
+  private readonly hitChanceTag: Phaser.GameObjects.Rectangle;
+  /** The speech bubble over a body and the skull behind its number; their geometry never changes. */
+  private readonly countdownBubble: Phaser.GameObjects.Graphics;
+  private readonly countdownSkull: Phaser.GameObjects.Graphics;
+  /** The rounds left before the body is removed, drawn over the skull. */
+  private readonly countdownText: Phaser.GameObjects.Text;
 
   private team: Team = 'A';
   /** The row of the sheet this unit is drawn from. A class without one falls back to Combatant. */
@@ -122,44 +208,202 @@ export class UnitSprite extends Phaser.GameObjects.Container {
   private readonly bornAt: number;
   private defeated = false;
   private selected = false;
-  private health = { health: 0, maxHealth: 0 };
+  /** True only while this unit is the one the turn is on, which is what raises its arrow. */
+  private onTurn = false;
+  /** What the health bar shows, and the value an attack in flight is holding back (M4 playtest fix, P2). */
+  private healthDisplay: HealthDisplay = { shown: { health: 0, maxHealth: 0 }, pending: null };
+  /** Set while an attack against this unit is still swinging, so its result waits for the impact. */
+  private healthHoldUntil: number | null = null;
   private pips: Pips | null = null;
   private action: Action | null = null;
   private moving: { start: number } | null = null;
+  /** The resting x of the figure, which is the prone offset while the unit lies on the floor. */
+  private poseX = 0;
 
-  constructor(scene: Phaser.Scene, unit: UnitState, selected: boolean, placement: Placement) {
+  constructor(
+    scene: Phaser.Scene,
+    unit: UnitState,
+    marks: UnitMarks,
+    placement: Placement,
+    facesRight: boolean,
+  ) {
     super(scene, 0, 0);
     this.bornAt = scene.time.now;
 
-    // Drawing order inside the container: the ground, the body on it, the bars, then the ring.
+    // Drawing order inside the container: the ground, the body on it, the bars, the arrow, the ring,
+    // and the words of cover over the lot.
     this.marker = scene.add.graphics();
     this.corpse = scene.add.graphics();
+    // The silhouette is the same drawing as the figure, added first so Phaser paints it behind it.
+    this.glow = scene.add
+      .sprite(0, 0, 'unit-ally', 0)
+      .setOrigin(0.5, 1)
+      .setScale(BODY_SCALE)
+      .setTintFill(CAMOUFLAGE_GLOW_COLOR)
+      .setAlpha(CAMOUFLAGE_GLOW.alphaLow)
+      .setVisible(false);
     this.figure = scene.add.sprite(0, 0, 'unit-ally', 0).setOrigin(0.5, 1).setScale(BODY_SCALE);
     this.bars = scene.add.graphics();
+    this.arrow = scene.add.graphics();
     this.ring = scene.add.graphics();
-    this.add([this.marker, this.corpse, this.figure, this.bars, this.ring]);
+    const hitChanceY = TURN_ARROW_POINT.y - TURN_ARROW.height - HIT_CHANCE_BADGE.gapAboveArrow;
+    const coverY = hitChanceY - COVER_BADGE.gapAboveHitChance;
+    this.hitChanceTag = scene.add
+      .rectangle(0, hitChanceY + BADGE_TAG.paddingY, 0, 0, PANEL_FILL)
+      .setOrigin(0.5, 1)
+      .setStrokeStyle(1, PANEL_STROKE)
+      .setAlpha(PANEL_ALPHA)
+      .setVisible(false);
+    this.hitChanceBadge = scene.add
+      .text(0, hitChanceY, '', {
+        fontFamily: FONT_BODY,
+        fontSize: `${FONT_SIZE.unit}px`,
+        color: cssColor(HIT_CHANCE_BADGE_FILL),
+      })
+      .setOrigin(0.5, 1)
+      .setStroke(cssColor(HIT_CHANCE_BADGE_STROKE), HIT_CHANCE_BADGE.strokeThickness)
+      .setVisible(false);
+    this.coverTag = scene.add
+      .rectangle(0, coverY + BADGE_TAG.paddingY, 0, 0, PANEL_FILL)
+      .setOrigin(0.5, 1)
+      .setStrokeStyle(1, PANEL_STROKE)
+      .setAlpha(PANEL_ALPHA)
+      .setVisible(false);
+    this.coverBadge = scene.add
+      .text(0, coverY, '', {
+        fontFamily: FONT_BODY,
+        fontSize: `${FONT_SIZE.log}px`,
+        color: cssColor(COVER_BADGE_FILL),
+      })
+      .setOrigin(0.5, 1)
+      .setStroke(cssColor(COVER_BADGE_STROKE), COVER_BADGE.strokeThickness)
+      .setVisible(false);
+
+    const countdownLeft = -CORPSE_COUNTDOWN.width / 2;
+    const countdownTop = CORPSE_COUNTDOWN.bottom - CORPSE_COUNTDOWN.height;
+    const tailHalf = CORPSE_COUNTDOWN.tailWidth / 2;
+    const tailTip = CORPSE_COUNTDOWN.bottom + CORPSE_COUNTDOWN.tailHeight;
+    this.countdownBubble = scene.add.graphics().setVisible(false);
+    this.countdownBubble.fillStyle(PANEL_FILL, PANEL_ALPHA);
+    // The tail first, so the body's fill hides the seam where the two join.
+    this.countdownBubble.fillTriangle(
+      -tailHalf,
+      CORPSE_COUNTDOWN.bottom,
+      tailHalf,
+      CORPSE_COUNTDOWN.bottom,
+      0,
+      tailTip,
+    );
+    this.countdownBubble.fillRoundedRect(
+      countdownLeft,
+      countdownTop,
+      CORPSE_COUNTDOWN.width,
+      CORPSE_COUNTDOWN.height,
+      CORPSE_COUNTDOWN.radius,
+    );
+    this.countdownBubble.lineStyle(1, PANEL_STROKE, 1);
+    this.countdownBubble.strokeRoundedRect(
+      countdownLeft,
+      countdownTop,
+      CORPSE_COUNTDOWN.width,
+      CORPSE_COUNTDOWN.height,
+      CORPSE_COUNTDOWN.radius,
+    );
+
+    this.countdownSkull = scene.add.graphics();
+    this.countdownSkull.fillStyle(PAPER_COLOR, 1);
+    this.countdownSkull.fillCircle(0, -1, 7);
+    this.countdownSkull.fillRoundedRect(-5, 3, 10, 6, 2);
+    this.countdownSkull.fillStyle(INK_COLOR, 1);
+    this.countdownSkull.fillCircle(-2.5, -2, 2);
+    this.countdownSkull.fillCircle(2.5, -2, 2);
+    this.countdownSkull.fillTriangle(-1, 2, 1, 2, 0, 4);
+    this.countdownSkull.lineStyle(1, INK_COLOR, 1);
+    this.countdownSkull.lineBetween(-4, 6, 4, 6);
+    this.countdownSkull.lineBetween(-4, 8, 4, 8);
+    this.countdownSkull
+      .setPosition(CORPSE_COUNTDOWN.skullX, CORPSE_COUNTDOWN.centreY)
+      .setRotation(CORPSE_COUNTDOWN.skullRotation)
+      .setVisible(false);
+
+    this.countdownText = scene.add
+      .text(CORPSE_COUNTDOWN.numberX, CORPSE_COUNTDOWN.centreY, '', {
+        fontFamily: FONT_BODY,
+        fontSize: `${FONT_SIZE.unit}px`,
+        color: cssColor(PAPER_COLOR),
+      })
+      .setOrigin(0.5, 0.5)
+      .setStroke(cssColor(INK_COLOR), CORPSE_COUNTDOWN.strokeThickness)
+      .setVisible(false);
+
+    this.add([
+      this.marker,
+      this.corpse,
+      this.glow,
+      this.figure,
+      this.bars,
+      this.arrow,
+      this.ring,
+      this.coverTag,
+      this.coverBadge,
+      this.hitChanceTag,
+      this.hitChanceBadge,
+      this.countdownBubble,
+      this.countdownSkull,
+      this.countdownText,
+    ]);
+
+    // One pulse for the life of the sprite: showing and hiding the silhouette never restarts it.
+    scene.tweens.add({
+      targets: this.glow,
+      alpha: { from: CAMOUFLAGE_GLOW.alphaLow, to: CAMOUFLAGE_GLOW.alphaHigh },
+      duration: CAMOUFLAGE_GLOW.pulseMs,
+      yoyo: true,
+      repeat: -1,
+    });
 
     scene.add.existing(this);
-    this.sync(unit, selected, placement);
+    this.sync(unit, marks, placement, facesRight);
   }
 
-  /** Redraws what the state says about the unit. A unit mid-move is left where its tween has it. */
-  sync(unit: UnitState, selected: boolean, placement: Placement): void {
+  /**
+   * Redraws what the state says about the unit. A unit mid-move is left where its tween has it.
+   * `facesRight` is which way round its figure is drawn, which the view works out: a view turned a
+   * quarter puts the squad that was on the left on the right (EA-12).
+   */
+  sync(unit: UnitState, marks: UnitMarks, placement: Placement, facesRight: boolean): void {
+    const look = turnLook(marks.active);
+
     this.team = unit.team;
     this.row = classRow(unit.primaryClass) ?? 0;
     this.defeated = unit.defeated;
-    this.selected = selected;
-    this.health = { health: unit.health, maxHealth: unit.maxHealth };
+    this.selected = marks.selected;
+    this.onTurn = look.arrow;
+    // The units that are not acting step back, so the one that is reads at a glance (EA-3).
+    this.setAlpha(look.alpha);
+    this.healthDisplay = nextHealthDisplay(
+      this.healthDisplay,
+      { health: unit.health, maxHealth: unit.maxHealth },
+      this.scene.time.now,
+      this.healthHoldUntil,
+    );
     this.pips = pipsFor(unit);
 
     this.figure.setTexture(`unit-${spriteSheetOf(unit.team)}`);
-    // Each team faces the other from the start, so a unit is never seen from behind by its side.
-    this.figure.setFlipX(unit.team === 'B');
+    this.glow.setTexture(`unit-${spriteSheetOf(unit.team)}`);
+    // A sprite is drawn facing one way, so the side that faces the other is the one that is mirrored.
+    this.figure.setFlipX(!facesRight);
+    this.glow.setFlipX(!facesRight);
+
+    // Both marks are read from the state, so a late join draws them exactly as a live client does.
+    this.setCamouflage(unit.camouflage !== null && !unit.defeated);
+    this.setProne(unit.prone);
 
     if (this.moving === null) this.snapTo(placement);
 
     this.drawMarker();
     this.drawCorpse();
+    this.drawArrow();
     this.drawRing();
     this.drawBars(this.scene.time.now);
   }
@@ -167,43 +411,129 @@ export class UnitSprite extends Phaser.GameObjects.Container {
   /** The body falls: grey, outlined, with no bars, and it stays on its tile until it is removed. */
   markDefeated(): void {
     this.defeated = true;
+    // A fallen unit is covered by nothing, and the words would hang over the body it left (EA-15).
+    this.setCoverBadge(null);
+    // Nor is it a target left to aim at (EA-18).
+    this.setHitChanceBadge(null);
+    // Nothing of the living unit's head lingers on the body while the new state arrives.
+    this.setCorpseCountdown(null);
+    // A body is not hidden by a camouflage it no longer carries (ADR 0023 §3).
+    this.setCamouflage(false);
     this.drawMarker();
     this.drawCorpse();
+    this.drawArrow();
     this.drawBars(this.scene.time.now);
   }
 
   /**
-   * Slides the unit across the cells it was moved, one step of the walk per 150 ms. The length is the
-   * cell distance, so a step is the same length wherever on the board it happens; the depth follows
-   * the slide so a unit moving towards the viewer comes out over the tiles it passes.
+   * Writes the words the scene worked out over the unit's head, or takes them down with `null`. The
+   * sprite decides nothing: which sides carry cover and in which language is the scene's business
+   * (`game/coverBadge.ts`), and this only draws what it is handed.
    */
-  slideTo(from: Placement, to: Placement): void {
-    const cells = Math.max(Math.abs(to.cell.x - from.cell.x), Math.abs(to.cell.y - from.cell.y));
-    const fromDepth = depthOfUnit(from.cell);
-    const toDepth = depthOfUnit(to.cell);
+  setCoverBadge(text: string | null): void {
+    this.coverBadge.setText(text ?? '');
+    this.coverBadge.setVisible(text !== null);
+    this.coverTag.setVisible(text !== null);
+    if (text !== null) this.fitTag(this.coverTag, this.coverBadge);
+  }
+
+  /**
+   * Writes the odds the scene worked out for this unit, or takes them down with `null`. The sprite
+   * decides nothing: whether an aim reaches this unit at all, and what the chance is, is the scene's
+   * business (`game/targetPreview.ts`), and this only draws what it is handed (EA-18).
+   */
+  setHitChanceBadge(text: string | null): void {
+    this.hitChanceBadge.setText(text ?? '');
+    this.hitChanceBadge.setVisible(text !== null);
+    this.hitChanceTag.setVisible(text !== null);
+    if (text !== null) this.fitTag(this.hitChanceTag, this.hitChanceBadge);
+  }
+
+  /**
+   * Draws the rounds a body has left over its head, or takes the count down with `null`. The count is
+   * the scene's arithmetic (`view/unit-look.ts`); the sprite draws what it is handed, for either team.
+   */
+  setCorpseCountdown(rounds: number | null): void {
+    const visible = rounds !== null;
+    this.countdownBubble.setVisible(visible);
+    this.countdownSkull.setVisible(visible);
+    this.countdownText.setText(rounds === null ? '' : String(rounds)).setVisible(visible);
+  }
+
+  /**
+   * Shows the white silhouette behind the figure while the unit is camouflaged, or hides it. The
+   * scene reads the status from the state; the sprite only draws it (ADR 0023 §3).
+   */
+  setCamouflage(active: boolean): void {
+    this.glow.setVisible(active && !this.defeated);
+  }
+
+  /**
+   * Lays the figure on the floor while the unit is prone, and stands it again when the status ends.
+   * The ring, the bars and the facing stay where they are: they belong to the cell, not the pose.
+   */
+  setProne(prone: boolean): void {
+    const rotation = prone ? Math.PI / 2 : 0;
+    this.poseX = prone ? PRONE_OFFSET : 0;
+    this.figure.setRotation(rotation).setPosition(this.poseX, 0);
+    this.glow.setRotation(rotation).setPosition(this.poseX, 0);
+  }
+
+  /** Grows `tag` to fit `label` plus the padding every badge tag keeps around its words. */
+  private fitTag(tag: Phaser.GameObjects.Rectangle, label: Phaser.GameObjects.Text): void {
+    tag.setSize(label.width + BADGE_TAG.paddingX * 2, label.height + BADGE_TAG.paddingY * 2);
+  }
+
+  /**
+   * Walks the unit through the cells the server sent, one step of the walk per 150 ms. The steps are
+   * the engine's own path, so the figure follows the route it was moved along instead of a straight
+   * line; the depth follows each step, so a unit moving towards the viewer comes out over the tiles
+   * it passes.
+   */
+  walkTo(steps: readonly Placement[]): void {
+    const first = steps[0];
+    if (first === undefined) return;
+
+    // A walk with nothing to walk leaves the figure where it is, and stops the walk frame.
+    this.snapTo(first);
+    if (steps.length === 1) {
+      this.moving = null;
+      return;
+    }
 
     this.moving = { start: this.scene.time.now };
-    this.snapTo(from);
-    this.scene.tweens.add({
-      targets: this,
-      x: to.anchor.x,
-      y: to.anchor.y,
-      duration: movementDuration(cells),
-      onUpdate: (tween: Phaser.Tweens.Tween) => {
-        this.setDepth(fromDepth + (toDepth - fromDepth) * tween.progress);
-      },
-      onComplete: () => {
-        this.moving = null;
-        this.setDepth(toDepth);
-      },
-    });
+    const stepMs = movementDuration(1);
+    for (let index = 1; index < steps.length; index += 1) {
+      const from = steps[index - 1];
+      const to = steps[index];
+      const fromDepth = depthOfUnit(from.cell);
+      const toDepth = depthOfUnit(to.cell);
+
+      this.scene.tweens.add({
+        targets: this,
+        x: to.anchor.x,
+        y: to.anchor.y,
+        duration: stepMs,
+        // The steps run one after the other, so the walk covers the whole path in order.
+        delay: (index - 1) * stepMs,
+        onUpdate: (tween: Phaser.Tweens.Tween) => {
+          this.setDepth(fromDepth + (toDepth - fromDepth) * tween.progress);
+        },
+        onComplete: () => {
+          this.setDepth(toDepth);
+          if (index === steps.length - 1) this.moving = null;
+        },
+      });
+    }
   }
 
   /**
    * Plays the attack. The effect of the impact is the scene's business, so it is handed over as a
-   * callback and fired at the moment the attack reaches the target.
+   * callback and fired at the moment the attack reaches the target. Returns that same delay, so the
+   * scene can also hold the target's own health back until the swing actually lands (M4 playtest fix,
+   * P2) — the two sprites are never the same object, so this cannot do that part by itself.
    */
-  playAttack(plan: AttackPlan, now: number, onImpact: () => void): void {
+  playAttack(plan: AttackPlan, now: number, onImpact: () => void): number {
     const delay = impactDelay(plan.style, plan.travelMs);
 
     this.action = {
@@ -215,6 +545,20 @@ export class UnitSprite extends Phaser.GameObjects.Container {
       impactUntil: now + delay + ATTACK_TIMELINE.impactLength,
     };
     this.scene.time.delayedCall(delay, onImpact);
+    return delay;
+  }
+
+  /**
+   * Holds the drawn health at its current value until an incoming attack would land, so a result is
+   * never shown before the animation that caused it (M4 playtest fix, P2).
+   */
+  expectImpact(now: number, delayMs: number): void {
+    this.healthHoldUntil = now + delayMs;
+    this.scene.time.delayedCall(delayMs, () => {
+      this.healthDisplay = revealHealth(this.healthDisplay);
+      this.healthHoldUntil = null;
+      this.drawBars(this.scene.time.now);
+    });
   }
 
   /** Refills the magazine frame by frame, the pips following `filledPipsAt`. */
@@ -225,7 +569,10 @@ export class UnitSprite extends Phaser.GameObjects.Container {
   /** Advances the action and the pose. Called once per frame by the scene. */
   tick(now: number): void {
     this.expire(now);
-    this.figure.setFrame(this.frameAt(now));
+    const frame = this.frameAt(now);
+    this.figure.setFrame(frame);
+    // The silhouette is the figure's own drawing, so it follows every pose the figure takes.
+    this.glow.setFrame(frame);
     if (this.action?.kind === 'reload') this.drawBars(now);
     this.applyHitFeedback(now);
   }
@@ -263,11 +610,15 @@ export class UnitSprite extends Phaser.GameObjects.Container {
       if (frame !== 0) return frameIndex(this.row, frame === 1 ? COLUMN.resource1 : COLUMN.resource2);
     }
 
-    return frameIndex(this.row, this.idleColumn(now));
+    return this.idleFrame(now);
   }
 
-  private idleColumn(now: number): number {
-    return idleFrame(now - this.bornAt) === 1 ? COLUMN.idle1 : COLUMN.idle2;
+  /**
+   * The resting pose, chosen by the same function the flat figure of a turn is drawn from (slice A of
+   * the smoke test 2 feedback), so the unit the turn shows is the unit standing on the board.
+   */
+  private idleFrame(now: number): number {
+    return rowIdleFrame(this.row, idleFrame(now - this.bornAt) - 1);
   }
 
   /** A hit is a white silhouette and a one-pixel shake, so it reads over any tile. */
@@ -280,11 +631,11 @@ export class UnitSprite extends Phaser.GameObjects.Container {
 
     if (flash) {
       this.figure.setTintFill(0xffffff);
-      this.figure.x = Math.floor(now / 60) % 2 === 0 ? -1 : 1;
+      this.figure.x = this.poseX + (Math.floor(now / 60) % 2 === 0 ? -1 : 1);
       return;
     }
 
-    this.figure.x = 0;
+    this.figure.x = this.poseX;
     if (this.defeated) this.figure.setTint(CORPSE_COLOR);
     else this.figure.clearTint();
   }
@@ -324,6 +675,22 @@ export class UnitSprite extends Phaser.GameObjects.Container {
     this.corpse.strokePoints(this.diamond(MARKER_HALF_WIDTH, MARKER_HALF_HEIGHT), true, true);
   }
 
+  /** The arrow over the head of the unit on turn, in the colour of its team. A fallen unit has none. */
+  private drawArrow(): void {
+    this.arrow.clear();
+    if (!this.onTurn || this.defeated) return;
+
+    const tip = TURN_ARROW_POINT;
+    const base = tip.y - TURN_ARROW.height;
+    const half = TURN_ARROW.halfWidth;
+
+    this.arrow.fillStyle(TEAM_COLOR[this.team], 1);
+    this.arrow.fillTriangle(tip.x - half, base, tip.x + half, base, tip.x, tip.y);
+    // The paper outline is what makes the arrow read over a light tile as well as a dark one.
+    this.arrow.lineStyle(1, PAPER_COLOR, 1);
+    this.arrow.strokeTriangle(tip.x - half, base, tip.x + half, base, tip.x, tip.y);
+  }
+
   private drawRing(): void {
     this.ring.clear();
     if (!this.selected) return;
@@ -346,7 +713,12 @@ export class UnitSprite extends Phaser.GameObjects.Container {
     this.bars.fillStyle(PANEL_STROKE, 1);
     this.bars.fillRect(left, top, HEALTH_BAR.width, HEALTH_BAR.height);
     this.bars.fillStyle(TEAM_COLOR[this.team], 1);
-    this.bars.fillRect(left, top, HEALTH_BAR.width * healthFraction(this.health), HEALTH_BAR.height);
+    this.bars.fillRect(
+      left,
+      top,
+      HEALTH_BAR.width * healthFraction(this.healthDisplay.shown),
+      HEALTH_BAR.height,
+    );
 
     if (this.pips === null) return;
 
@@ -354,13 +726,15 @@ export class UnitSprite extends Phaser.GameObjects.Container {
     const width = this.pips.total * PIP.size + (this.pips.total - 1) * PIP.gap;
     const y = top - PIP.gapAboveBar - PIP.size;
 
+    // The pool is counted the same for both kinds; only the colour tells a magazine from mana.
+    const lit = this.pips.resource === 'mana' ? MANA_COLOR : WARM_COLOR;
     for (let i = 0; i < this.pips.total; i += 1) {
-      this.bars.fillStyle(i < filled ? WARM_COLOR : PANEL_STROKE, 1);
+      this.bars.fillStyle(i < filled ? lit : PANEL_STROKE, 1);
       this.bars.fillRect(-width / 2 + i * (PIP.size + PIP.gap), y, PIP.size, PIP.size);
     }
   }
 
-  /** How many pips the magazine shows right now: the animation wins while it is running. */
+  /** How many pips the pool shows right now: the animation wins while it is running. */
   private filledPips(now: number): number {
     if (this.pips === null) return 0;
     if (this.action?.kind === 'reload') {

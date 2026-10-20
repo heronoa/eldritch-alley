@@ -8,6 +8,24 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: eldritch
+          POSTGRES_PASSWORD: eldritch
+          POSTGRES_DB: eldritch_alley
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U eldritch -d eldritch_alley"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    # Every step below sees it, which is what keeps the integration tests from skipping here: on a
+    # machine with no DATABASE_URL they skip themselves rather than fail.
+    env:
+      DATABASE_URL: postgres://eldritch:eldritch@localhost:5432/eldritch_alley
     steps:
       - uses: actions/checkout@v4
 
@@ -20,6 +38,18 @@ jobs:
 
       - name: Typecheck
         run: npm run typecheck
+
+      # The step the deploy runs, against a database that has never been migrated: it is what proves
+      # the entry point works on an empty schema, which no test can prove about a scratch database.
+      - name: Migrate
+        run: npm run db:migrate
+
+      # Right after it, on the schema the migrations just produced: the entity metadata and the
+      # migrations have to describe the same thing. This is the check that catches a column type or a
+      # default that the entity and the migration disagree on, and it fails the build rather than
+      # waiting for a query to go wrong in production.
+      - name: Check the migrations match the entities
+        run: npm run db:migrate:check
 
       - name: Test
         run: npm test

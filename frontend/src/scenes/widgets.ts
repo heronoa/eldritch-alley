@@ -13,6 +13,8 @@ import {
   BUTTON_FILL,
   BUTTON_FILL_DISABLED,
   BUTTON_FILL_SELECTED,
+  BUTTON_PULSE_ALPHA,
+  BUTTON_PULSE_MS,
   CORPSE_COLOR,
   CURRENT_TURN_COLOR,
   FONT_BODY,
@@ -45,6 +47,8 @@ export class Button extends Phaser.GameObjects.Container {
   private readonly caption: Phaser.GameObjects.Text;
   private usable = true;
   private armed = false;
+  private hinting = false;
+  private pulse: Phaser.Tweens.Tween | null = null;
 
   constructor(scene: Phaser.Scene, rect: Rect, label: string) {
     super(scene, rect.x, rect.y);
@@ -77,6 +81,30 @@ export class Button extends Phaser.GameObjects.Container {
   setSelected(selected: boolean): void {
     this.armed = selected;
     this.refresh();
+  }
+
+  /**
+   * The pulse of a button that is the only thing left to press (EA-4): the automatic end of turn is
+   * off and the turn has nothing in it, so the button points at itself instead of being pressed for
+   * the player. It breathes the whole button, caption included, and it is started and stopped as
+   * often as the HUD is redrawn without ever stacking a second tween.
+   */
+  setHinting(hinting: boolean): void {
+    if (hinting === this.hinting) return;
+    this.hinting = hinting;
+
+    this.pulse?.remove();
+    this.pulse = null;
+    this.setAlpha(1);
+    if (!hinting) return;
+
+    this.pulse = this.scene.tweens.add({
+      targets: this,
+      alpha: { from: 1, to: BUTTON_PULSE_ALPHA },
+      duration: BUTTON_PULSE_MS,
+      yoyo: true,
+      repeat: -1,
+    });
   }
 
   /** A button nobody may press is never shown as the armed one, so being out of reach wins. */
@@ -143,6 +171,52 @@ export function createPanel(
   });
 
   return scene.add.container(rect.x, rect.y, [frame, inner, heading]);
+}
+
+/**
+ * The banner a turn change raises: one line over the board, framed like a panel. It fades out on its
+ * own (decision D1 of the EA-3 plan) and takes no pointer input, so the bar and the map stay usable
+ * while it is on the screen.
+ */
+export class Banner extends Phaser.GameObjects.Container {
+  private readonly caption: Phaser.GameObjects.Text;
+  private fade: Phaser.Tweens.Tween | null = null;
+
+  constructor(scene: Phaser.Scene, rect: Rect) {
+    super(scene, rect.x, rect.y);
+
+    const frame = scene.add.rectangle(0, 0, rect.width, rect.height, PANEL_FILL).setOrigin(0);
+    frame.setStrokeStyle(1, PANEL_STROKE);
+    frame.setAlpha(PANEL_ALPHA);
+
+    this.caption = scene.add
+      .text(rect.width / 2, rect.height / 2, '', {
+        fontFamily: FONT_TITLE,
+        fontSize: FONT_SIZE.title,
+        color: TEXT_COLOR,
+      })
+      .setOrigin(0.5);
+
+    this.add([frame, this.caption]);
+    this.setVisible(false);
+    scene.add.existing(this);
+  }
+
+  /** Shows one line at full strength and lets it fade away over `durationMs`. */
+  show(text: string, durationMs: number): void {
+    this.caption.setText(text);
+    this.setAlpha(1);
+    this.setVisible(true);
+
+    // A turn can change while the banner of the last one is still fading; that one is dropped.
+    this.fade?.remove();
+    this.fade = this.scene.tweens.add({
+      targets: this,
+      alpha: 0,
+      duration: durationMs,
+      onComplete: () => this.setVisible(false),
+    });
+  }
 }
 
 /** The fill of a unit: the colour of its team, greyed out once it has fallen. */
