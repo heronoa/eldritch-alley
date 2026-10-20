@@ -90,6 +90,7 @@ jobs:
           scan-ref: "infra/aws"
           exit-code: "1"
           severity: "CRITICAL,HIGH"
+          trivyignores: "infra/aws/.trivyignore"
 
   secret-grep:
     runs-on: ubuntu-latest
