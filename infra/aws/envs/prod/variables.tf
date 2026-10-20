@@ -54,3 +54,27 @@ variable "ssm_parameters" {
     TURNSTILE_SECRET        = { type = "SecureString", description = "Cloudflare Turnstile secret" }
   }
 }
+
+variable "multi_az" {
+  description = "Run the database with a standby in a second zone"
+  type        = bool
+  default     = false
+}
+
+variable "db_name" {
+  description = "Initial database name (from docker-compose.yml). Changing it later recreates the instance."
+  type        = string
+  default     = "eldritch_alley"
+}
+
+variable "db_username" {
+  description = "Database master user name (from docker-compose.yml)"
+  type        = string
+  default     = "eldritch"
+}
+
+variable "db_allocated_storage" {
+  description = "Database storage in GB, no autoscaling"
+  type        = number
+  default     = 20
+}
