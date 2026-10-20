@@ -104,3 +104,80 @@ output "game_server_security_group_id" {
   description = "Security group for game-server tasks"
   value       = aws_security_group.game_server.id
 }
+
+output "api_hostname" {
+  description = "Public hostname of platform-api"
+  value       = var.api_hostname
+}
+
+output "game_hostname" {
+  description = "Public hostname of the game-server"
+  value       = var.game_hostname
+}
+
+output "alb_dns_name" {
+  description = "Load balancer DNS name, the target of the proxied CNAMEs"
+  value       = module.alb.alb_dns_name
+}
+
+output "alb_security_group_id" {
+  description = "The load balancer's security group, which the task groups admit ingress from"
+  value       = module.alb.alb_security_group_id
+}
+
+output "target_group_arns" {
+  description = "Target group ARNs keyed by service name"
+  value       = module.alb.target_group_arns
+}
+
+output "waf_web_acl_arn" {
+  description = "WAF web ACL ARN"
+  value       = module.waf.web_acl_arn
+}
+
+output "cloudflare_validation_records" {
+  description = "The certificate validation records. When manage_cloudflare_dns is false, create these by hand, DNS-only."
+  value       = module.edge_dns.validation_records
+}
+
+# --- Compute: what the deploy workflow reads ---------------------------------
+
+output "cluster_name" {
+  description = "ECS cluster name"
+  value       = module.ecs_cluster.cluster_name
+}
+
+output "platform_api_service_name" {
+  description = "platform-api service name"
+  value       = module.platform_api.service_name
+}
+
+output "game_server_service_name" {
+  description = "game-server service name"
+  value       = module.game_server.service_name
+}
+
+output "platform_api_task_family" {
+  description = "platform-api task definition family"
+  value       = module.platform_api.task_definition_family
+}
+
+output "game_server_task_family" {
+  description = "game-server task definition family"
+  value       = module.game_server.task_definition_family
+}
+
+output "migrate_task_family" {
+  description = "Task definition family of the one-off migration"
+  value       = module.migrate.task_definition_family
+}
+
+output "migrate_task_subnet_ids" {
+  description = "Subnets to run the migrate task in (public: there is no NAT)"
+  value       = module.vpc.public_subnet_ids
+}
+
+output "migrate_task_security_group_id" {
+  description = "Security group to run the migrate task with (the platform-api one)"
+  value       = aws_security_group.platform_api.id
+}

@@ -14,3 +14,8 @@ AVD-AWS-0104
 # no NAT gateway in this environment, so the instance needs a public IP for
 # inbound/outbound traffic.
 AVD-AWS-0164
+
+# modules/alb: the prod ALB is internet-facing on purpose — it's the entry
+# point for players reaching the game-server/platform-api, sitting behind
+# Cloudflare via modules/edge-dns.
+AVD-AWS-0053
