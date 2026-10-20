@@ -17,8 +17,14 @@ import {
   BG_COLOR,
   BUTTON_FILL,
   BUTTON_FILL_SELECTED,
+  CAMOUFLAGE_GLOW_COLOR,
   CORPSE_OUTLINE_COLOR,
+  COVER_BADGE_FILL,
+  COVER_BADGE_STROKE,
+  HIT_CHANCE_BADGE_FILL,
+  HIT_CHANCE_BADGE_STROKE,
   INK_COLOR,
+  MUD_COLOR,
   PANEL_FILL,
   PANEL_INNER_ALPHA,
   PAPER_COLOR,
@@ -121,6 +127,63 @@ describe('outline contrast', () => {
       ).toBeGreaterThanOrEqual(OUTLINE_FLOOR);
     }
   });
+
+  // The badge a unit in cover wears is the first text drawn on the board itself, so it is measured
+  // against the same ground: the letters on every tile, and the outline that carries them there.
+  it('keeps the cover badge legible on every tile the three maps draw', () => {
+    for (const letter of LETTERS_IN_USE) {
+      expect(
+        contrastRatio(COVER_BADGE_FILL, topOf(letter)),
+        `${letter} ${TILE_PALETTE[letter].top}`,
+      ).toBeGreaterThanOrEqual(OUTLINE_FLOOR);
+    }
+  });
+
+  it('keeps the outline of the cover badge strong against its own fill', () => {
+    expect(contrastRatio(COVER_BADGE_FILL, COVER_BADGE_STROKE)).toBeGreaterThanOrEqual(BODY_FLOOR);
+  });
+
+  // The hit-chance badge (EA-18) is drawn over the board the same way the cover badge is, so it is
+  // held to the same floor.
+  it('keeps the hit-chance badge legible on every tile the three maps draw', () => {
+    for (const letter of LETTERS_IN_USE) {
+      expect(
+        contrastRatio(HIT_CHANCE_BADGE_FILL, topOf(letter)),
+        `${letter} ${TILE_PALETTE[letter].top}`,
+      ).toBeGreaterThanOrEqual(OUTLINE_FLOOR);
+    }
+  });
+
+  it('keeps the outline of the hit-chance badge strong against its own fill', () => {
+    expect(contrastRatio(HIT_CHANCE_BADGE_FILL, HIT_CHANCE_BADGE_STROKE)).toBeGreaterThanOrEqual(BODY_FLOOR);
+  });
+});
+
+// The marks of the second active set (ADR 0023 §3, §4) are drawn over the ground itself. The mud is a
+// fill with no letter on it, so it answers to a lower floor than the outlines; the camouflage
+// silhouette is what separates a hidden figure from the tile behind it, so it answers to the outline
+// floor.
+describe('the marks of the second active set', () => {
+  /** A board mark carries no letter, but it has to be seen over any ground the maps draw. */
+  const MARK_FLOOR = 2;
+
+  it('keeps the mud visible over every tile the three maps draw', () => {
+    for (const letter of LETTERS_IN_USE) {
+      expect(contrastRatio(MUD_COLOR, topOf(letter)), `${letter} ${TILE_PALETTE[letter].top}`).toBeGreaterThanOrEqual(
+        MARK_FLOOR,
+      );
+    }
+  });
+
+  it('keeps the camouflage silhouette legible over every tile and over the night', () => {
+    for (const letter of LETTERS_IN_USE) {
+      expect(
+        contrastRatio(CAMOUFLAGE_GLOW_COLOR, topOf(letter)),
+        `${letter} ${TILE_PALETTE[letter].top}`,
+      ).toBeGreaterThanOrEqual(OUTLINE_FLOOR);
+    }
+    expect(contrastRatio(CAMOUFLAGE_GLOW_COLOR, BG_COLOR)).toBeGreaterThanOrEqual(OUTLINE_FLOOR);
+  });
 });
 
 // The panels float over the board, so their copy is read on the fill composed with the tile behind
@@ -154,5 +217,20 @@ describe('overlay contrast', () => {
         luminance(LIGHTEST_TOP),
       );
     }
+  });
+});
+
+// The hit-chance and cover badges sit on a panel tag of their own (M5 playtest polish), the same
+// carbon fill every other overlay floats on, so their words are read against a controlled backing
+// rather than whatever tile happens to be under the unit.
+describe('badge tag contrast', () => {
+  it('keeps the hit-chance badge readable on its own tag over the night and the lightest tile', () => {
+    expect(contrastRatio(HIT_CHANCE_BADGE_FILL, panelOver(BG_COLOR))).toBeGreaterThanOrEqual(BODY_FLOOR);
+    expect(contrastRatio(HIT_CHANCE_BADGE_FILL, panelOver(LIGHTEST_TOP))).toBeGreaterThanOrEqual(BODY_FLOOR);
+  });
+
+  it('keeps the cover badge readable on its own tag over the night and the lightest tile', () => {
+    expect(contrastRatio(COVER_BADGE_FILL, panelOver(BG_COLOR))).toBeGreaterThanOrEqual(BODY_FLOOR);
+    expect(contrastRatio(COVER_BADGE_FILL, panelOver(LIGHTEST_TOP))).toBeGreaterThanOrEqual(BODY_FLOOR);
   });
 });

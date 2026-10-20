@@ -162,15 +162,21 @@ h1 {
    is drawn small and blown up, so a neon pixel can be a bright block under this corner. At 0.92
    --muted stays above 5.8:1 even over the brightest thing the city draws (#3de9ff), which is the
    worst case; over the plain night it is 6.6:1, and --ink is far past both. The script fills the box
-   with one button per locale; an empty one draws nothing, which is what a page without script gets. */
+   with one button per locale; an empty one draws nothing, which is what a page without script gets.
+
+   It is a box of its own on the page, and not a part of the title's layer: that layer is fixed, so a
+   `z-index` written inside it would order the switcher against the title's own text and against
+   nothing else, and the cards over the title — which have to leave it reachable, since a card is read
+   in the language it is read in — would stay above it. `fixed` holds the corner now that it stands on
+   its own, and the number is the layer the notice and the onboarding share, plus one. */
 .lang {
-  position: absolute;
+  position: fixed;
   top: 12px;
   right: 16px;
+  z-index: 2;
   display: flex;
   gap: 2px;
   padding: 3px;
-  pointer-events: auto;
   background: rgba(5, 7, 15, 0.92);
 }
 
@@ -179,19 +185,20 @@ h1 {
 }
 
 .lang button {
-  min-width: 34px;
-  min-height: 26px;
-  padding: 0 8px;
+  min-width: 40px;
+  min-height: 34px;
+  padding: 0 10px;
   cursor: pointer;
-  font: 600 12px/1 var(--body);
+  font: 600 13px/1 var(--body);
   letter-spacing: 0.1em;
   color: var(--muted);
   background: none;
-  border: 1px solid transparent;
+  border: 2px solid transparent;
 }
 
 .lang button:hover {
   color: var(--ink);
+  border-color: var(--muted);
 }
 
 /* The language on screen: the ink of the title, edged in the stamp's red. */
@@ -295,18 +302,68 @@ footer {
   right: 16px;
   bottom: 12px;
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
   justify-content: space-between;
   font-size: 11px;
   color: #6a6f80;
   pointer-events: none;
 }
 
+/* The footer's contact control and policy link (m4-05): the muted ink, which clears the footer's own
+   grey, and the pointer given back for each of them. The chrome — the pool of night, the edge and the
+   hard shadow — is what makes them read as controls and not as more footer text. The "Como jogar"
+   button in `onboarding.css` repeats these values, because each sheet is read by its own contrast
+   test; a change here is a change there. */
+.footer-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0 10px;
+  cursor: pointer;
+  font: 600 12px/1 var(--body);
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  text-decoration: none;
+  white-space: nowrap;
+  background: rgba(5, 7, 15, 0.92);
+  border: 1px solid var(--muted);
+  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.45);
+  pointer-events: auto;
+}
+
+.footer-link:hover {
+  color: var(--ink);
+  border-color: var(--ink);
+  text-decoration: underline;
+}
+
+.footer-link:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+/* A narrow screen: the three controls and the two lines wrap into centred rows instead of overflowing. */
+@media (max-width: 640px) {
+  footer {
+    left: 12px;
+    right: 12px;
+    bottom: 10px;
+    justify-content: center;
+    gap: 8px 10px;
+  }
+}
+
 /* Where the match is drawn, once the server has confirmed the session. It covers the title and the
-   city, and carries the game's own colour so the bars around a fitted canvas are not another night. */
+   city, and carries the game's own colour so the bars around a fitted canvas are not another night.
+   It is the top of the client's stack, one number above the switcher, so a match on the screen covers
+   the switcher and the cards over the title instead of leaving them floating over the board. */
 #game {
   position: fixed;
   inset: 0;
-  z-index: 2;
+  z-index: 3;
   background: var(--game);
 }
 

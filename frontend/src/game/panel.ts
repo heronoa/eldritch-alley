@@ -1,16 +1,19 @@
 // The unit panel: what the state can say about one unit, as rows the scene draws verbatim.
 //
 // `movementLeft` and `hasActed` describe only the unit that has the turn, so a unit that is not the
-// actor gets `—` instead of a number that belongs to somebody else. Reaction (ADR 0007) and mana
-// (ADR 0002) are M3: their rows exist and are dimmed, so the panel does not change shape when the
-// rules land.
+// actor gets `—` instead of a number that belongs to somebody else. Reaction (ADR 0007) is M3: its
+// row exists and is dimmed, so the panel does not change shape when the rule lands.
 //
 // The labels and the two words a turn row can show come from the catalog, keyed by the `PanelKey`
 // itself. The `—` of a row with no value is a mark, not a sentence, so it stays here.
 import { t } from '../i18n';
 import type { PublicState, UnitState } from '../protocol';
 
-export type PanelKey = 'hp' | 'movement' | 'action' | 'ammo' | 'reaction' | 'mana';
+/**
+ * The row ids. The two resource ones are the kinds of pool a basic attack spends (ADR 0011): a weapon
+ * class reads `ammo`, a magic class reads `energy`, and a unit carries one of the two.
+ */
+export type PanelKey = 'hp' | 'movement' | 'action' | 'ammo' | 'reaction' | 'energy';
 
 /** A row's label, from the catalog. The key is the panel key, so a new row cannot lack one. */
 function labelOf(key: PanelKey): string {
@@ -61,6 +64,18 @@ function turnRows(state: PublicState, unit: UnitState, isActor: boolean): PanelR
   ];
 }
 
+/**
+ * The one row of the pool the unit's basic attack spends, keyed and labelled by its kind: the rounds
+ * of a magazine for a weapon class, a pool of energy for a magic one (ADR 0011). A unit that carries
+ * no pool at all has the row without a value, so the panel keeps its shape whatever the class.
+ */
+function resourceRow(unit: UnitState): PanelRow {
+  if (unit.magazine === null) return row('ammo', NO_VALUE, null);
+
+  const key: PanelKey = unit.resourceKind === 'mana' ? 'energy' : 'ammo';
+  return row(key, `${unit.ammo}/${unit.magazine}`, fraction(unit.ammo, unit.magazine));
+}
+
 /** The rows of one unit, in drawing order. An unknown or absent unit has no rows. */
 export function unitPanel(state: PublicState, unitId: string | null): PanelRow[] {
   if (unitId === null) return [];
@@ -70,16 +85,10 @@ export function unitPanel(state: PublicState, unitId: string | null): PanelRow[]
 
   const isActor = state.initiative[state.currentIndex] === unit.id;
 
-  const ammo =
-    unit.magazine === null
-      ? row('ammo', NO_VALUE, null)
-      : row('ammo', `${unit.ammo}/${unit.magazine}`, fraction(unit.ammo, unit.magazine));
-
   return [
     row('hp', `${unit.health}/${unit.maxHealth}`, fraction(unit.health, unit.maxHealth)),
     ...turnRows(state, unit, isActor),
-    ammo,
+    resourceRow(unit),
     placeholder('reaction'),
-    placeholder('mana'),
   ];
 }

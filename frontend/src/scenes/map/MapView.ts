@@ -13,18 +13,25 @@
 import Phaser from 'phaser';
 import type { PropSpec } from '../../maps/prototype-maps';
 import { propsAt, type Terrain } from '../../maps/terrain';
+import type { Prop } from '../../protocol';
 import type { Cell, Pixel } from '../../view/grid';
 import { NO_FLOOR } from '../../view/grid';
 import { LAYER } from '../../view/depth';
-import { PIXEL, cellToScreen } from '../../view/iso';
+import { PIXEL, TILE_H, TILE_W, cellToScreen } from '../../view/iso';
+import { MUD_COLOR } from '../../view/theme';
 import { CANVAS_HEIGHT, CANVAS_WIDTH } from '../../view/layout';
+import { COVERED_ALPHA } from '../../view/cutaway';
 import { drawBackdrop } from './backdrop';
-import { cellBox, depthOf, drawCell, drawCellAnimation, movesOverTime, px } from './cell';
+import { cellBox, context2d, depthOf, drawCell, drawCellAnimation, drawnLevel, movesOverTime, px } from './cell';
+import { drawMark } from './marks';
 import { drawProp, isAnimatedProp, propsInPaintOrder } from './props';
 
 /** How far a wire hangs over the street, and a clothesline over the gap, in the prototype's pixels. */
 const WIRE_LIFT = 23;
 const LINE_LIFT = 18;
+
+/** How solid the mud is: opaque enough to read as ground, light enough to show the tile beneath it. */
+const MUD_FILL_ALPHA = 0.85;
 
 /** The overlay covers the whole canvas, so a wire that runs off the board still has somewhere to go. */
 const VIEW_WIDTH = CANVAS_WIDTH / PIXEL;
@@ -57,25 +64,35 @@ interface MovingCell {
 /** Counts the maps drawn in this run, so two of them never ask Phaser for the same texture key. */
 let views = 0;
 
-/** The 2d context of a canvas that was just made, or a failure worth reading. */
-function context2d(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
-  const ctx = canvas.getContext('2d');
-  if (ctx === null) throw new Error('no 2d context for the map canvas');
-
-  return ctx;
-}
-
 export class MapView {
   private readonly scene: Phaser.Scene;
   private readonly terrain: Terrain;
+  /** The cells the state's board marks, by cell, so a cell can be drawn with its own badge. */
+  private readonly marks: ReadonlyMap<string, Prop>;
   private readonly layers: Layer[] = [];
   private readonly moving: MovingCell[] = [];
   /** The clotheslines, painted every frame: they sway. Null on a map without one. */
   private readonly lines: Layer | null;
+  /** One cell's canvases by the cell they draw, so a cell can be drawn translucent on its own. */
+  private readonly cellLayers = new Map<string, Layer[]>();
+  /** The canvases that carry the marks of the rules, on their own so they can be hidden at once. */
+  private readonly markLayers: Layer[] = [];
+  /** Whether those marks are drawn. The scene sets it from the player's setting. */
+  private marksVisible = true;
+  /** The cells drawn translucent now, so the next call can put them back to solid. */
+  private covered: Cell[] = [];
+  /** One mud diamond per difficult cell, by cell, so a recast replaces rather than stacks. */
+  private readonly mud = new Map<string, Phaser.GameObjects.Graphics>();
 
-  constructor(scene: Phaser.Scene, terrain: Terrain) {
+  /**
+   * `marks` are the cells the state's board calls cover or wall (ADR 0012). They are read from the state
+   * and not from the map the view draws with: the map says what a cell looks like, the state says what a
+   * shot at it costs, and the two answers come from different places on purpose.
+   */
+  constructor(scene: Phaser.Scene, terrain: Terrain, marks: readonly Prop[] = []) {
     this.scene = scene;
     this.terrain = terrain;
+    this.marks = new Map(marks.map((mark) => [`${mark.position.x},${mark.position.y}`, mark]));
 
     const prefix = `ea-map-${(views += 1)}`;
 
@@ -94,9 +111,10 @@ export class MapView {
     for (let y = 0; y < terrain.size.height; y += 1) {
       for (let x = 0; x < terrain.size.width; x += 1) {
         const cell = { x, y };
-        const level = terrain.levelAt(cell);
         // A gap has no floor, so there is nothing to draw: no diamond seven steps down, no car light
-        // crossing it. Decision 7 of the feature.
+        // crossing it. Decision 7 of the feature. A building the view cuts down is drawn lower than it
+        // stands, which is why the level read here is the drawn one (EA-12, slice 4).
+        const level = drawnLevel(terrain, cell);
         if (level === NO_FLOOR) continue;
 
         this.addCell(`${prefix}-${x}-${y}`, cell, level);
@@ -104,6 +122,49 @@ export class MapView {
     }
 
     this.update(0);
+  }
+
+  /**
+   * Draws the given cells translucent and every other cell solid, so a building the player cannot see
+   * through shows what it hides (EA-12, slice 4). The cells are the ones the scene worked out with the
+   * rules of `view/cutaway.ts`; the view does not decide them.
+   */
+  setCovered(cells: readonly Cell[]): void {
+    for (const cell of this.covered) this.setCellAlpha(cell, 1);
+    this.covered = [...cells];
+    for (const cell of this.covered) this.setCellAlpha(cell, COVERED_ALPHA);
+  }
+
+  /**
+   * Shows or hides the marks of the rules (ADR 0012) — the diamonds that say which cells carry cover.
+   * They are a debugging aid the player can switch off from the settings, so this is a `setVisible`
+   * over the canvases that carry them: nothing is repainted, and the props themselves stay drawn.
+   */
+  setMarksVisible(visible: boolean): void {
+    this.marksVisible = visible;
+    for (const layer of this.markLayers) layer.image.setVisible(visible);
+    // The mud is a mark of the rules too, so it follows the same setting (ADR 0012, ADR 0023 §4).
+    for (const graphic of this.mud.values()) graphic.setVisible(visible);
+  }
+
+  /**
+   * Paints a mud diamond on every difficult cell of the state (ADR 0023 §4), replacing whatever was
+   * there: the scene always hands the whole set, so a recast redraws a cell instead of stacking a
+   * second diamond on it.
+   */
+  setDifficultTerrain(cells: readonly Cell[]): void {
+    for (const graphic of this.mud.values()) graphic.destroy();
+    this.mud.clear();
+    for (const cell of cells) this.addMud(cell);
+  }
+
+  /** Takes the diamonds of the cells a drying event named off the board. */
+  removeDifficultTerrain(cells: readonly Cell[]): void {
+    for (const cell of cells) {
+      const key = `${cell.x},${cell.y}`;
+      this.mud.get(key)?.destroy();
+      this.mud.delete(key);
+    }
   }
 
   /** Repaints what moves: the cells with an animated prop, the water, and the clotheslines. */
@@ -125,9 +186,41 @@ export class MapView {
       layer.image.destroy();
       this.scene.textures.remove(layer.texture.key);
     }
+    for (const graphic of this.mud.values()) graphic.destroy();
 
     this.layers.length = 0;
     this.moving.length = 0;
+    this.markLayers.length = 0;
+    this.cellLayers.clear();
+    this.covered = [];
+    this.mud.clear();
+  }
+
+  /** One mud diamond on the top face of a cell, at the depth the mud layer claims in the table. */
+  private addMud(cell: Cell): void {
+    const level = this.terrain.levelAt(cell);
+    if (level === NO_FLOOR) return;
+
+    const at = cellToScreen(cell, level, this.terrain.lift);
+    const points: Pixel[] = [
+      { x: 0, y: -TILE_H / 2 },
+      { x: TILE_W / 2, y: 0 },
+      { x: 0, y: TILE_H / 2 },
+      { x: -TILE_W / 2, y: 0 },
+    ];
+
+    const graphic = this.scene.add.graphics({ x: at.x, y: at.y });
+    graphic.fillStyle(MUD_COLOR, MUD_FILL_ALPHA);
+    graphic.fillPoints(points, true);
+    graphic.lineStyle(1, MUD_COLOR, 1);
+    graphic.strokePoints(points, true, true);
+    graphic.setDepth(LAYER.mud(cell)).setVisible(this.marksVisible);
+    this.mud.set(`${cell.x},${cell.y}`, graphic);
+  }
+
+  /** Sets how opaque the canvases of one cell are drawn. A cell with no canvas is nothing to do. */
+  private setCellAlpha(cell: Cell, alpha: number): void {
+    for (const layer of this.cellLayers.get(`${cell.x},${cell.y}`) ?? []) layer.image.setAlpha(alpha);
   }
 
   /** One cell: its still canvas, and its moving one when it has anything that moves. */
@@ -140,20 +233,39 @@ export class MapView {
 
     // A cell's props are drawn in the prototype's own order, so a prop that shares a cell with another
     // lands over or under it exactly as it does there.
-    const props = propsInPaintOrder(propsAt(terrain.map, cell));
+    const props = propsInPaintOrder(propsAt(terrain, cell));
     const still = props.filter((prop) => !isAnimatedProp(prop.t));
     const moving = props.filter((prop) => isAnimatedProp(prop.t));
     const tileMoves = movesOverTime(terrain, cell);
 
-    this.layer(`${key}-still`, box.width, box.height, depth, at, anchor, (ctx) => {
-      drawCell({ ctx, terrain, cell, at: anchor, time: 0 });
-      for (const prop of still) drawProp(ctx, prop, anchor, 0);
-    });
+    const mark = this.marks.get(`${cell.x},${cell.y}`);
 
-    if (moving.length === 0 && !tileMoves) return;
+    const canvases: Layer[] = [
+      this.layer(`${key}-still`, box.width, box.height, depth, at, anchor, (ctx) => {
+        drawCell({ ctx, terrain, cell, at: anchor, time: 0 });
+        for (const prop of still) drawProp(ctx, prop, anchor, 0);
+      }),
+    ];
 
-    const layer = this.layer(`${key}-moving`, box.width, box.height, depth, at, anchor, () => {});
-    this.moving.push({ layer, cell, at: anchor, props: moving, tileMoves });
+    // The badge of the rules goes over the art, because what it says is what a shot at this cell costs
+    // — the one thing about the cell the player cannot read off the drawing itself. It keeps a canvas
+    // of its own so hiding it is a `setVisible` and never a repaint (EA-15, D6).
+    if (mark !== undefined) {
+      const badge = this.layer(`${key}-mark`, box.width, box.height, LAYER.highlight(cell), at, anchor, (ctx) =>
+        drawMark(ctx, mark.kind, anchor),
+      );
+      badge.image.setVisible(this.marksVisible);
+      this.markLayers.push(badge);
+      canvases.push(badge);
+    }
+
+    if (moving.length > 0 || tileMoves) {
+      const layer = this.layer(`${key}-moving`, box.width, box.height, depth, at, anchor, () => {});
+      this.moving.push({ layer, cell, at: anchor, props: moving, tileMoves });
+      canvases.push(layer);
+    }
+
+    this.cellLayers.set(`${cell.x},${cell.y}`, canvases);
   }
 
   /**

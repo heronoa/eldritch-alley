@@ -1,0 +1,54 @@
+/* The contact form (m4-05). The card is the sign-in dialog's own recipe — `account.css` draws the frame,
+   the head and the fields — so this sheet adds only what the form brings: the message well, the consent
+   box in the profile, the challenge's slot and the thanks. Every colour is a title token: the form
+   invents none. */
+
+/* The message field is the input recipe with room to write: same night, same ink, same muted edge. */
+.account-field textarea {
+  min-height: 120px;
+  padding: 10px;
+  resize: vertical;
+  font: 400 14px/1.4 var(--body);
+  color: var(--ink);
+  background: var(--night);
+  border: 1px solid var(--muted);
+}
+
+.account-field textarea:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
+}
+
+/* Cloudflare's widget draws into this slot. Empty until the script answers, it takes no pointer and
+   draws nothing: a build with no site key leaves the form usable. */
+.contact-turnstile {
+  min-height: 0;
+}
+
+/* The release e-mails' box in the profile: a line of the card's muted ink with the stamp's own accent,
+   off until the player turns it on. */
+.account-consent {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 12px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.account-consent input {
+  flex: none;
+  margin: 2px 0 0;
+  accent-color: var(--stamp);
+}
+
+/* The thanks the card shows once the platform stored the message, in place of the fields. */
+.contact-success {
+  margin-top: 12px;
+}
+
+/* The policy link under the sign-in dialog's form, set apart from the fields. */
+.account-privacy {
+  margin-top: 16px;
+}

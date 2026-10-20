@@ -36,11 +36,11 @@ describe('interpolate', () => {
 });
 
 describe('t', () => {
-  it('opens in the fallback locale, and falls back to the reference text', () => {
+  it('opens in English, and answers a key of the game in English too', () => {
     expect(getLocale()).toBe('en-US');
-    // M3 translated the title alone, so the fallback is now what a player who picks EN sees in a
-    // match: a key of the game still reads in Portuguese.
-    expect(t('hud.back')).toBe(ptBR['hud.back']);
+    // The English catalog covers the whole reference, so a player who picks EN reads EN in a match.
+    expect(t('hud.back')).toBe('Back to start');
+    expect(t('hud.back')).not.toBe(ptBR['hud.back']);
   });
 
   it('answers in the locale the player chose', () => {

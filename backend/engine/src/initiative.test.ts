@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { currentUnitId } from './initiative';
+import { applyEvent } from './events';
+import { currentUnitId, insertIntoInitiative } from './initiative';
 import { applyAction, newMatch } from './match';
-import type { Board, MatchSetup, Team, Unit } from './types';
+import type { Board, MatchSetup, MatchState, Team, Unit } from './types';
 
 function makeBoard(heights: Record<string, number> = {}): Board {
   const levels = new Array<number>(64).fill(0);
@@ -79,8 +80,56 @@ describe('initiative', () => {
     expect(attack.state.initiative).toEqual(['a1', 'c1']);
     expect(currentUnitId(attack.state)).toBe('a1');
 
-    const endTurn = applyAction(attack.state, { type: 'endTurn', actor: 'a1' });
+    const endTurn = applyAction(attack.state, {
+      type: 'endTurn',
+      actor: 'a1',
+      round: attack.state.round,
+    });
     if (!endTurn.ok) throw new Error(`expected endTurn to be accepted: ${endTurn.reason}`);
     expect(currentUnitId(endTurn.state)).toBe('c1');
+  });
+});
+
+describe('insertIntoInitiative', () => {
+  /** The state after `fallen` was defeated: it is out of the queue, the way a revive finds it. */
+  function withoutFallen(units: Unit[]): MatchState {
+    const team = (id: Team) => units.filter((unit) => unit.team === id);
+    const start = newMatch({ seed: 1, map: makeBoard(), teams: [team('A'), team('B')] });
+    return applyEvent(start, { type: 'unit-defeated', target: 'fallen' });
+  }
+
+  it('inserts by speed and returns the slot it took', () => {
+    const state = withoutFallen([
+      makeUnit({ id: 'priest', team: 'A', position: { x: 0, y: 0 }, speed: 10 }),
+      makeUnit({ id: 'fallen', team: 'A', position: { x: 4, y: 4 }, speed: 20 }),
+      makeUnit({ id: 'enemy', team: 'B', position: { x: 7, y: 7 }, speed: 1 }),
+    ]);
+    expect(state.initiative).toEqual(['priest', 'enemy']);
+
+    expect(insertIntoInitiative(state, 'fallen')).toBe(0);
+    expect(state.initiative).toEqual(['fallen', 'priest', 'enemy']);
+  });
+
+  it('breaks a speed tie by the setup order the units keep', () => {
+    const state = withoutFallen([
+      makeUnit({ id: 'alive', team: 'A', position: { x: 0, y: 0 }, speed: 10 }),
+      makeUnit({ id: 'fallen', team: 'A', position: { x: 4, y: 4 }, speed: 10 }),
+      makeUnit({ id: 'enemy', team: 'B', position: { x: 7, y: 7 }, speed: 1 }),
+    ]);
+
+    // The two are tied on speed; the revived unit was authored second, so it goes after the first.
+    expect(insertIntoInitiative(state, 'fallen')).toBe(1);
+    expect(state.initiative).toEqual(['alive', 'fallen', 'enemy']);
+  });
+
+  it('appends a unit slower than every slot already in the queue', () => {
+    const state = withoutFallen([
+      makeUnit({ id: 'fast', team: 'A', position: { x: 0, y: 0 }, speed: 20 }),
+      makeUnit({ id: 'fallen', team: 'A', position: { x: 4, y: 4 }, speed: 1 }),
+      makeUnit({ id: 'enemy', team: 'B', position: { x: 7, y: 7 }, speed: 10 }),
+    ]);
+
+    expect(insertIntoInitiative(state, 'fallen')).toBe(2);
+    expect(state.initiative).toEqual(['fast', 'enemy', 'fallen']);
   });
 });

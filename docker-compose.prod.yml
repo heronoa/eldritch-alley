@@ -1,0 +1,160 @@
+name: eldritch-alley
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+      POSTGRES_DB: ${POSTGRES_DB:?}
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+    logging: *logging
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--maxmemory", "96mb", "--maxmemory-policy", "allkeys-lru"]
+    volumes:
+      - ./data/redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+    logging: *logging
+
+  # Stands in for SQS so the battle history works without an AWS account.
+  localstack:
+    image: localstack/localstack:4
+    restart: unless-stopped
+    environment:
+      SERVICES: sqs
+      AWS_DEFAULT_REGION: us-east-1
+      PERSISTENCE: 1
+    volumes:
+      - ./data/localstack:/var/lib/localstack
+      # Creates match-ended.fifo and its DLQ once SQS is up.
+      - ./localstack/init:/etc/localstack/init/ready.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "awslocal sqs get-queue-url --queue-name match-ended.fifo >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+    logging: *logging
+
+  # The schema, applied before any API instance starts. Same image, different command.
+  migrate:
+    image: ${REGISTRY:?}/eldritch-alley/platform-api:${TAG:?}
+    restart: "no"
+    command: ["node", "dist/migrate.js"]
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    logging: *logging
+
+  platform-api:
+    image: ${REGISTRY:?}/eldritch-alley/platform-api:${TAG:?}
+    restart: unless-stopped
+    environment:
+      PLATFORM_API_PORT: 3000
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379
+      SESSION_SECRET: ${SESSION_SECRET:?}
+      COOKIE_DOMAIN: ${COOKIE_DOMAIN:?}
+      CLIENT_ORIGIN: ${CLIENT_ORIGIN:?}
+      GAME_TICKET_PRIVATE_KEY: ${GAME_TICKET_PRIVATE_KEY:?}
+      GAME_TICKET_TTL_SECONDS: ${GAME_TICKET_TTL_SECONDS:-300}
+      MATCH_ENDED_QUEUE_URL: ${MATCH_ENDED_QUEUE_URL:?}
+      MATCH_ENDED_POLL_INTERVAL_MS: ${MATCH_ENDED_POLL_INTERVAL_MS:-1000}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      AWS_ENDPOINT_URL: ${AWS_ENDPOINT_URL:-http://localstack:4566}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-test}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-test}
+      CONTACT_IP_SALT: ${CONTACT_IP_SALT:?}
+      CONTACT_NOTIFY_TO: ${CONTACT_NOTIFY_TO:?}
+      CONTACT_RATE_LIMIT: ${CONTACT_RATE_LIMIT:-5}
+      CONTACT_RATE_WINDOW_SECONDS: ${CONTACT_RATE_WINDOW_SECONDS:-600}
+      TURNSTILE_SECRET: ${TURNSTILE_SECRET:-}
+      # Optional: blank means the provider is off.
+      OAUTH_REDIRECT_BASE_URL: ${OAUTH_REDIRECT_BASE_URL:-}
+      OAUTH_GITHUB_CLIENT_ID: ${OAUTH_GITHUB_CLIENT_ID:-}
+      OAUTH_GITHUB_CLIENT_SECRET: ${OAUTH_GITHUB_CLIENT_SECRET:-}
+      OAUTH_GOOGLE_CLIENT_ID: ${OAUTH_GOOGLE_CLIENT_ID:-}
+      OAUTH_GOOGLE_CLIENT_SECRET: ${OAUTH_GOOGLE_CLIENT_SECRET:-}
+      OAUTH_KEYCLOAK_CLIENT_ID: ${OAUTH_KEYCLOAK_CLIENT_ID:-}
+      OAUTH_KEYCLOAK_CLIENT_SECRET: ${OAUTH_KEYCLOAK_CLIENT_SECRET:-}
+      OAUTH_KEYCLOAK_ISSUER: ${OAUTH_KEYCLOAK_ISSUER:-}
+      # All five or none; none logs the mail instead of sending it.
+      EMAIL_SMTP_HOST: ${EMAIL_SMTP_HOST:-}
+      EMAIL_SMTP_PORT: ${EMAIL_SMTP_PORT:-}
+      EMAIL_SMTP_USER: ${EMAIL_SMTP_USER:-}
+      EMAIL_SMTP_PASSWORD: ${EMAIL_SMTP_PASSWORD:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    deploy:
+      resources:
+        limits:
+          memory: 384m
+    logging: *logging
+
+  game-server:
+    image: ${REGISTRY:?}/eldritch-alley/game-server:${TAG:?}
+    restart: unless-stopped
+    environment:
+      GAME_SERVER_PORT: 2567
+      GAME_SERVER_MAX_MATCHES: ${GAME_SERVER_MAX_MATCHES:-}
+      # The public half only: this service verifies tickets and cannot issue one.
+      GAME_TICKET_PUBLIC_KEY: ${GAME_TICKET_PUBLIC_KEY:?}
+      MATCH_ENDED_QUEUE_URL: ${MATCH_ENDED_QUEUE_URL:?}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      AWS_ENDPOINT_URL: ${AWS_ENDPOINT_URL:-http://localstack:4566}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-test}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-test}
+    ports:
+      - "2567:2567"
+    depends_on:
+      localstack:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 384m
+    logging: *logging

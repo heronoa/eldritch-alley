@@ -1,8 +1,9 @@
 // Keep in sync with backend/game-server/src/protocol.ts.
 //
 // The engine's data types are copied here as plain types instead of imported, so the browser bundle
-// carries no dependency on the engine package. Only the shapes a client has to read are copied: the
-// engine's rng and its rules stay on the server.
+// carries none of the engine package. Only the shapes a client has to read are copied: the engine's
+// rng and its rules stay on the server. The one exception is the line of sight, a pure rule the
+// preview has to answer exactly as the server does (`game/selection.ts`, EA-1 D1).
 
 /** Identifies a unit inside one match. */
 export type UnitId = string;
@@ -16,11 +17,40 @@ export interface Position {
   y: number;
 }
 
+/**
+ * Which way a unit looks, in the board's own frame: east is +x and north is −y, so `'N'` is towards
+ * row 0 (ADR 0014). Mirrors the engine's own type, which the client passes its state back to.
+ */
+export type Facing = 'N' | 'S' | 'E' | 'W';
+
 /** The 8x8 battlefield: `levels` is row-major, so the level of (x, y) is `levels[y * width + x]`. */
 export interface Board {
   width: number;
   height: number;
   levels: readonly number[];
+  /**
+   * What the map places on the board and the rules read (ADR 0012). Optional here because a setup may
+   * leave it out, exactly as the engine's own `Board` does; the board of a state always carries it, and
+   * that is what `BoardState` says.
+   */
+  props?: readonly Prop[];
+}
+
+/** The board of a state: the same grid, with the props the map placed always listed. */
+export interface BoardState extends Board {
+  props: readonly Prop[];
+}
+
+/**
+ * What a prop does to a shot. A `wall` blocks the line of sight; a `cover` prop is chest-high, so the
+ * shot passes over it and the chance to hit pays for it.
+ */
+export type PropKind = 'wall' | 'cover';
+
+/** One prop of the map, at the cell it stands on. At most one prop per cell. */
+export interface Prop {
+  position: Position;
+  kind: PropKind;
 }
 
 /** The six equipment slots. An empty slot is null. */
@@ -41,6 +71,62 @@ export interface Abilities {
   support: string | null;
 }
 
+/**
+ * What an ability does to the cells it covers (ADR 0016 §2, ADR 0023 §2). A damage effect rolls for
+ * every living unit standing on one of them; a heal never rolls and is capped at the unit's
+ * `maxHealth`. `radius` is a Chebyshev distance around the cell the action named, so 0 is that cell
+ * alone. Camouflage writes a status onto the caster, terrain a layer onto the match, and revive brings
+ * a fallen ally back.
+ */
+export type AbilityEffect =
+  | { kind: 'damage'; amount: number; radius: number; ignoresCover: boolean }
+  | { kind: 'heal'; amount: number; radius: number }
+  /** The caster's own cell only, so `radius` is always 0 (ADR 0023 §3). */
+  | { kind: 'camouflage'; radius: 0; turns: number; breakChance: number }
+  /** One difficult cell per cell of the cast, each drying up at the start of round `round + duration`. */
+  | { kind: 'terrain'; radius: number; durationRounds: number }
+  /** The destination cell only, so `radius` is always 0 (ADR 0023 §7). The body may be anywhere. */
+  | { kind: 'revive'; radius: 0 };
+
+/** The status a camouflage cast writes onto its caster (ADR 0023 §3). */
+export interface Camouflage {
+  /** The caster's own turns the status lasts, the turn it was cast included. */
+  turns: number;
+  /** Integer percentage, 0..100, of the status ending on a damaging action. */
+  breakChance: number;
+}
+
+/** One cell of difficult terrain and the round in which it dries up (ADR 0023 §4). */
+export interface DifficultCell {
+  position: Position;
+  expiresAtRound: number;
+}
+
+/**
+ * One ability, as plain data (ADR 0016 §1). The engine never learns a class or an ability name: the id
+ * is an opaque string a unit's own slots are read for, and what it costs and reaches is a number.
+ */
+export interface AbilityDefinition {
+  id: string;
+  /** Points of the caster's own pool the use spends (ADR 0002, ADR 0011). */
+  cost: number;
+  /** Reach in Chebyshev distance, read from the caster to the target cell. */
+  range: number;
+  /** Whether the target cell has to be in sight. A definition that needs none reaches through a wall. */
+  needsSight: boolean;
+  effect: AbilityEffect;
+}
+
+/** What a unit may climb in one step, and what a climb costs. Mirrors the engine's profile. */
+export interface MovementProfile {
+  /** Levels a single step may rise. */
+  maxStepUp: number;
+  /** Levels a single step may drop. */
+  maxStepDown: number;
+  /** Points a step pays on top of its own, for each level it climbs. A descent pays nothing extra. */
+  climbCost: number;
+}
+
 /** A unit as the setup describes it. */
 export interface Unit {
   id: UnitId;
@@ -56,8 +142,12 @@ export interface Unit {
   range: number;
   /** Rounds in the magazine, or null for classes that use no ammunition. */
   magazine: number | null;
+  /** Which pool a basic attack spends, or null for a class that carries none (ADR 0011). */
+  resourceKind?: ResourceKind | null;
   /** Movement budget for one turn. */
   movement: number;
+  /** What the unit may climb, or absent in a setup that leaves the default rule in place. */
+  movementProfile?: MovementProfile;
   nerve: number;
   attunement: number;
   primaryClass: string;
@@ -66,10 +156,26 @@ export interface Unit {
 }
 
 /**
+ * The pool a basic attack spends (ADR 0002, ADR 0011): ammunition for a weapon class, mana for a
+ * magic one. It is what the pips above a figure count, so the count is the same rule for both.
+ */
+export type ResourceKind = 'ammo' | 'mana';
+
+/**
  * A unit inside a match. `defeated` is true from the death until the end of the match or the
  * revival; while the body lasts (`permanentlyDead` false) it occupies its tile.
  */
 export interface UnitState extends Unit {
+  /** What the unit may climb: every unit of a match carries one, so the preview can walk it. */
+  movementProfile: MovementProfile;
+  /**
+   * Which way the unit looks, in the board's own frame: east is +x and north is −y (ADR 0014). The
+   * engine carries one on every unit in a match and this mirror has to follow it, because the client
+   * hands its own state back to the engine's `findPath`, `attackArea` and `canStillAct`.
+   */
+  facing: Facing;
+  /** Which pool the unit's basic attack spends, or null for a unit that carries none. */
+  resourceKind: ResourceKind | null;
   /** HP the unit entered the match with. The ceiling for `health`. */
   maxHealth: number;
   defeated: boolean;
@@ -78,12 +184,37 @@ export interface UnitState extends Unit {
   permanentlyDead: boolean;
   /** The round in which the body is removed and the death becomes permanent. Null while alive. */
   corpseExpiresAtRound: number | null;
+  /**
+   * The status that keeps basic attacks away, or null (ADR 0023 §3). A cast sets it, the caster's own
+   * turns count it down, and a damaging action it uses rolls to break it.
+   */
+  camouflage: Camouflage | null;
+  /**
+   * Whether the last walk stopped on difficult terrain (ADR 0023 §4). It costs the turn it fell and
+   * the next one starts standing, with half the movement.
+   */
+  prone: boolean;
+}
+
+/**
+ * The run of moves the unit on turn has walked since the last action that was not another move
+ * (EA-5, D3). `from` is the cell a cancel returns the unit to, and `cost` is what the run spent,
+ * which is what a cancel gives back.
+ */
+export interface PendingMove {
+  from: Position;
+  cost: number;
 }
 
 /** The state a client may see: the whole match except the random source. */
 export interface PublicState {
   seed: number;
-  board: Board;
+  board: BoardState;
+  /**
+   * The definitions every use is resolved from (ADR 0016 §3). Always present, the way `board.props` is,
+   * because it travels in the state and the client reads it to paint the reach of an armed ability.
+   */
+  catalog: readonly AbilityDefinition[];
   units: UnitState[];
   /** Ids of the units still in play, in turn order. */
   initiative: UnitId[];
@@ -94,17 +225,46 @@ export interface PublicState {
   round: number;
   /** Whether the current unit has spent its action on this turn. */
   hasActed: boolean;
+  /**
+   * The move the unit on turn has not confirmed yet, or null when it has not moved and once its run
+   * has been committed (EA-5, D3). The board shows one area per state: while this is open, the area
+   * of the attack from where the unit stands; while it is null, the cells it can walk to.
+   */
+  pendingMove: PendingMove | null;
+  /**
+   * The terrain layer the rules read (ADR 0023 §4). It is state, not a mutation of the board: a cast
+   * adds cells, the round rise removes the dried ones, and the movement rules read the destination.
+   */
+  difficultTerrain: DifficultCell[];
   eventCount: number;
 }
 
 export type Action =
   | { type: 'move'; actor: UnitId; to: Position }
   | { type: 'attack'; actor: UnitId; target: UnitId }
+  /** Uses an ability the actor carries, aimed at a cell rather than at a unit (ADR 0016 §5). */
+  | { type: 'useAbility'; actor: UnitId; abilityId: string; to: Position; target?: UnitId }
   | { type: 'reload'; actor: UnitId }
-  | { type: 'endTurn'; actor: UnitId };
+  /** The round it was decided on, so one that arrives late ends nobody's turn (ADR 0010, EA-4). */
+  | { type: 'endTurn'; actor: UnitId; round: number }
+  | { type: 'cancelMove'; actor: UnitId }
+  | { type: 'commitMove'; actor: UnitId };
 
 export type Event =
-  | { type: 'moved'; actor: UnitId; from: Position; to: Position }
+  /**
+   * The walk the engine found, from the first step to `to`, `to` included. `rngState` is the random
+   * source after the walk's prone rolls and `prone` says whether one of them stopped the unit on a
+   * difficult cell (ADR 0023 §4).
+   */
+  | {
+      type: 'moved';
+      actor: UnitId;
+      from: Position;
+      to: Position;
+      path: Position[];
+      rngState: number;
+      prone: boolean;
+    }
   | {
       type: 'attacked';
       actor: UnitId;
@@ -112,13 +272,59 @@ export type Event =
       hit: boolean;
       damage: number;
       rngState: number;
-      /** True when the attack used a round from the magazine. */
-      ammoSpent: boolean;
+      /** The pool the attack spent one unit of, or null for a unit that carries none (ADR 0011). */
+      resource: ResourceKind | null;
+      /** Whether a `cover` prop stood between the two when the roll was made (ADR 0012). */
+      cover: boolean;
     }
-  | { type: 'reloaded'; actor: UnitId }
+  | {
+      type: 'reloaded';
+      actor: UnitId;
+      /** The pool the action refilled, or null for a unit that carries none (ADR 0011). */
+      resource: ResourceKind | null;
+    }
+  /** The pending move was taken back: the unit is where the run started again. */
+  | { type: 'move-cancelled'; actor: UnitId }
+  /** The pending move was confirmed: the movement is final and the run is closed. */
+  | { type: 'move-committed'; actor: UnitId }
   | { type: 'unit-defeated'; target: UnitId }
   | { type: 'corpse-removed'; target: UnitId }
-  | { type: 'turn-ended'; actor: UnitId; next: UnitId; round: number };
+  | { type: 'turn-ended'; actor: UnitId; next: UnitId; round: number }
+  /** The point a magic pool handed back as the turn passed to it (ADR 0017). */
+  | { type: 'regained'; actor: UnitId; resource: ResourceKind; amount: number }
+  /**
+   * The use of an ability: what it cost, where it was aimed, and the rng state its rolls left behind
+   * (ADR 0016 §8). The rolls themselves are not in the event twice: each one is a `damaged` of its own.
+   */
+  | {
+      type: 'ability-used';
+      actor: UnitId;
+      abilityId: string;
+      to: Position;
+      rngState: number;
+      /** The pool the use spent, or null for a caster that carries none (ADR 0011). */
+      resource: ResourceKind | null;
+      /** The fallen ally a `revive` effect names; absent for every other kind (ADR 0023 §7). */
+      target?: UnitId;
+    }
+  /**
+   * One roll of a damage effect, for one living unit standing on a cell it covered. A roll that missed
+   * is emitted too, with a damage of zero: the player is told a body was in the blast.
+   */
+  | { type: 'damaged'; target: UnitId; hit: boolean; damage: number }
+  /** What a heal gave back, capped at the unit's `maxHealth` (ADR 0016 §8). */
+  | { type: 'healed'; target: UnitId; amount: number }
+  /** The camouflage status is gone: `expired` at the end of its last turn, `broken` by a damaging action. */
+  | { type: 'camouflage-ended'; target: UnitId; reason: 'expired' | 'broken' }
+  /** A prone unit started its turn and is standing again, with the movement the turn gave it. */
+  | { type: 'stood-up'; actor: UnitId }
+  /** The difficult cells that dried up on the round rise, exactly them and no others. */
+  | { type: 'terrain-expired'; cells: Position[] }
+  /**
+   * A fallen ally is alive again on `to` (ADR 0023 §7). The body is consumed by the same event: there
+   * is no `corpse-removed` for it.
+   */
+  | { type: 'revived'; target: UnitId; to: Position };
 
 /** Why an action was refused. A refused action never changes the state and never produces an event. */
 export type RejectReason =
@@ -126,15 +332,25 @@ export type RejectReason =
   | 'out-of-bounds'
   | 'cell-occupied'
   | 'height-step-too-high'
-  | 'not-enough-movement'
+  | 'no-path'
   | 'already-acted'
   | 'target-out-of-range'
+  | 'no-line-of-sight'
   | 'target-invalid'
+  /** A basic attack against a living enemy is refused because its camouflage hides it (ADR 0023 §3). */
+  | 'target-hidden'
+  /** An ability the caster's own slots do not name, or the catalog does not define (ADR 0016 §7). */
+  | 'ability-unknown'
   | 'no-magazine'
+  /** A basic attack whose pool is empty: the ammunition of a weapon class, the mana of a magic one. */
+  | 'no-ammunition'
+  | 'no-mana'
   | 'magazine-full'
-  | 'not-adjacent'
   | 'game-over'
-  | 'malformed-action';
+  | 'stale-turn'
+  | 'malformed-action'
+  /** A cancel or a confirmation of a move that is not waiting to be confirmed (EA-5). */
+  | 'no-pending-move';
 
 /**
  * Bumped whenever a payload changes shape. The client compares it with its own and refuses to play
@@ -142,8 +358,32 @@ export type RejectReason =
  *
  * Version 3: the state message carries `mapId`, because the client draws the terrain of the map it is
  * told the match is on rather than a board it is sent cell by cell.
+ * Version 4: a move action names only its destination and the `moved` event carries the `path` the
+ * engine walked, which the client needs to animate the walk (ADR 0010). The same decision makes an
+ * `endTurn` name its round, which the client sends on its own once the turn has nothing left (EA-4),
+ * and adds `stale-turn` to the refusal codes: one version covers both payloads.
+ * Version 5: a move stays pending until an action that is not another move commits it, so the state
+ * carries `pendingMove`, the client may send `cancelMove` and `commitMove` (EA-5), the events
+ * `move-cancelled` and `move-committed` close the run, and `no-pending-move` joins the refusals.
+ * Version 6: a basic attack spends its class's pool at every distance, so the state carries the
+ * unit's `resourceKind` and the `attacked` event carries `resource` where it carried `ammoSpent`,
+ * and `no-ammunition` and `no-mana` join the refusals (EA-14, ADR 0011). The refill of the pool is
+ * one action for both kinds, so `reloaded` carries the pool it refilled as well: the log names the
+ * reload of a magazine apart from the meditation of a magic class.
+ * Version 10: abilities as data (ADR 0016). The number is the record's, not the next one after 6:
+ * versions 8 and 9 belong to the records that landed between this constant and it — facing and height
+ * (ADR 0014, ADR 0015) and mana regeneration (ADR 0017) — and none of them reached this constant, so
+ * everything they added to the wire arrives with this bump. (This mirror is still missing m3-02's
+ * `faced` event and the direction a shot was thrown in; the server has sent both since version 8.) The
+ * state carries the match's `catalog`, the client sends `useAbility` naming a cell, the events
+ * `ability-used`, `damaged` and `healed` join the batch, and `ability-unknown` joins the refusals.
+ * Version 11: the second active set and the three effects it brings (ADR 0023 §8). The state carries
+ * every unit's `camouflage` and `prone` plus the match's `difficultTerrain`, a `moved` names the
+ * `rngState` and `prone` its walks rolled, `ability-used` may name a `target` (the fallen ally of a
+ * revive), the events `camouflage-ended`, `stood-up`, `terrain-expired` and `revived` join the batch,
+ * and `target-hidden` joins the refusals.
  */
-export const PROTOCOL_VERSION = 3;
+export const PROTOCOL_VERSION = 11;
 
 /** The single room type of M2-a. One room is one match. */
 export const ROOM_NAME = 'battle';
@@ -168,8 +408,19 @@ export const MESSAGE = {
 export type ClientAction =
   | { type: 'move'; to: Position }
   | { type: 'attack'; target: UnitId }
+  /**
+   * Uses an ability the unit on turn carries, aimed at a cell rather than at a unit (ADR 0016 §5). The
+   * server fills the actor in like it does for every other action, so the client chooses the ability and
+   * the cell and never the caster. `target` is read only by a `revive` effect, where it names the
+   * fallen ally; every other kind ignores it (ADR 0023 §7).
+   */
+  | { type: 'useAbility'; abilityId: string; to: Position; target?: UnitId }
   | { type: 'reload' }
-  | { type: 'endTurn' };
+  /** The round it was decided on, so one that arrives late ends nobody's turn (ADR 0010, EA-4). */
+  | { type: 'endTurn'; round: number }
+  /** The two controls of a pending move, which carry no field: the run lives in the state (EA-5). */
+  | { type: 'cancelMove' }
+  | { type: 'commitMove' };
 
 export interface StateMessage {
   version: number;

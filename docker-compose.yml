@@ -40,6 +40,25 @@ services:
       - "4566:4566"
     volumes:
       - localstack-data:/var/lib/localstack
+      # The queues themselves: match-ended.fifo and its dead-letter queue, with the redrive policy that
+      # gives up on a message the platform cannot store. Read by LocalStack once the service is up.
+      - ./docker/localstack/init:/etc/localstack/init/ready.d:ro
+
+  # The schema, applied once, before any instance of the API starts. It is the same image with a
+  # different command: the migration is a process, not something the API does on its way up.
+  migrate:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      args:
+        SERVICE: platform-api
+    image: eldritch-alley/platform-api:local
+    command: ["node", "dist/migrate.js"]
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-eldritch}:${POSTGRES_PASSWORD:-eldritch}@postgres:5432/${POSTGRES_DB:-eldritch_alley}
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   platform-api:
     build:
@@ -56,7 +75,47 @@ services:
       AWS_ENDPOINT_URL: http://localstack:4566
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
-      JWT_SECRET: ${JWT_SECRET:?defina JWT_SECRET no .env}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+      # Sign-in (m4-02). The two secrets have no local default on purpose: a session signed with a
+      # key from a repository is a session anyone can mint.
+      SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET in .env}
+      GAME_TICKET_PRIVATE_KEY: ${GAME_TICKET_PRIVATE_KEY:?set GAME_TICKET_PRIVATE_KEY in .env}
+      GAME_TICKET_TTL_SECONDS: ${GAME_TICKET_TTL_SECONDS:-300}
+      COOKIE_DOMAIN: ${COOKIE_DOMAIN:-localhost}
+      CLIENT_ORIGIN: ${CLIENT_ORIGIN:-http://localhost:5173}
+      OAUTH_REDIRECT_BASE_URL: ${OAUTH_REDIRECT_BASE_URL:-http://localhost:3000}
+      # The OAuth apps are the developer's own, and they are optional: a provider with no values here is
+      # a provider that is off, its button is not drawn and its route answers 404. Half a pair is a typo
+      # and stops the container, naming both variables.
+      OAUTH_GITHUB_CLIENT_ID: ${OAUTH_GITHUB_CLIENT_ID:-}
+      OAUTH_GITHUB_CLIENT_SECRET: ${OAUTH_GITHUB_CLIENT_SECRET:-}
+      OAUTH_GOOGLE_CLIENT_ID: ${OAUTH_GOOGLE_CLIENT_ID:-}
+      OAUTH_GOOGLE_CLIENT_SECRET: ${OAUTH_GOOGLE_CLIENT_SECRET:-}
+      # A configured realm is one more provider, independent of the direct pairs above: it is offered
+      # beside them and hides none of them. Leave the three blank and it is off.
+      OAUTH_KEYCLOAK_CLIENT_ID: ${OAUTH_KEYCLOAK_CLIENT_ID:-}
+      OAUTH_KEYCLOAK_CLIENT_SECRET: ${OAUTH_KEYCLOAK_CLIENT_SECRET:-}
+      OAUTH_KEYCLOAK_ISSUER: ${OAUTH_KEYCLOAK_ISSUER:-}
+      # Outgoing mail (m4-02), optional by the same rule and with the same failure: all five or none.
+      # None and the platform logs each verification and reset message instead of sending it, which is
+      # what a local stack should do. Some and it refuses to start, naming every value that is missing.
+      EMAIL_SMTP_HOST: ${EMAIL_SMTP_HOST:-}
+      EMAIL_SMTP_PORT: ${EMAIL_SMTP_PORT:-}
+      EMAIL_SMTP_USER: ${EMAIL_SMTP_USER:-}
+      EMAIL_SMTP_PASSWORD: ${EMAIL_SMTP_PASSWORD:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+      # Match recording (m4-03). Required, and there is no local default: a platform that cannot read
+      # the queue serves an empty battle history to everyone without ever saying so (see config.ts).
+      MATCH_ENDED_QUEUE_URL: http://localstack:4566/000000000000/match-ended.fifo
+      MATCH_ENDED_POLL_INTERVAL_MS: ${MATCH_ENDED_POLL_INTERVAL_MS:-1000}
+      # Contact form (m4-05). The salt and the inbox are required: the first keeps the stored IP hash
+      # from being reversible, the second is where a stored message is announced. Turnstile is optional
+      # and, without a secret, the local fake accepts every token — the state a dev stack runs in.
+      CONTACT_IP_SALT: ${CONTACT_IP_SALT:?set CONTACT_IP_SALT in .env}
+      CONTACT_NOTIFY_TO: ${CONTACT_NOTIFY_TO:?set CONTACT_NOTIFY_TO in .env}
+      TURNSTILE_SECRET: ${TURNSTILE_SECRET:-}
+      CONTACT_RATE_LIMIT: ${CONTACT_RATE_LIMIT:-5}
+      CONTACT_RATE_WINDOW_SECONDS: ${CONTACT_RATE_WINDOW_SECONDS:-600}
     ports:
       - "3000:3000"
     depends_on:
@@ -64,6 +123,9 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      # Completed successfully, not merely started: the API assumes the schema is already there.
+      migrate:
+        condition: service_completed_successfully
 
   game-server:
     build:
@@ -79,7 +141,14 @@ services:
       AWS_ENDPOINT_URL: http://localstack:4566
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
-      JWT_SECRET: ${JWT_SECRET:?defina JWT_SECRET no .env}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+      # The public half of the ticket pair, and only the public half: this service verifies a ticket and
+      # cannot issue one. Required here even though the server runs happily without it — a stack that
+      # signs tickets and never verifies them is a stack where nobody's matches are recorded, and that
+      # is a mistake to stop on rather than to discover from an empty battle list.
+      GAME_TICKET_PUBLIC_KEY: ${GAME_TICKET_PUBLIC_KEY:?set GAME_TICKET_PUBLIC_KEY in .env}
+      # The other half of the platform's queue setting below: the same queue, seen from the writing end.
+      MATCH_ENDED_QUEUE_URL: http://localstack:4566/000000000000/match-ended.fifo
     ports:
       - "2567:2567"
     depends_on:

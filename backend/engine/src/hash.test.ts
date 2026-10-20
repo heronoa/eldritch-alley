@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { canonicalize, fnv1a } from './hash';
 import { hashState, newMatch } from './match';
-import type { Board, MatchSetup, MatchState, Team, Unit } from './types';
+import type { Board, Facing, MatchSetup, MatchState, Team, Unit } from './types';
+
+function unitAt(state: MatchState, id: string) {
+  const unit = state.units.find((candidate) => candidate.id === id);
+  if (!unit) throw new Error(`no unit with id ${id}`);
+  return unit;
+}
 
 function makeBoard(heights: Record<string, number> = {}): Board {
   const levels = new Array<number>(64).fill(0);
@@ -114,10 +120,69 @@ describe('hashState', () => {
     expect(hashState(reverseKeys(state) as MatchState)).toBe(hashState(state));
   });
 
+  it('changes when only a facing changes', () => {
+    const state = newMatch(makeSetup());
+    // The unit turns right about on its own cell: nothing else about the state moves.
+    const OPPOSITE: Record<Facing, Facing> = { N: 'S', S: 'N', E: 'W', W: 'E' };
+    const turned: MatchState = {
+      ...state,
+      units: state.units.map((unit) =>
+        unit.id === 'b1' ? { ...unit, facing: OPPOSITE[unit.facing] } : unit,
+      ),
+    };
+
+    expect(unitAt(state, 'b1').facing).not.toBe(unitAt(turned, 'b1').facing);
+    expect(hashState(turned)).not.toBe(hashState(state));
+  });
+
   it('changes when the unit order changes, because that order breaks speed ties', () => {
     const state = newMatch(makeSetup());
     const swapped: MatchState = { ...state, units: [...state.units].reverse() };
     expect(hashState(swapped)).not.toBe(hashState(state));
+  });
+
+  it('changes when a unit is camouflaged or prone', () => {
+    const state = newMatch(makeSetup());
+    const hidden: MatchState = {
+      ...state,
+      units: state.units.map((unit) =>
+        unit.id === 'b1' ? { ...unit, camouflage: { turns: 3, breakChance: 30 } } : unit,
+      ),
+    };
+    const down: MatchState = {
+      ...state,
+      units: state.units.map((unit) => (unit.id === 'b1' ? { ...unit, prone: true } : unit)),
+    };
+
+    expect(hashState(hidden)).not.toBe(hashState(state));
+    expect(hashState(down)).not.toBe(hashState(state));
+    expect(hashState(hidden)).not.toBe(hashState(down));
+    // A camouflage with other numbers is another state.
+    const weaker: MatchState = {
+      ...state,
+      units: state.units.map((unit) =>
+        unit.id === 'b1' ? { ...unit, camouflage: { turns: 3, breakChance: 10 } } : unit,
+      ),
+    };
+    expect(hashState(weaker)).not.toBe(hashState(hidden));
+  });
+
+  it('changes when the difficult terrain changes, and keeps its array order as state', () => {
+    const state = newMatch(makeSetup());
+    const first = { position: { x: 1, y: 0 }, expiresAtRound: 4 };
+    const second = { position: { x: 1, y: 1 }, expiresAtRound: 4 };
+    const wet: MatchState = { ...state, difficultTerrain: [first, second] };
+    const reversed: MatchState = { ...state, difficultTerrain: [second, first] };
+    const dried: MatchState = {
+      ...state,
+      difficultTerrain: [{ ...first, expiresAtRound: 5 }, second],
+    };
+
+    expect(hashState(wet)).not.toBe(hashState(state));
+    expect(hashState(reversed)).not.toBe(hashState(wet));
+    expect(hashState(dried)).not.toBe(hashState(wet));
+    // The same state always hashes the same.
+    expect(hashState(wet)).toBe(hashState(wet));
   });
 
   it('returns an unsigned 32-bit integer', () => {

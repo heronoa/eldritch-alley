@@ -25,7 +25,7 @@ Open `index.html` directly in a browser, or serve the folder to test on a phone 
 |---|---|---|
 | Pan | Drag with one finger | Click and drag; arrow keys or WASD |
 | Zoom | Pinch with two fingers | Mouse wheel; `+` and `−` keys |
-| Rotate 90° | ⟲ and ⟳ buttons | `Q` and `E` keys, or the buttons |
+| Rotate 90° | Twist two fingers (35° of twist turns one step), or the ⟲ and ⟳ buttons | Right-click and drag sideways (80 px turns one step); `Q` and `E` keys; or the buttons |
 | Center the map | ◎ button | `C` key, or the button |
 | Inspect a cell | Short tap | Hover |
 
@@ -39,6 +39,8 @@ The camera panel sits on the right edge (vertically centered on desktop, lower r
 - **Tap versus drag:** a gesture that moves less than **6 CSS pixels** is a tap and inspects the cell; anything beyond that is a pan. Panning never selects cells by accident.
 - **Pinch zoom:** with two active pointers, the zoom follows the ratio between the current and the initial finger distance, **anchored at the midpoint between the fingers** (the point under the fingers stays put).
 - **Integer zoom snap:** the zoom is continuous while pinching, and snaps to the nearest integer step (1x to 4x) when a finger is lifted. Fractional zoom makes pixel art shimmer.
+- **Twist to rotate:** during a two-finger gesture, the angle between the fingers is tracked; a twist of 35° in either direction triggers one 90° rotation (clockwise twist, clockwise rotation) and resets the reference angle, so pinch and twist work in the same gesture.
+- **Right-drag to rotate (desktop):** dragging sideways with the right mouse button by 80 px rotates one step (drag right, clockwise); the context menu is disabled on the canvas.
 - **Wheel and buttons** zoom one integer step at a time, anchored at the cursor (wheel) or at the screen center (buttons).
 - **Hover only exists for the mouse:** cell inspection on `pointermove` runs only for `pointerType === 'mouse'`. On touch, inspection happens on tap.
 - **Interrupted gestures:** `pointercancel` (incoming call, system gesture) is handled like `pointerup`, so no pointer gets stuck.

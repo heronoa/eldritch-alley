@@ -1,0 +1,15 @@
+{
+  "name": "@eldritch-alley/e2e",
+  "version": "0.0.0",
+  "private": true,
+  "description": "End-to-end tests: one player's journey across platform-api and game-server",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@colyseus/testing": "^0.18.1",
+    "@eldritch-alley/engine": "0.0.0",
+    "jose": "^6.2.12",
+    "vitest": "^3.2.7"
+  }
+}

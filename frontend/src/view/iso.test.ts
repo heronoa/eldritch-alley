@@ -2,12 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { terrainOf } from '../maps/terrain';
 import { PROTOTYPE_MAPS } from '../maps/prototype-maps';
 import { NO_FLOOR, type Cell } from './grid';
-import {
-  ACTION_BAR_RECT,
-  CAROUSEL_RECT,
-  LOG_RECT,
-  PANEL_RECT,
-} from './layout';
+import { CAMERA_RECT, CAROUSEL_RECT, DASHBOARD_RECT, PADDING } from './layout';
 import {
   HZ,
   PIXEL,
@@ -243,9 +238,12 @@ describe('the board fits the space the HUD leaves', () => {
         for (const corner of topFace(cell, terrain.levelAt(cell), terrain.lift)) {
           const where = `${map.id} ${cell.x},${cell.y} at ${corner.x},${corner.y}`;
           expect(corner.y, where).toBeGreaterThanOrEqual(CAROUSEL_RECT.y + CAROUSEL_RECT.height);
-          expect(corner.y, where).toBeLessThanOrEqual(ACTION_BAR_RECT.y);
-          expect(corner.x, where).toBeGreaterThanOrEqual(PANEL_RECT.x + PANEL_RECT.width);
-          expect(corner.x, where).toBeLessThanOrEqual(LOG_RECT.x);
+          // The dashboard runs the whole width of the bottom edge, so the board ends above it.
+          expect(corner.y, where).toBeLessThanOrEqual(DASHBOARD_RECT.y);
+          expect(corner.x, where).toBeGreaterThanOrEqual(PADDING);
+          // The camera panel took the top of the right column when the log moved to the left one, so
+          // the board ends where that column starts.
+          expect(corner.x, where).toBeLessThanOrEqual(CAMERA_RECT.x);
         }
       }
     }

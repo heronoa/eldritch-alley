@@ -13,7 +13,8 @@
 import type { Cell, Pixel } from '../../view/grid';
 import { HZ as CANVAS_HZ, PIXEL, TILE_H, TILE_W } from '../../view/iso';
 import { TILE_PALETTE, shadeHex } from '../../maps/prototype-palette';
-import type { Terrain } from '../../maps/terrain';
+import type { Lane, Terrain } from '../../maps/terrain';
+import { cutawayLevel } from '../../view/cutaway';
 import { rnd } from './random';
 
 /** The prototype's tile, in its own pixels. Everything below is written in these and scaled by `PIXEL`. */
@@ -35,6 +36,14 @@ const REACH_SIDE = 16;
 
 /** A point of the prototype's own drawing, as a pair. */
 export type Point = readonly [number, number];
+
+/** The 2d context of a canvas that was just made, or a failure worth reading. */
+export function context2d(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
+  const ctx = canvas.getContext('2d');
+  if (ctx === null) throw new Error('no 2d context for the map canvas');
+
+  return ctx;
+}
 
 /** Fills the rectangle at a rounded corner, as the prototype's `px` does. */
 export function px(
@@ -135,10 +144,29 @@ function tileAt(terrain: Terrain, x: number, y: number, outside: string): string
   return map.tiles[y][x];
 }
 
+/**
+ * The level a cell is drawn at in the current view. A building tall enough to hide playable ground
+ * behind it is cut down, so that ground can be seen over it; everything else is drawn at its own level,
+ * and a gap is still a gap.
+ *
+ * This is the view's drawing and not the map (EA-12, slice 4): the building is whole for the rules, and
+ * blocking movement and sight exactly as it did. Only what the player is shown changes.
+ */
+export function drawnLevel(terrain: Terrain, cell: Cell): number {
+  const level = terrain.levelAt(cell);
+
+  return cutawayLevel(cell, level, terrain.size, (other) => letterOf(terrain, other) === 'B');
+}
+
+/** Whether the view has cut a cell down: a building drawn lower than it stands. */
+function isCut(terrain: Terrain, cell: Cell): boolean {
+  return drawnLevel(terrain, cell) < terrain.levelAt(cell);
+}
+
 /** How far a cell's faces drop below its top face, in the prototype's pixels. */
 export function depthOf(terrain: Terrain, cell: Cell): number {
   const letter = letterOf(terrain, cell);
-  const level = terrain.levelAt(cell);
+  const level = drawnLevel(terrain, cell);
 
   if (letter === 'B') return (level + 1) * HZ;
   return letter === 'b' ? 3 : (level + 1) * HZ + (terrain.map.sky === 'roof' ? ROOF_FACADE : 0);
@@ -243,6 +271,7 @@ function drawBuilding(drawing: CellDrawing, corners: Corners): void {
 
   // Seeded by the cell, so a building is the same building on every frame and in every run.
   const random = rnd(cell.x * 31 + cell.y * 17 + 3);
+  const cut = isCut(terrain, cell);
   for (let row = 4; row < depth - 4; row += 6) {
     for (let k = 2; k < TW / 2 - 2; k += 4) {
       const left = random() < 0.28 ? 'rgba(240,217,160,.55)' : '#0b0e17';
@@ -263,6 +292,14 @@ function drawBuilding(drawing: CellDrawing, corners: Corners): void {
     ],
     'rgba(230,220,196,.08)',
   );
+
+  // A building the view has cut down is striped across its top, so a roof the player can see over is
+  // never taken for a building that is only two levels tall.
+  if (cut) {
+    for (let k = -12; k <= 12; k += 4) {
+      line(ctx, [n[0] + k - 4, n[1] + 6 + k / 2], [n[0] + k + 4, n[1] + 10 + k / 2], 'rgba(230,220,196,.18)');
+    }
+  }
 
   if (terrain.decor.shops) drawShops(drawing, corners, depth, random);
   drawFireEscape(ctx, terrain, cell, corners, depth);
@@ -386,7 +423,8 @@ function drawRoofFacade(drawing: CellDrawing, { w, s }: Corners, depth: number):
  * `drawCellAnimation`: this pass runs once, and a mark that changes from frame to frame would be left
  * behind on the canvas it was first drawn on.
  */
-function drawTexture({ ctx, terrain, cell }: CellDrawing, { n, e, s, w }: Corners): void {
+function drawTexture({ ctx, terrain, cell }: CellDrawing, corners: Corners): void {
+  const { n, s, w } = corners;
   const letter = letterOf(terrain, cell);
   const random = rnd(cell.x * 13 + cell.y * 7 + 1);
   // The marks of a tile's texture at random points of its top face. `reach` is how far from the north
@@ -402,30 +440,32 @@ function drawTexture({ ctx, terrain, cell }: CellDrawing, { n, e, s, w }: Corner
   };
 
   if (letter === 'z') {
-    for (let k = -8; k <= 8; k += 4) {
-      poly(
+    // The stripes run along the street and are laid across it, so which way they point is read from the
+    // neighbours rather than from the map: a view that has turned the map a quarter turns them with it.
+    const along = roadRunsAlongX(terrain, cell)
+      ? { x: TW / 4, y: TH / 4 }
+      : { x: -TW / 4, y: TH / 4 };
+    const across = { x: -along.x, y: along.y };
+    // The prototype's `sx` and `sy`: the middle of the top face across, and its north corner down.
+    const middle = n[1] + TH / 2;
+
+    for (const k of [-0.55, 0, 0.55]) {
+      const cx = n[0] + across.x * k;
+      const cy = middle + across.y * k;
+      line(
         ctx,
-        [
-          [n[0] + k - 1, n[1] + 4 + k / 2],
-          [n[0] + k + 1, n[1] + 5 + k / 2],
-          [n[0] + k + 1, n[1] + 11 + k / 2],
-          [n[0] + k - 1, n[1] + 10 + k / 2],
-        ],
-        'rgba(230,220,196,.45)',
+        [cx - along.x * 0.6, cy - along.y * 0.6],
+        [cx + along.x * 0.6, cy + along.y * 0.6],
+        'rgba(230,220,196,.5)',
+        2,
       );
     }
     return;
   }
 
   if (letter === 'a') {
-    const centre = terrain.decor.centreLine;
-    if (centre !== null) {
-      if (cell.y === centre && cell.x % 2 === 0) {
-        line(ctx, [w[0] + 4, w[1] + 2], [s[0] - 4, s[1] - 2], 'rgba(217,180,74,.75)');
-      }
-      if (cell.y === centre) line(ctx, [n[0] + 2, n[1] + 2], [e[0] - 2, e[1]], 'rgba(230,220,196,.35)');
-      if (cell.y === centre + 1) line(ctx, [w[0] + 2, w[1]], [s[0] - 2, s[1] - 2], 'rgba(230,220,196,.35)');
-    }
+    for (const lane of lanesAt(terrain, cell)) drawLane(ctx, corners, lane);
+
     for (let k = 0; k < 2; k += 1) {
       px(ctx, n[0] - 6 + random() * 12, n[1] + 4 + random() * 8, 1, 1, '#30364a');
     }
@@ -470,6 +510,52 @@ function drawTexture({ ctx, terrain, cell }: CellDrawing, { n, e, s, w }: Corner
   }
 
   if (letter === 'R' || letter === 'p' || letter === 'x') specks(5, '#3d4152', '#1a1d27', 8);
+}
+
+/**
+ * The corners a cell shares with the neighbour one step away. Two neighbours of a diamond meet along
+ * the segment between the two corners they share, which is what a lane marking is painted along.
+ */
+const SHARED_EDGE: Readonly<Record<string, readonly [keyof Corners, keyof Corners]>> = {
+  '1,0': ['e', 's'],
+  '-1,0': ['w', 'n'],
+  '0,1': ['s', 'w'],
+  '0,-1': ['n', 'e'],
+};
+
+/** The lane markings that are drawn from a cell, which is the cell they are anchored on. */
+function lanesAt(terrain: Terrain, cell: Cell): readonly Lane[] {
+  return terrain.decor.lanes.filter((lane) => lane.from.x === cell.x && lane.from.y === cell.y);
+}
+
+/**
+ * One lane marking, drawn along the edge two neighbouring cells share: the dashes down the middle of
+ * the road keep to the middle half of it, and the line along the road's side to a wider stretch, both
+ * as the prototype draws them.
+ */
+function drawLane(ctx: CanvasRenderingContext2D, corners: Corners, lane: Lane): void {
+  const shared = SHARED_EDGE[`${lane.to.x - lane.from.x},${lane.to.y - lane.from.y}`];
+  if (shared === undefined) return;
+
+  const a = corners[shared[0]];
+  const b = corners[shared[1]];
+  const [first, last] = lane.centre ? [0.25, 0.75] : [0.125, 0.875];
+  const at = (fraction: number): Point => [
+    a[0] + (b[0] - a[0]) * fraction,
+    a[1] + (b[1] - a[1]) * fraction,
+  ];
+
+  line(ctx, at(first), at(last), lane.centre ? 'rgba(217,180,74,.75)' : 'rgba(230,220,196,.35)');
+}
+
+/** Whether the street a crosswalk crosses runs along x of the view, which is which way its stripes run. */
+function roadRunsAlongX(terrain: Terrain, cell: Cell): boolean {
+  const road = (x: number, y: number): boolean => {
+    const letter = tileAt(terrain, x, y, 'B');
+    return letter === 'a' || letter === 'z';
+  };
+
+  return road(cell.x - 1, cell.y) || road(cell.x + 1, cell.y);
 }
 
 /** The kerb of a pavement: a paper line along every edge that looks onto asphalt. */
