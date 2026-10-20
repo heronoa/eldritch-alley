@@ -22,8 +22,12 @@ expõe o contrato que o game-server (m2) consome.
 | `backend/engine/src/actions.ts` | modificar | `hitChanceFor` (linha 72-85) soma o bônus de chance de quem ataca; a função nova `blessDamageBonus(unit)` é lida no cômputo de dano do ataque básico (linha 612) e no de uma habilidade de dano (linha ~474); `validateUseAbility` (linha 248) ganha o ramo de validação do `buff` (célula deve ter um aliado vivo, igual ao ramo de `revive`); `carriesAbility`/`abilityEvents` leem o terceiro slot sem mudança de lógica (já iteram `activeSets` genericamente) |
 | `backend/engine/src/events.ts` | modificar | Novo evento `buffed` (escreve `blessed` no alvo, análogo ao bloco `camouflage` de `ability-used`, linha ~158); countdown por turno do alvo abençoado (espelha o bloco de `camouflage` em `turn-ended`, linha ~254); `blessed = null` em `unit-defeated` (junto de `camouflage`/`prone`, linha ~207); novo evento `bless-ended` (reason `'expired'`, análogo a `camouflage-ended`) |
 | `backend/engine/src/match.ts` | modificar | `newMatch`/validação de setup (linha ~94) passam a aceitar três entradas em `activeSets`, e a inicializar `blessed: null` |
-| `backend/engine/src/index.ts` | verificar | Exporta os novos tipos (`Blessed`) se o padrão de exports exigir |
 | `backend/engine/src/actions.test.ts`, `events.test.ts`, `match.test.ts`, novo `bless.test.ts` | criar/modificar | Ver §4 |
+
+**Confirmado na exploração**: `backend/engine/src/index.ts` não precisa de nenhuma mudança — já tem
+`export type * from './types';`, que reexporta qualquer interface nova de `types.ts` (incluindo
+`Blessed`) automaticamente, o mesmo mecanismo que já cobriu `Camouflage` e `DifficultCell` sem exigir
+uma linha própria.
 
 ## 3. Contrato da camada
 

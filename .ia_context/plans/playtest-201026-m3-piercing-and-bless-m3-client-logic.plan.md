@@ -21,7 +21,6 @@ nova no log e no i18n — tudo lógica pura, sem toque de cena.
 | `frontend/src/game/ability-menu.test.ts` | modificar | Caso novo: unidade com três slots (um `null`) produz duas linhas; unidade com os três preenchidos produz três |
 | `frontend/src/game/highlight.ts` | modificar | `abilityReach` (linha ~68) ganha um ramo análogo ao de `revive`: quando o efeito é `buff`, a célula só entra no alcance pintado se tiver um aliado vivo (`isOccupied` não basta — precisa checar time); mesma função que decide o que é clicável decide o que é pintado, então "mirar fora de um aliado" já fica impossível de clicar |
 | `frontend/src/game/highlight.test.ts` | modificar | Casos novos cobrindo o ramo de `buff` |
-| `frontend/src/game/targetPreview.ts` | modificar | `abilityChances` já lê `abilityCells`/`hitChanceFor` do engine (linha 18-27) para popular o badge sobre a cabeça do alvo; para `buff` o badge não é uma "chance de acerto" (a cura não rola, o buff também não) — ajustar para não desenhar um badge numérico de chance sobre um alvo de `buff`, igual ao que já ocorre para `heal` (confirmar o tratamento atual de `heal` e espelhar) |
 | `frontend/src/game/log.ts` | modificar | Novos `case 'buffed'` e `case 'bless-ended'` no switch de eventos (ao lado de `camouflage-ended`, linha ~127), devolvendo as chaves de i18n novas |
 | `frontend/src/game/log.test.ts` | modificar | Casos novos para os dois eventos |
 | `frontend/src/i18n/catalog.en-US.ts`, `catalog.pt-BR.ts` | modificar | `ability.name.bless`, `ability.detail.buff` (ex. `'+{hit}% hit, +{damage} damage, {turns} turns'`), `log.event.blessed`, `log.event.blessExpired` |
@@ -33,7 +32,10 @@ nova no log e no i18n — tudo lógica pura, sem toque de cena.
   um aliado vivo do time do unidade que mira — nenhuma célula vazia ou com inimigo é oferecida como mira
   legal, espelhando a mesma regra que o engine aplica em `validateUseAbility` (m1, I3).
 - **`abilityChances`**: para `buff`, não produz uma entrada de "chance de acerto" no mapa que
-  `drawTargetPreview` lê — o efeito não rola.
+  `drawTargetPreview` lê — o efeito não rola. **Confirmado na exploração**: isto já funciona sem
+  nenhuma mudança de código — `abilityChances` (`frontend/src/game/targetPreview.ts:25`) já faz
+  `if (ability.effect.kind !== 'damage') return chances;` antes de qualquer outra coisa, então `heal` e
+  o futuro `buff` já caem no mesmo early-return. Esta milestone não toca em `targetPreview.ts`.
 - **`log.ts`**: toda entrada de log tem uma chave de i18n; nenhum evento passa sem tradução.
 - **O que esta camada não faz**: não desenha nada na cena (isso é m4); não decide os números de Bless
   (lidos do catálogo que a rede entrega); não cria um segundo mecanismo de alcance paralelo ao que
@@ -50,8 +52,6 @@ nova no log e no i18n — tudo lógica pura, sem toque de cena.
   linhas, mesma ordem.
 - [ ] `abilityReach` com `bless` armado — célula com aliado vivo entra no alcance pintado; célula vazia,
   com inimigo, ou com um corpo não entra.
-- [ ] `abilityChances` com `bless` armado sobre um aliado em alcance — não inclui esse alvo no mapa de
-  chances (nenhum badge numérico).
 - [ ] `log.ts` traduz `buffed` e `bless-ended` para as chaves novas, com os parâmetros certos
   (`turns`, `hitBonus`, `damageBonus`).
 - [ ] Paridade de chaves entre `catalog.en-US.ts` e `catalog.pt-BR.ts` continua passando com as chaves

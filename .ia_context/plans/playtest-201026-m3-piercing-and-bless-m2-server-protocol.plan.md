@@ -47,9 +47,13 @@ espelhos (servidor e cliente), congelando o contrato que m3 constrói contra.
 - [ ] O bot escolhe `bless` quando um aliado elegível está em alcance, há mana e nenhuma ação de maior
   prioridade está disponível (caso feliz); não escolhe quando não há aliado elegível ou mana insuficiente
   (caso de borda).
-- [ ] `PROTOCOL_VERSION === 12` nos dois arquivos (`backend/game-server/src/protocol.ts` e
-  `frontend/src/protocol.ts`), e um teste cruzado que falha se os dois divergirem (se já existir essa
-  checagem — confirmar) ou um novo teste que lê os dois literais e os compara.
+- [ ] `PROTOCOL_VERSION === 12` nos dois arquivos (`backend/game-server/src/protocol.ts:34` e
+  `frontend/src/protocol.ts:386`). **Confirmado na exploração**: não existe hoje nenhum teste cruzado
+  entre os dois espelhos — cada lado só se afirma contra o literal `11` em seu próprio arquivo
+  (`battle-room.test.ts:215`, `session.test.ts:446`). Os dois literais são atualizados manualmente nesta
+  milestone, cada um em seu teste próprio passando a esperar `12`; nenhum teste novo de paridade é
+  necessário para fechar esta milestone, mas é uma lacuna pré-existente que vale registrar — se
+  divergirem no futuro, nada hoje pega isso automaticamente.
 
 **E2E (`backend/game-server/src/battle-room.test.ts`):**
 - [ ] Uma mensagem com `version` diferente de 12 é recusada, como já ocorre para a versão atual.

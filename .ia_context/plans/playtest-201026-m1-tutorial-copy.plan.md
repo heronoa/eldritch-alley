@@ -16,10 +16,23 @@ um fecho mais direto, nos dois idiomas que o catálogo carrega.
 |---------|----------|------------|
 | `frontend/src/i18n/catalog.en-US.ts` | modificar | `onboarding.story-squad.body` (linhas 46-48) troca o fecho da frase |
 | `frontend/src/i18n/catalog.pt-BR.ts` | modificar | `onboarding.story-squad.body` (linhas 55-57), tradução equivalente do novo fecho |
-| `frontend/src/i18n/catalog.en-US.test.ts` / `pt-BR.test.ts` (se existir um teste de snapshot/paridade de chaves) | verificar | Nenhuma chave muda de nome, só o valor — não deveria quebrar, mas confirmar que não há teste de snapshot do texto literal |
 
 Nenhum outro arquivo muda: `frontend/src/onboarding/onboarding.ts` e `content.ts` leem o card
-genericamente pelas chaves `onboarding.<id>.heading`/`.body` (DT confirmado na exploração).
+genericamente pelas chaves `onboarding.<id>.heading`/`.body`.
+
+**Confirmado na exploração (`frontend/src/i18n/catalog.test.ts`)**: **pt-BR é a catalogação de
+referência** (suas chaves são o tipo; en-US que não traduz uma chave recebe o texto em português como
+fallback) — o oposto do que uma primeira leitura sugeriria. O arquivo de teste tem dois tipos de
+verificação, nenhum dos quais trava o texto desta milestone:
+1. **Paridade de chaves**: `Object.keys(enUS).sort()` deve ser igual a `Object.keys(ptBR).sort()` — já
+   satisfeito, pois nenhuma chave é criada ou removida.
+2. **Completude de tradução por área**: um teste específico (`untranslatedOnboarding`) garante que
+   nenhuma chave `onboarding.*` fique sem tradução em en-US — já satisfeito, pois ambas as chaves
+   continuam preenchidas.
+
+Não há, hoje, nenhuma asserção que trave o texto literal de `onboarding.story-squad.body` (diferente do
+que o arquivo faz para o texto do título e do log, que são pinados literalmente) — então não há teste a
+atualizar além de rodar a suíte para confirmar que as duas verificações acima continuam verdes.
 
 ## 3. Contrato da camada
 
@@ -48,9 +61,9 @@ escolha de implementação, ver §6):
 ## 4. Testes previstos
 
 **Unitários:**
-- [ ] Se existir teste de paridade de chaves entre `catalog.en-US.ts` e `catalog.pt-BR.ts` (chaves
-  presentes nos dois lados), ele continua passando sem alteração — nenhuma chave foi adicionada ou
-  removida.
+- [ ] `frontend/src/i18n/catalog.test.ts` continua verde: a paridade de chaves entre `enUS` e `ptBR`
+  (`Object.keys(enUS).sort()` === `Object.keys(ptBR).sort()`) e a completude de `onboarding.*` em
+  en-US (`missingKeys('en-US')` sem nenhuma chave `onboarding.`).
 - [ ] Rodar a suíte de i18n existente (`npm run test -w frontend` filtrado por `i18n`) e confirmar verde.
 
 Não há caso de borda, erro de validação ou erro de negócio aqui: é troca de string.
