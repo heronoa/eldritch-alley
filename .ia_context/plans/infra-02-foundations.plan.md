@@ -4,7 +4,7 @@
 **Source spec:** [aws-terraform-deploy.spec.md](../inputs/aws-terraform-deploy.spec.md)
 **Milestone:** 2 of 6
 **Created:** 2026-10-17
-**Status:** pending approval. **Nothing in this plan is written as code or applied to AWS.**
+**Status:** code written 2026-10-17, adopting the recommended default for Q1–Q5 (see §14). Locally validated (`fmt`, `init -backend=false`, `validate`, `terraform test` with a mocked provider — no credentials used). Pending Heron's review and `apply`; apply is also blocked on infra-01's own `apply`, since this stack reads its state bucket and CI roles. **Nothing in this plan has been applied to AWS.**
 
 Written ahead of the index's usual gate (infra-01 applied) because Heron asked for it on 2026-10-17. The plan can be reviewed now; **its code must not be applied until infra-01 is applied**, because every stack here reads the state bucket and the CI roles that infra-01 creates.
 
@@ -218,3 +218,14 @@ Heron applies this stack himself (spec ground rule 1). The identity needs: S3 bu
 1. `feat(infra): add prod stack scaffold and vpc module` — `envs/prod/*` scaffold, `modules/vpc`, `.gitignore`.
 2. `feat(infra): add ecr-repos, assets-bucket, sqs and ssm-parameters modules` — the four modules with their tests.
 3. `docs(infra): update CI comments and README for the prod stack` — `infra-ci.yml` comments, `infra/aws/README.md`, this plan's status.
+
+## 14. Implementation notes (what actually happened, 2026-10-17)
+
+- 24 tests pass, all against a mocked provider, no credentials: `vpc` 5, `ecr-repos` 4, `assets-bucket` 6, `sqs` 4, `ssm-parameters` 3, `envs/prod` 2.
+- Everything under `infra/aws/envs/stg`, `modules/network`, `modules/ecr` and `modules/ec2` is byte-for-byte unchanged (confirmed via `git show --stat` on the commit that introduced this step).
+- **Q1 → (a).** Repositories are `eldritch-alley/prod/game-server` and `eldritch-alley/prod/platform-api`.
+- **Q2 → (a).** New `vpc` and `ecr-repos` modules; the stg `network` and `ecr` modules were not touched.
+- **Q3 → (a), partially.** `SESSION_SECRET`, `GAME_TICKET_PRIVATE_KEY`, `GAME_TICKET_PUBLIC_KEY`, `JWT_SECRET` and `TURNSTILE_SECRET` were created here as placeholders. `OAUTH_GITHUB_CLIENT_SECRET`, `OAUTH_GOOGLE_CLIENT_SECRET` and the email credential were **not** added in this step — they followed later, once infra-04 needed them and their names were confirmed (see the index's "Application state" note).
+- **Q4.** `visibility_timeout_seconds` shipped as a variable, default 30 (the AWS default), as a placeholder.
+- **Q5 → (a).** `envs/prod` now exists, so `infra-ci.yml`'s live `plan` job starts behaving as a real plan from this step onward instead of being inert.
+- **Superseded since:** the `sqs` module created here is a **standard** queue. infra-04's Part 0 replaces it with a FIFO queue (a queue cannot change type), because the game-server publishes with `MessageGroupId`/`MessageDeduplicationId`. What is on disk today under `modules/sqs` reflects infra-04's correction, not this plan's original shape.

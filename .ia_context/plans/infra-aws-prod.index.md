@@ -19,10 +19,10 @@ Resolved with Heron on 2026-10-16, before infra-01 was written:
 | # | Plan | Status | PR |
 |---|------|--------|----|
 | 1 | [infra-01-bootstrap-and-ci.plan.md](./infra-01-bootstrap-and-ci.plan.md) | [x] code written, pending Heron's review and apply | — |
-| 2 | [infra-02-foundations.plan.md](./infra-02-foundations.plan.md) (network, ECR, assets bucket, SQS, SSM parameters) | [ ] plan written, pending Heron's answers to its open questions and approval; code not written | — |
+| 2 | [infra-02-foundations.plan.md](./infra-02-foundations.plan.md) (network, ECR, assets bucket, SQS, SSM parameters) | [x] code written 2026-10-17, adopting the recommended default for Q1–Q5; pending Heron's review and apply (blocked on infra-01's apply) | — |
 | 3 | [infra-03-data-stores.plan.md](./infra-03-data-stores.plan.md) (RDS, ElastiCache) | [x] code written and validated locally (mocked provider), pending Heron's review and apply (Q6, apply timing, still open) | — |
 | 4 | [infra-04-edge-and-compute.plan.md](./infra-04-edge-and-compute.plan.md) (ALB, ACM, WAF web ACL, Cloudflare records, ECS cluster, the two services, migrate family, at zero tasks) | [x] code written and validated locally (mocked providers), pending Heron's review and apply | — |
-| 5 | infra-05-pipelines.plan.md (infra-apply.yml, deploy.yml, teardown.yml) | [ ] not written | — |
+| 5 | [infra-05-pipelines.plan.md](./infra-05-pipelines.plan.md) (infra-apply.yml, deploy.yml, teardown.yml) | [ ] plan written 2026-10-20, pending Heron's answers to Q1–Q2 and approval; code not written | — |
 | 6 | infra-06-observability-and-docs.plan.md (alarms, budget, README, ADRs) | [ ] not written | — |
 
 ## Dependency notes
