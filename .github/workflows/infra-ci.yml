@@ -1,0 +1,166 @@
+# Checks for infra/**. Separate from ci.yml (app typecheck/test/build) on purpose:
+# this workflow never runs on an application-only PR, and vice versa.
+#
+# The "plan" job needs AWS_REGION, AWS_PLAN_ROLE_ARN and TF_STATE_BUCKET as
+# repository variables, set from infra-01's bootstrap outputs. Until the
+# bootstrap stack is applied and those variables exist, and until
+# infra/aws/envs/prod exists (infra-02), that job's steps are inert by
+# design: they print a notice and exit 0 rather than fail the workflow.
+name: infra-ci
+
+on:
+  pull_request:
+    paths:
+      - "infra/**"
+      - ".github/workflows/infra-ci.yml"
+
+permissions:
+  id-token: write # only the "plan" job actually assumes a role
+  contents: read
+  pull-requests: write # only the "plan" job comments on the PR
+
+jobs:
+  fmt-and-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_wrapper: false
+
+      - name: terraform fmt -check (recursive)
+        run: terraform fmt -check -recursive infra/aws
+
+      - name: terraform validate (every root stack)
+        run: |
+          set -euo pipefail
+          for dir in $(find infra/aws -mindepth 1 -type f -name versions.tf -exec dirname {} \; | sort); do
+            echo "== $dir =="
+            terraform -chdir="$dir" init -backend=false -input=false
+            terraform -chdir="$dir" validate
+          done
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_wrapper: false
+
+      - name: terraform test (mocked provider, no credentials)
+        run: |
+          set -euo pipefail
+          for tests_dir in $(find infra/aws -type d -name tests | sort); do
+            stack=$(dirname "$tests_dir")
+            echo "== $stack =="
+            terraform -chdir="$stack" init -backend=false -input=false
+            terraform -chdir="$stack" test
+          done
+
+  tflint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - uses: terraform-linters/setup-tflint@90f302c255ef959cbfb4bd10581afecdb7ece3e6 # v4.1.1
+        with:
+          tflint_version: v0.63.1
+
+      - name: tflint --recursive
+        working-directory: infra/aws
+        run: |
+          tflint --init
+          tflint --recursive
+
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      # Config scanner for the Terraform tree. Fails on CRITICAL/HIGH.
+      # Every suppression (.trivyignore) needs a comment with the reason,
+      # reviewed like any other change under infra/**.
+      - name: Trivy config scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: "config"
+          scan-ref: "infra/aws"
+          exit-code: "1"
+          severity: "CRITICAL,HIGH"
+          trivyignores: "infra/aws/.trivyignore"
+
+  secret-grep:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: grep for static AWS keys and private key material
+        run: |
+          set -euo pipefail
+          if grep -rEn "AKIA[0-9A-Z]{16}|aws_access_key_id\s*=\s*[\"'][^\"'$]|-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----" \
+            --include="*.tf" --include="*.tfvars" --include="*.md" --include="*.yml" --include="*.yaml" \
+            infra .github; then
+            echo "::error::possible secret or static key found above"
+            exit 1
+          fi
+          echo "no match"
+
+  plan:
+    runs-on: ubuntu-latest
+    needs: [fmt-and-validate, test, tflint, scan, secret-grep]
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_wrapper: false
+
+      - name: Check prerequisites
+        id: precheck
+        run: |
+          ready=true
+          if [ -z "${{ vars.AWS_PLAN_ROLE_ARN }}" ]; then
+            echo "::notice::AWS_PLAN_ROLE_ARN repository variable not set yet (set after infra-01's bootstrap is applied) — skipping the live plan."
+            ready=false
+          fi
+          if [ ! -d infra/aws/envs/prod ]; then
+            echo "::notice::infra/aws/envs/prod does not exist yet (arrives in infra-02) — skipping the live plan."
+            ready=false
+          fi
+          echo "ready=$ready" >> "$GITHUB_OUTPUT"
+
+      - name: Configure AWS credentials (OIDC)
+        if: steps.precheck.outputs.ready == 'true'
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_PLAN_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: terraform plan
+        if: steps.precheck.outputs.ready == 'true'
+        working-directory: infra/aws/envs/prod
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
+            -backend-config="key=prod/terraform.tfstate" \
+            -backend-config="region=${{ vars.AWS_REGION }}" \
+            -backend-config="encrypt=true" \
+            -backend-config="use_lockfile=true"
+          terraform plan -input=false -no-color -out=prod.tfplan | tee plan.txt
+
+      - name: Comment the plan on the PR
+        if: steps.precheck.outputs.ready == 'true'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const fs = require('fs');
+            const plan = fs.readFileSync('infra/aws/envs/prod/plan.txt', 'utf8').slice(0, 60000);
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `#### Terraform plan — prod\n<details><summary>show plan</summary>\n\n\`\`\`\n${plan}\n\`\`\`\n</details>`,
+            });

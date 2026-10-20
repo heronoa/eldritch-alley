@@ -1,0 +1,8 @@
+# Copy to terraform.tfvars (gitignored) and fill in. Values below are placeholders.
+
+# Immutable tag of the game-server image pushed to ECR (for example the short commit SHA).
+game_server_image_tag = "REPLACE_WITH_IMMUTABLE_TAG"
+
+# Pinned versions. Check the latest releases before the first apply.
+cloudflared_tag = "REPLACE_WITH_CLOUDFLARED_TAG"
+compose_version = "REPLACE_WITH_COMPOSE_VERSION"
